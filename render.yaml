@@ -1,0 +1,23 @@
+services:
+  # DevFlow Express Node.js Backend API
+  - type: web
+    name: devflow-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: server
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGIN
+        sync: false # Set to your Vercel deployment URL (e.g. https://your-app.vercel.app)
+      - key: DATABASE_URL
+        sync: false # Set to your MySQL database connection string (e.g. TiDB Cloud / Aiven)
+      - key: JWT_SECRET
+        generateValue: true

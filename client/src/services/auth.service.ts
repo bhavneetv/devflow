@@ -1,4 +1,5 @@
 import { OnboardingData } from '../types/onboarding';
+import { apiUrl } from '../config/api';
 
 export interface AuthUser {
   id: number;
@@ -59,7 +60,7 @@ export const authService = {
 
   async login(email: string, password: string): Promise<AuthResponse> {
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiUrl('/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -81,7 +82,7 @@ export const authService = {
 
   async register(name: string, email: string, password: string): Promise<AuthResponse> {
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(apiUrl('/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password }),
@@ -103,7 +104,7 @@ export const authService = {
 
   async socialLogin(provider: 'github' | 'google'): Promise<AuthResponse> {
     try {
-      const res = await fetch('/api/auth/social', {
+      const res = await fetch(apiUrl('/auth/social'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider }),
@@ -124,7 +125,7 @@ export const authService = {
 
   async demoNewUser(): Promise<AuthResponse> {
     try {
-      const res = await fetch('/api/auth/demo-new-user', {
+      const res = await fetch(apiUrl('/auth/demo-new-user'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -145,7 +146,7 @@ export const authService = {
   async submitOnboarding(data: OnboardingData): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
     try {
       const token = this.getToken();
-      const res = await fetch('/api/auth/onboarding', {
+      const res = await fetch(apiUrl('/auth/onboarding'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -174,7 +175,7 @@ export const authService = {
     const token = this.getToken();
     if (!token) return null;
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(apiUrl('/auth/me'), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();

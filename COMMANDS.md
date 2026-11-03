@@ -177,6 +177,25 @@ Invoke-RestMethod -Uri http://localhost:5000/api/projects | ConvertTo-Json -Dept
 
 ---
 
+## 🚀 8. Cloud Deployment (Vercel + Render)
+
+```bash
+# 1. Frontend: Deploy to Vercel via CLI
+cd client
+vercel              # Preview deployment
+vercel --prod       # Production deployment
+
+# 2. Database: Push Prisma schema to remote cloud MySQL (TiDB / Aiven)
+cd server
+npx prisma db push
+npm run db:seed     # Optional: seed demo data
+
+# 3. Backend: Deployed via Render Blueprint
+# Render reads render.yaml automatically on Git push!
+```
+
+---
+
 ## 🗺️ Project URL Quick Reference
 
 | Service | URL | Notes |

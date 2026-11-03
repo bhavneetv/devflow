@@ -30,3 +30,6 @@ Thumbs.db
 # Prisma local database storage (if any)
 *.db
 *.db-journal
+
+# Local Netlify folder
+.netlify

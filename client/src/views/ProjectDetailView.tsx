@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useNavigation } from '../context/NavigationContext';
 import { Project, Task } from '../types';
+import { apiUrl } from '../config/api';
 
 export const ProjectDetailView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -18,7 +19,7 @@ export const ProjectDetailView: React.FC = () => {
     const loadProject = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/projects/${id || 1}`);
+        const res = await fetch(apiUrl(`/projects/${id || 1}`));
         const data = await res.json();
         if (data.success) {
           setProject(data.data);

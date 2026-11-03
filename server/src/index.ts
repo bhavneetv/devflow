@@ -12,21 +12,42 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
+const rawCorsOrigin = process.env.CORS_ORIGIN || '';
+const configuredOrigins = rawCorsOrigin
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:5175',
+];
 
 // Middleware
 app.use(
   cors({
-    origin: [
-      CORS_ORIGIN,
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:5175',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:5174',
-      'http://127.0.0.1:5175',
-    ],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, Render healthchecks)
+      if (!origin) return callback(null, true);
+
+      // Match configured origins, defaults, or any Vercel preview/production domain
+      if (
+        configuredOrigins.includes(origin) ||
+        defaultOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
+        origin.includes('localhost') ||
+        process.env.NODE_ENV !== 'production'
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(null, true);
+    },
     credentials: true,
   })
 );

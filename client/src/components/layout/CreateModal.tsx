@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CheckSquare, Sparkles, FolderKanban, Flag } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { apiUrl } from '../../config/api';
 
 interface CreateModalProps {
   onIssueCreated?: (issue: any) => void;
@@ -23,7 +24,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({ onIssueCreated }) => {
     setSubmitting(true);
     try {
       // Create task via API
-      const res = await fetch('/api/tasks', {
+      const res = await fetch(apiUrl('/tasks'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

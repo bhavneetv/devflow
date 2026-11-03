@@ -1,6 +1,5 @@
 import { Project, SystemHealth, Task, User } from './types';
-
-const API_BASE = '/api';
+import { API_BASE } from './config/api';
 
 export async function fetchHealth(): Promise<SystemHealth> {
   const res = await fetch(`${API_BASE}/health`);

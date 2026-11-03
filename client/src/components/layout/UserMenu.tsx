@@ -8,8 +8,9 @@ import {
   ExternalLink,
   ChevronUp,
 } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface UserMenuProps {
   isCollapsed?: boolean;
@@ -19,6 +20,8 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
+  const { user: authUser, logout } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -30,11 +33,17 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  const user = {
-    name: 'Alice Johnson',
-    email: 'alice@devflow.io',
-    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-    role: 'Admin',
+  const currentUser = {
+    name: authUser?.name || 'Alice Johnson',
+    email: authUser?.email || 'alice@devflow.io',
+    avatarUrl: authUser?.avatarUrl || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+    role: authUser?.role || 'Admin',
+  };
+
+  const handleLogout = () => {
+    setIsOpen(false);
+    logout();
+    navigate('/login');
   };
 
   return (
@@ -45,21 +54,21 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
         className={`w-full flex items-center justify-between p-1.5 rounded-md hover:bg-sidebar-hover transition-colors duration-150 group ${
           isCollapsed ? 'justify-center' : ''
         }`}
-        title={`${user.name} (${user.email})`}
+        title={`${currentUser.name} (${currentUser.email})`}
       >
         <div className="flex items-center gap-2.5 truncate">
           <img
-            src={user.avatarUrl}
-            alt={user.name}
+            src={currentUser.avatarUrl}
+            alt={currentUser.name}
             className="w-7 h-7 rounded-full object-cover border border-sidebar-border flex-shrink-0"
           />
           {!isCollapsed && (
             <div className="text-left truncate">
               <div className="text-[13px] font-medium text-sidebar-text-active truncate leading-tight">
-                {user.name}
+                {currentUser.name}
               </div>
               <div className="text-[11px] text-sidebar-text-muted truncate leading-none mt-0.5">
-                {user.email}
+                {currentUser.email}
               </div>
             </div>
           )}
@@ -83,8 +92,8 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
           }`}
         >
           <div className="px-3 py-2 border-b border-sidebar-border">
-            <div className="font-semibold text-white text-[13px]">{user.name}</div>
-            <div className="text-zinc-400 text-[11px] truncate">{user.email}</div>
+            <div className="font-semibold text-white text-[13px]">{currentUser.name}</div>
+            <div className="text-zinc-400 text-[11px] truncate">{currentUser.email}</div>
           </div>
 
           <div className="p-1 space-y-0.5">
@@ -140,10 +149,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
             <div className="my-1 border-t border-sidebar-border" />
 
             <button
-              onClick={() => {
-                setIsOpen(false);
-                alert('Logging out...');
-              }}
+              onClick={handleLogout}
               className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-red-500/10 text-red-400"
             >
               <LogOut size={14} />

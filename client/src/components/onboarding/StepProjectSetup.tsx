@@ -62,7 +62,7 @@ export const StepProjectSetup: React.FC<StepProjectSetupProps> = ({
                   : 'bg-[#111216]/80 hover:bg-[#17181D] border-[#27272A]/80 hover:border-zinc-700'
               }`}
               style={{
-                borderColor: isSelected ? data.accentColor : undefined,
+                borderColor: isSelected ? data.accentColor : '#27272A',
               }}
             >
               <div className="flex items-center justify-between mb-4 w-full">

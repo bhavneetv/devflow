@@ -124,27 +124,22 @@ export const StepRole: React.FC<StepRoleProps> = ({ data, onChange }) => {
               const IconComponent = ICON_MAP[role.iconName] || Code;
 
               return (
-                <motion.button
+                <button
                   key={role.id}
-                  layout="position"
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.16, ease: 'easeOut' }}
                   type="button"
                   role="option"
                   aria-selected={isSelected}
                   onClick={() => handleSelectRole(role)}
-                  className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start gap-3 transition-all group ${
+                  className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start gap-3 transition-all duration-150 group ${
                     isSelected
                       ? 'bg-[#17181D] shadow-md'
-                      : 'bg-[#111216]/75 hover:bg-[#17181D] border-[#27272A]/80 hover:border-zinc-700'
+                      : 'bg-[#111216]/75 hover:bg-[#17181D] hover:border-zinc-700'
                   }`}
                   style={{
-                    borderColor: isSelected ? data.accentColor : undefined,
+                    borderColor: isSelected ? data.accentColor : '#27272A',
                     boxShadow: isSelected
                       ? `0 0 0 1px ${data.accentColor}, 0 4px 16px ${data.accentColor}25`
-                      : undefined,
+                      : 'none',
                   }}
                 >
                   <div
@@ -177,7 +172,7 @@ export const StepRole: React.FC<StepRoleProps> = ({ data, onChange }) => {
                       {role.description}
                     </p>
                   </div>
-                </motion.button>
+                </button>
               );
             })
           ) : (

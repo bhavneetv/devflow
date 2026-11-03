@@ -6,6 +6,7 @@ import { usersRouter } from './routes/users.routes.js';
 import { projectsRouter } from './routes/projects.routes.js';
 import { tasksRouter } from './routes/tasks.routes.js';
 import { seedRouter } from './routes/seed.routes.js';
+import { authRouter } from './routes/auth.routes.js';
 
 dotenv.config();
 
@@ -16,7 +17,16 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
 // Middleware
 app.use(
   cors({
-    origin: [CORS_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:5173'],
+    origin: [
+      CORS_ORIGIN,
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
+      'http://127.0.0.1:5175',
+    ],
     credentials: true,
   })
 );
@@ -31,6 +41,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Routes
+app.use('/api/auth', authRouter);
 app.use('/api/health', healthRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/projects', projectsRouter);

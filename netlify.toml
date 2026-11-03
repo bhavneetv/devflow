@@ -1,0 +1,15 @@
+# Netlify configuration for DevFlow monorepo
+[build]
+  base = "client"
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  VITE_API_URL = "https://devflow-devv.onrender.com"
+
+# Client-side routing fallback for React Router SPA
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -28,6 +28,16 @@ import {
   Key,
   Globe,
   Sparkles,
+  Laptop,
+  Fingerprint,
+  Feather,
+  Ghost,
+  Moon,
+  Sun,
+  Activity,
+  Wifi,
+  Package,
+  Wrench,
   LucideIcon,
   AtSign,
 } from 'lucide-react';
@@ -49,7 +59,7 @@ interface StepProfileProps {
   isCheckingUsername?: boolean;
 }
 
-// Master icon lookup for avatars
+// Master icon lookup for avatars (5 quick icons + 28 popup emojis)
 export const AVATAR_ICON_COMPONENTS: Record<string, LucideIcon> = {
   smile: Smile,
   code: Code2,
@@ -74,6 +84,16 @@ export const AVATAR_ICON_COMPONENTS: Record<string, LucideIcon> = {
   key: Key,
   globe: Globe,
   sparkles: Sparkles,
+  laptop: Laptop,
+  fingerprint: Fingerprint,
+  feather: Feather,
+  ghost: Ghost,
+  moon: Moon,
+  sun: Sun,
+  activity: Activity,
+  wifi: Wifi,
+  package: Package,
+  wrench: Wrench,
 };
 
 export const StepProfile: React.FC<StepProfileProps> = ({
@@ -165,6 +185,19 @@ export const StepProfile: React.FC<StepProfileProps> = ({
       avatarId: 'initials',
       avatarUrl: null,
     });
+  };
+
+  // Dispatch exact circle center coordinates for the magical color wave
+  const handleAccentClick = (e: React.MouseEvent<HTMLButtonElement>, hex: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    window.dispatchEvent(
+      new CustomEvent('accent-color-wave', {
+        detail: { color: hex, x: centerX, y: centerY },
+      })
+    );
+    onChange({ accentColor: hex });
   };
 
   // Check if current icon is one of the "more" icons
@@ -359,7 +392,7 @@ export const StepProfile: React.FC<StepProfileProps> = ({
               )}
             </button>
 
-            {/* Emoji-like Popover Modal */}
+            {/* Emoji-like Popover Modal with Scrollbar and 28 developer emojis */}
             <AnimatePresence>
               {showMoreModal && (
                 <motion.div
@@ -367,23 +400,23 @@ export const StepProfile: React.FC<StepProfileProps> = ({
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9, y: 10 }}
                   transition={{ duration: 0.18 }}
-                  className="absolute left-0 bottom-11 z-50 p-2.5 rounded-2xl bg-[#17181D] border border-[#27272A] shadow-2xl w-60 backdrop-blur-xl"
+                  className="absolute left-0 bottom-11 z-50 p-3 rounded-2xl bg-[#17181D] border border-[#27272A] shadow-2xl w-68 sm:w-72 backdrop-blur-xl"
                 >
-                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/[0.08]">
-                    <span className="text-[11px] font-medium text-white flex items-center gap-1.5">
-                      <Sparkles size={11} className="text-[#A78BFA]" />
-                      <span>More Icons</span>
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
+                    <span className="text-[11.5px] font-medium text-white flex items-center gap-1.5">
+                      <Sparkles size={12} className="text-[#A78BFA]" />
+                      <span>Choose Emoji ({MORE_AVATAR_ICONS.length})</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowMoreModal(false)}
-                      className="text-zinc-500 hover:text-white p-0.5 rounded"
+                      className="text-zinc-500 hover:text-white p-0.5 rounded transition-colors"
                     >
-                      <X size={12} />
+                      <X size={13} />
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-6 gap-1 max-h-44 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-6 gap-1.5 max-h-52 overflow-y-auto pr-1.5 scrollbar-thin scrollbar-thumb-zinc-700">
                     {MORE_AVATAR_ICONS.map((icon) => {
                       const IconComponent = AVATAR_ICON_COMPONENTS[icon.id] || Sparkles;
                       const isSelected =
@@ -394,14 +427,14 @@ export const StepProfile: React.FC<StepProfileProps> = ({
                           key={icon.id}
                           type="button"
                           onClick={() => handleSelectIcon(icon)}
-                          className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
                             isSelected
-                              ? 'bg-[#A78BFA] text-zinc-950 font-bold scale-105'
+                              ? 'bg-[#A78BFA] text-zinc-950 font-bold scale-105 shadow'
                               : 'hover:bg-white/[0.08] text-zinc-300 hover:text-white'
                           }`}
                           title={icon.name}
                         >
-                          <IconComponent size={13} />
+                          <IconComponent size={14} />
                         </button>
                       );
                     })}
@@ -534,7 +567,7 @@ export const StepProfile: React.FC<StepProfileProps> = ({
               <button
                 key={color.id}
                 type="button"
-                onClick={() => onChange({ accentColor: color.hex })}
+                onClick={(e) => handleAccentClick(e, color.hex)}
                 className={`relative w-6 h-6 rounded-full flex items-center justify-center transition-all ${
                   isSelected
                     ? 'scale-115 ring-2 ring-offset-2 ring-offset-[#0C0D10]'
@@ -546,6 +579,17 @@ export const StepProfile: React.FC<StepProfileProps> = ({
                 }}
                 title={color.name}
               >
+                {/* Expanding aura ripple on select */}
+                {isSelected && (
+                  <motion.span
+                    key={`ripple-${color.hex}`}
+                    initial={{ scale: 0.8, opacity: 0.9 }}
+                    animate={{ scale: 2.7, opacity: 0 }}
+                    transition={{ duration: 0.65, ease: 'easeOut' }}
+                    className="absolute inset-0 rounded-full border pointer-events-none"
+                    style={{ borderColor: color.hex }}
+                  />
+                )}
                 {isSelected && (
                   <Check
                     size={11}

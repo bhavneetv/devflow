@@ -47,7 +47,7 @@ export const ACCENT_COLORS: ColorOption[] = [
   { id: 'silver', name: 'Platinum Zinc', hex: '#E4E4E7', borderHex: '#D4D4D8' },
 ];
 
-// Quick Avatar Icons displayed directly in the avatar picker
+// Exactly 5 Quick Avatar Icons displayed on the main page
 export interface AvatarIconOption {
   id: string;
   name: string;
@@ -60,16 +60,9 @@ export const QUICK_AVATAR_ICONS: AvatarIconOption[] = [
   { id: 'bug', name: 'Bug', iconName: 'Bug' },
   { id: 'terminal', name: 'Terminal', iconName: 'Terminal' },
   { id: 'zap', name: 'Zap', iconName: 'Zap' },
-  { id: 'rocket', name: 'Rocket', iconName: 'Rocket' },
-  { id: 'cpu', name: 'Cpu', iconName: 'Cpu' },
-  { id: 'git-branch', name: 'Branch', iconName: 'GitBranch' },
-  { id: 'flame', name: 'Flame', iconName: 'Flame' },
-  { id: 'coffee', name: 'Coffee', iconName: 'Coffee' },
-  { id: 'bot', name: 'Bot', iconName: 'Bot' },
-  { id: 'sparkles', name: 'Sparkles', iconName: 'Sparkles' },
 ];
 
-// Additional Icons for the "More" popup
+// Rich collection of 28 developer emojis/icons inside the 3-dot popup with scrollbar
 export const MORE_AVATAR_ICONS: AvatarIconOption[] = [
   { id: 'rocket', name: 'Rocket', iconName: 'Rocket' },
   { id: 'cpu', name: 'Cpu', iconName: 'Cpu' },
@@ -89,6 +82,16 @@ export const MORE_AVATAR_ICONS: AvatarIconOption[] = [
   { id: 'key', name: 'Key', iconName: 'Key' },
   { id: 'globe', name: 'Globe', iconName: 'Globe' },
   { id: 'sparkles', name: 'Sparkles', iconName: 'Sparkles' },
+  { id: 'laptop', name: 'Laptop', iconName: 'Laptop' },
+  { id: 'fingerprint', name: 'Fingerprint', iconName: 'Fingerprint' },
+  { id: 'feather', name: 'Feather', iconName: 'Feather' },
+  { id: 'ghost', name: 'Ghost', iconName: 'Ghost' },
+  { id: 'moon', name: 'Moon', iconName: 'Moon' },
+  { id: 'sun', name: 'Sun', iconName: 'Sun' },
+  { id: 'activity', name: 'Activity', iconName: 'Activity' },
+  { id: 'wifi', name: 'Wifi', iconName: 'Wifi' },
+  { id: 'package', name: 'Package', iconName: 'Package' },
+  { id: 'wrench', name: 'Wrench', iconName: 'Wrench' },
 ];
 
 export interface RoleOption {

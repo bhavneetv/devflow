@@ -58,6 +58,37 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
     }
   }, []);
 
+  // Magical color wave transition originating directly from the clicked accent circle
+  const windowRef = React.useRef<HTMLDivElement>(null);
+  const [colorWave, setColorWave] = React.useState<{
+    id: number;
+    color: string;
+    originX: number;
+    originY: number;
+  } | null>(null);
+
+  React.useEffect(() => {
+    const handleWave = (e: Event) => {
+      const customEvent = e as CustomEvent<{ color: string; x: number; y: number }>;
+      if (windowRef.current && customEvent.detail) {
+        const rect = windowRef.current.getBoundingClientRect();
+        const originX = customEvent.detail.x - rect.left;
+        const originY = customEvent.detail.y - rect.top;
+        setColorWave({
+          id: Date.now(),
+          color: customEvent.detail.color,
+          originX,
+          originY,
+        });
+        setTimeout(() => {
+          setColorWave(null);
+        }, 1100);
+      }
+    };
+    window.addEventListener('accent-color-wave', handleWave);
+    return () => window.removeEventListener('accent-color-wave', handleWave);
+  }, []);
+
   return (
     <>
       {/* Permanent deep background canvas to prevent any backdrop flicker */}
@@ -75,6 +106,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
             At end: Zoom-in to scale 1.09 with blur fade-out
         */}
         <motion.div
+          ref={windowRef}
           initial={{ scale: 1.09, opacity: 0, filter: 'blur(16px)' }}
           animate={{
             scale: isExiting ? 1.09 : 1,
@@ -84,6 +116,36 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
           transition={{ duration: isExiting ? 0.65 : 1.25, ease: [0.16, 1, 0.3, 1] }}
           className="w-full max-w-[1160px] min-h-[620px] h-full md:h-[720px] max-h-[96vh] md:max-h-[92vh] rounded-2xl sm:rounded-3xl border border-[#27272A] bg-[#0C0D10] shadow-2xl flex flex-row overflow-hidden relative"
         >
+          {/* Magical Accent Color Wave Transition:
+              Originates directly at the center of the selected circle and sweeps across to the right side of the window
+          */}
+          <AnimatePresence>
+            {colorWave && (
+              <motion.div
+                key={colorWave.id}
+                initial={{
+                  scale: 0.05,
+                  opacity: 0.85,
+                  x: '-50%',
+                  y: '-50%',
+                  left: colorWave.originX,
+                  top: colorWave.originY,
+                }}
+                animate={{
+                  scale: [0.05, 2.4, 4.8],
+                  opacity: [0.85, 0.45, 0],
+                  left: [colorWave.originX, colorWave.originX + 280, colorWave.originX + 580],
+                  top: [colorWave.originY, colorWave.originY - 60, colorWave.originY - 140],
+                }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute w-[340px] h-[340px] rounded-full pointer-events-none blur-3xl z-20"
+                style={{
+                  background: `radial-gradient(circle, ${colorWave.color} 0%, ${colorWave.color}66 35%, transparent 70%)`,
+                }}
+              />
+            )}
+          </AnimatePresence>
           
           {/* MAIN FORM PANEL:
               On desktop: Smoothly expands width from 50% to 100%

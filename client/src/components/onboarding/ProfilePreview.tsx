@@ -47,9 +47,13 @@ export const ProfilePreview: React.FC<ProfilePreviewProps> = ({ data }) => {
         }}
       />
 
-      {/* Ambient background glow matching accent */}
-      <div
-        className="absolute -top-20 -right-20 w-72 h-72 rounded-full blur-3xl pointer-events-none opacity-25 transition-colors duration-700"
+      {/* Ambient background glow matching accent that zooms in magically on color change */}
+      <motion.div
+        key={`glow-${accent}`}
+        initial={{ scale: 0.75, opacity: 0.1 }}
+        animate={{ scale: [0.75, 1.45, 1], opacity: [0.1, 0.5, 0.25] }}
+        transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
+        className="absolute -top-20 -right-20 w-80 h-80 rounded-full blur-3xl pointer-events-none"
         style={{ backgroundColor: accent }}
       />
       <div
@@ -57,10 +61,31 @@ export const ProfilePreview: React.FC<ProfilePreviewProps> = ({ data }) => {
         style={{ backgroundColor: avatarColor }}
       />
 
-      {/* Main Developer Identity Card */}
-      <div
-        className="w-full max-w-[390px] rounded-2xl bg-[#17181D]/90 backdrop-blur-md border border-white/[0.08] shadow-2xl p-6 relative z-10 flex flex-col items-center text-center"
+      {/* Main Developer Identity Card with sheen sweep and ambient pulse */}
+      <motion.div
+        key={`card-${accent}`}
+        animate={{
+          boxShadow: [
+            `0 20px 40px rgba(0,0,0,0.5)`,
+            `0 20px 60px ${accent}40`,
+            `0 20px 40px rgba(0,0,0,0.5)`,
+          ],
+        }}
+        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-[390px] rounded-2xl bg-[#17181D]/90 backdrop-blur-md border border-white/[0.08] p-6 relative z-10 flex flex-col items-center text-center overflow-hidden"
       >
+        {/* Magical light sheen sweeping across the card when accent changes */}
+        <motion.div
+          key={`sheen-${accent}`}
+          initial={{ x: '-150%', opacity: 0 }}
+          animate={{ x: '250%', opacity: [0, 0.85, 0] }}
+          transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1], delay: 0.12 }}
+          className="absolute inset-0 w-2/3 h-full pointer-events-none -skew-x-12 z-20"
+          style={{
+            background: `linear-gradient(90deg, transparent 0%, ${accent}40 50%, transparent 100%)`,
+          }}
+        />
+
         {/* Card Header Tag */}
         <div className="w-full flex items-center justify-between pb-4 mb-4 border-b border-white/[0.06]">
           <div className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-400">
@@ -201,7 +226,7 @@ export const ProfilePreview: React.FC<ProfilePreviewProps> = ({ data }) => {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

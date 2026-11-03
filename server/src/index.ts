@@ -40,6 +40,7 @@ app.use(
         configuredOrigins.includes(origin) ||
         defaultOrigins.includes(origin) ||
         origin.endsWith('.vercel.app') ||
+        origin.endsWith('.netlify.app') ||
         origin.includes('localhost') ||
         process.env.NODE_ENV !== 'production'
       ) {

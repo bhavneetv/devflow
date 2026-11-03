@@ -6,10 +6,14 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isOnboardingCompleted: boolean;
+  setIsOnboardingCompleted: (completed: boolean) => void;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   socialLogin: (provider: 'github' | 'google') => Promise<{ success: boolean; error?: string }>;
+  demoNewUserSession: () => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  updateCurrentUser: (userUpdates: Partial<AuthUser>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,6 +21,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(() => authService.getUser());
   const [token, setToken] = useState<string | null>(() => authService.getToken());
+  const [isOnboardingCompleted, setIsOnboardingCompletedState] = useState<boolean>(() =>
+    authService.isOnboardingCompleted()
+  );
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -28,7 +35,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (me) {
           setUser(me);
         } else {
-          // If server fails or user invalid, fallback to stored user or clear
           const localUser = authService.getUser();
           if (localUser) setUser(localUser);
         }
@@ -38,6 +44,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
+  const setIsOnboardingCompleted = (completed: boolean) => {
+    authService.setOnboardingCompleted(completed);
+    setIsOnboardingCompletedState(completed);
+  };
+
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     const res = await authService.login(email, password);
@@ -45,6 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.success && res.user && res.token) {
       setUser(res.user);
       setToken(res.token);
+      setIsOnboardingCompleted(true);
       return { success: true };
     }
     return { success: false, error: res.error || 'Invalid credentials' };
@@ -57,6 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.success && res.user && res.token) {
       setUser(res.user);
       setToken(res.token);
+      setIsOnboardingCompleted(false);
       return { success: true };
     }
     return { success: false, error: res.error || 'Registration failed' };
@@ -69,15 +82,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.success && res.user && res.token) {
       setUser(res.user);
       setToken(res.token);
+      setIsOnboardingCompleted(true);
       return { success: true };
     }
     return { success: false, error: res.error || 'Social authentication failed' };
+  };
+
+  const demoNewUserSession = async () => {
+    setIsLoading(true);
+    const res = await authService.demoNewUser();
+    setIsLoading(false);
+    if (res.success && res.user && res.token) {
+      setUser(res.user);
+      setToken(res.token);
+      setIsOnboardingCompleted(false);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to start demo user session' };
+  };
+
+  const updateCurrentUser = (userUpdates: Partial<AuthUser>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...userUpdates };
+      const currentToken = authService.getToken();
+      if (currentToken) {
+        authService.setSession(currentToken, updated);
+      }
+      return updated;
+    });
   };
 
   const logout = () => {
     authService.clearSession();
     setUser(null);
     setToken(null);
+    setIsOnboardingCompletedState(false);
   };
 
   return (
@@ -87,10 +127,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isAuthenticated: !!user && !!token,
         isLoading,
+        isOnboardingCompleted,
+        setIsOnboardingCompleted,
         login,
         register,
         socialLogin,
+        demoNewUserSession,
         logout,
+        updateCurrentUser,
       }}
     >
       {children}

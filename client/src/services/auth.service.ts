@@ -1,3 +1,5 @@
+import { OnboardingData } from '../types/onboarding';
+
 export interface AuthUser {
   id: number;
   name: string;
@@ -11,10 +13,12 @@ export interface AuthResponse {
   token?: string;
   user?: AuthUser;
   error?: string;
+  isNewUser?: boolean;
 }
 
 const TOKEN_KEY = 'devflow_auth_token';
 const USER_KEY = 'devflow_auth_user';
+const ONBOARDING_COMPLETED_KEY = 'devflow_onboarding_completed';
 
 export const authService = {
   getToken(): string | null {
@@ -41,6 +45,18 @@ export const authService = {
     localStorage.removeItem(USER_KEY);
   },
 
+  isOnboardingCompleted(): boolean {
+    return localStorage.getItem(ONBOARDING_COMPLETED_KEY) === 'true';
+  },
+
+  setOnboardingCompleted(completed: boolean): void {
+    if (completed) {
+      localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+    } else {
+      localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
+    }
+  },
+
   async login(email: string, password: string): Promise<AuthResponse> {
     try {
       const res = await fetch('/api/auth/login', {
@@ -51,6 +67,8 @@ export const authService = {
       const data = await res.json();
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
+        // By default existing seed users like alice@devflow.io are already onboarded
+        this.setOnboardingCompleted(true);
       }
       return data;
     } catch (err: any) {
@@ -71,6 +89,8 @@ export const authService = {
       const data = await res.json();
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
+        // Newly registered users need to go through onboarding
+        this.setOnboardingCompleted(false);
       }
       return data;
     } catch (err: any) {
@@ -91,12 +111,61 @@ export const authService = {
       const data = await res.json();
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
+        this.setOnboardingCompleted(true);
       }
       return data;
     } catch (err: any) {
       return {
         success: false,
         error: err.message || `Failed to sign in with ${provider}.`,
+      };
+    }
+  },
+
+  async demoNewUser(): Promise<AuthResponse> {
+    try {
+      const res = await fetch('/api/auth/demo-new-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.success && data.token && data.user) {
+        this.setSession(data.token, data.user);
+        this.setOnboardingCompleted(false);
+      }
+      return data;
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Failed to start demo new user session.',
+      };
+    }
+  },
+
+  async submitOnboarding(data: OnboardingData): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+    try {
+      const token = this.getToken();
+      const res = await fetch('/api/auth/onboarding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(data),
+      });
+      const resData = await res.json();
+      if (resData.success && resData.user) {
+        this.setOnboardingCompleted(true);
+        const currentUser = this.getUser();
+        if (currentUser) {
+          this.setSession(token || '', { ...currentUser, ...resData.user });
+        }
+      }
+      return resData;
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Failed to save onboarding configuration.',
       };
     }
   },

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Mail, Lock, AlertCircle, Sparkles, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Mail, Lock, AlertCircle, Sparkles, Check, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuthInput } from './AuthInput';
 import { LoadingButton } from './LoadingButton';
@@ -15,7 +16,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   onSuccess,
   onNavigateToRegister,
 }) => {
-  const { login, socialLogin } = useAuth();
+  const { login, socialLogin, demoNewUserSession } = useAuth();
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,6 +54,20 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setEmail('alice@devflow.io');
     setPassword('password123');
     setErrors({});
+  };
+
+  // Act as new user and navigate directly to onboarding
+  const handleActAsNew = async () => {
+    setIsSubmitting(true);
+    localStorage.removeItem('devflow_onboarding_draft');
+    try {
+      await demoNewUserSession();
+    } catch (e) {
+      console.warn('Demo new user api failed, proceeding to onboarding anyway:', e);
+    } finally {
+      setIsSubmitting(false);
+      navigate('/onboarding');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -125,8 +141,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           Sign in to continue building great software.
         </p>
 
-        {/* Quick Demo Pill Helper */}
-        <div className="mt-2 flex items-center">
+        {/* Quick Demo & Act As New Buttons */}
+        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
           <button
             type="button"
             onClick={handleQuickDemo}
@@ -134,7 +150,19 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             title="Auto-fill with seeded development user"
           >
             <Sparkles size={11} className="text-[#A78BFA] group-hover:rotate-12 transition-transform" />
-            <span>Use demo account (alice@devflow.io)</span>
+            <span>Demo (alice@devflow.io)</span>
+          </button>
+
+          <button
+            type="button"
+            id="act-as-new-btn"
+            onClick={handleActAsNew}
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#A78BFA]/10 hover:bg-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:text-[#B7A1FF] text-[10.5px] font-mono transition-colors group cursor-pointer"
+            title="Experience the new user onboarding flow"
+          >
+            <UserPlus size={11} className="group-hover:scale-110 transition-transform" />
+            <span>Act as new (Onboard)</span>
+            <span className="text-[9px]">→</span>
           </button>
         </div>
       </motion.div>

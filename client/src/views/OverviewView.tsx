@@ -65,8 +65,114 @@ export const OverviewView: React.FC = () => {
 
   const isConnected = health?.database.status === 'connected';
 
+  const [showWelcome, setShowWelcome] = useState(() => {
+    return localStorage.getItem('devflow_show_welcome_checklist') === 'true';
+  });
+  const [completedItems, setCompletedItems] = useState<string[]>(['profile']);
+
+  const toggleChecklistItem = (id: string) => {
+    setCompletedItems((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const dismissWelcome = () => {
+    localStorage.removeItem('devflow_show_welcome_checklist');
+    setShowWelcome(false);
+  };
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
+      {/* Onboarding Welcome Checklist Banner */}
+      {showWelcome && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-[#17181D] to-[#121319] border border-[#A78BFA]/30 shadow-lg relative animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-[#A78BFA]/15 border border-[#A78BFA]/30 flex items-center justify-center text-[#A78BFA]">
+                <Sparkles size={16} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-white tracking-tight">
+                  Welcome to DevFlow! Your workspace is configured.
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Complete these quick steps to set up your team's development cycle.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={dismissWelcome}
+              className="text-zinc-500 hover:text-white p-1 rounded-md text-xs transition-colors"
+              title="Dismiss checklist"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-3 border-t border-white/[0.06]">
+            {/* Checklist Item 1 */}
+            <div
+              onClick={() => toggleChecklistItem('profile')}
+              className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] flex items-center gap-2 cursor-pointer hover:bg-white/[0.05] transition-colors"
+            >
+              <div className="w-4 h-4 rounded bg-[#4ADE80] text-zinc-950 flex items-center justify-center text-[10px] font-bold">
+                ✓
+              </div>
+              <span className="text-xs text-zinc-300 line-through">
+                Personalize workspace
+              </span>
+            </div>
+
+            {/* Checklist Item 2 */}
+            <div
+              onClick={() => {
+                toggleChecklistItem('project');
+                setIsCreateOpen(true);
+              }}
+              className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] flex items-center gap-2 cursor-pointer hover:bg-white/[0.05] transition-colors"
+            >
+              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold ${completedItems.includes('project') ? 'bg-[#4ADE80] text-zinc-950' : 'border border-zinc-600 text-transparent'}`}>
+                ✓
+              </div>
+              <span className="text-xs text-zinc-200">
+                Create first project
+              </span>
+            </div>
+
+            {/* Checklist Item 3 */}
+            <div
+              onClick={() => {
+                toggleChecklistItem('team');
+                navigate('/teams');
+              }}
+              className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] flex items-center gap-2 cursor-pointer hover:bg-white/[0.05] transition-colors"
+            >
+              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold ${completedItems.includes('team') ? 'bg-[#4ADE80] text-zinc-950' : 'border border-zinc-600 text-transparent'}`}>
+                ✓
+              </div>
+              <span className="text-xs text-zinc-200">
+                Invite a teammate
+              </span>
+            </div>
+
+            {/* Checklist Item 4 */}
+            <div
+              onClick={() => toggleChecklistItem('github')}
+              className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] flex items-center gap-2 cursor-pointer hover:bg-white/[0.05] transition-colors"
+            >
+              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold ${completedItems.includes('github') ? 'bg-[#4ADE80] text-zinc-950' : 'border border-zinc-600 text-transparent'}`}>
+                ✓
+              </div>
+              <span className="text-xs text-zinc-200">
+                Connect GitHub repo
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner / Hero */}
       <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-[var(--sidebar-border)]">
         <div>

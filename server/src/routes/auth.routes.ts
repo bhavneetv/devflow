@@ -185,3 +185,122 @@ authRouter.get('/me', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+const onboardingSchema = z.object({
+  displayName: z.string().min(1, 'Display name is required'),
+  username: z.string().optional(),
+  avatarType: z.enum(['preset', 'upload', 'initials', 'icon']).default('initials'),
+  avatarId: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
+  avatarColor: z.string().default('#7C3AED'),
+  accentColor: z.string().default('#8B5CF6'),
+  role: z.string().nullable().optional(),
+  workspaceType: z.string().nullable().optional(),
+  goals: z.array(z.string()).default([]),
+  teamSizePreference: z.string().nullable().optional(),
+  startingPreference: z.enum(['new_project', 'github_import', 'sample']).nullable().optional(),
+  projectName: z.string().nullable().optional(),
+  projectDescription: z.string().nullable().optional(),
+});
+
+// POST /api/auth/onboarding
+authRouter.post('/onboarding', async (req: Request, res: Response) => {
+  try {
+    const parsed = onboardingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: parsed.error.issues[0]?.message || 'Invalid onboarding data',
+      });
+    }
+
+    const data = parsed.data;
+
+    // Simulate backend provisioning step (1s)
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    // Get user from token header or find first user
+    const authHeader = req.headers.authorization;
+    let userId: number | undefined;
+    if (authHeader && authHeader.includes('_')) {
+      const parts = authHeader.split('_');
+      const idPart = parts.find((p) => /^\d+$/.test(p));
+      if (idPart) userId = parseInt(idPart, 10);
+    }
+
+    let user = userId
+      ? await prisma.user.findUnique({ where: { id: userId } })
+      : await prisma.user.findFirst({ orderBy: { id: 'asc' } });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: data.displayName,
+          email: `${data.displayName.toLowerCase().replace(/\s+/g, '.')}@devflow.io`,
+          role: 'ADMIN',
+          avatarUrl: data.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(data.displayName)}`,
+        },
+      });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          name: data.displayName,
+          avatarUrl: data.avatarUrl || user.avatarUrl,
+        },
+      });
+    }
+
+    // If user chose to create a new project with a name, create it!
+    if (data.startingPreference === 'new_project' && data.projectName?.trim()) {
+      await prisma.project.create({
+        data: {
+          title: data.projectName.trim(),
+          description: data.projectDescription?.trim() || 'Created during DevFlow onboarding',
+          status: 'IN_PROGRESS',
+          ownerId: user.id,
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      user,
+      onboarding: data,
+    });
+  } catch (error: any) {
+    console.error('Onboarding save error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/auth/demo-new-user (creates/logs in a test new user to experience onboarding)
+authRouter.post('/demo-new-user', async (_req: Request, res: Response) => {
+  try {
+    const email = 'new.developer@devflow.io';
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: 'Alex Rivers',
+          email,
+          role: 'MEMBER',
+          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+        },
+      });
+    }
+
+    const token = `devflow_session_${user.id}_${Date.now()}`;
+
+    res.json({
+      success: true,
+      token,
+      user,
+      isNewUser: true,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+

@@ -11,10 +11,12 @@ import { ProjectDetailView } from './views/ProjectDetailView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
 import { LoginPage } from './pages/LoginPage';
+import { OnboardingPage } from './pages/OnboardingPage';
+import { ToastProvider } from './context/ToastContext';
 
 // Protected Route Wrapper
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isOnboardingCompleted } = useAuth();
 
   if (isLoading) {
     return (
@@ -28,18 +30,24 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     return <Navigate to="/login" replace />;
   }
 
+  if (!isOnboardingCompleted) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   return <>{children}</>;
 };
 
 export const App: React.FC = () => {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <AuthProvider>
-          <Routes>
+      <ToastProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <Routes>
             {/* Standalone Authentication Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<LoginPage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
 
             {/* Authenticated Workspace Application */}
             <Route
@@ -93,6 +101,7 @@ export const App: React.FC = () => {
           </Routes>
         </AuthProvider>
       </BrowserRouter>
+      </ToastProvider>
     </ThemeProvider>
   );
 };

@@ -98,7 +98,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
 
           <div className="p-1 space-y-0.5">
             <NavLink
-              to="/profile"
+              to="/settings/account/profile"
               onClick={() => setIsOpen(false)}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-sidebar-hover text-zinc-200"
             >
@@ -107,12 +107,12 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
             </NavLink>
 
             <NavLink
-              to="/settings"
+              to="/settings/account/security"
               onClick={() => setIsOpen(false)}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-sidebar-hover text-zinc-200"
             >
               <Settings size={14} className="text-zinc-400" />
-              <span>Settings</span>
+              <span>Security & Access</span>
             </NavLink>
 
             <div className="my-1 border-t border-sidebar-border" />

@@ -13,8 +13,12 @@ import { useNavigation } from '../../context/NavigationContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Breadcrumbs } from './Breadcrumbs';
 import { NotificationMenu } from './NotificationMenu';
+import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 export const Header: React.FC = () => {
+  const location = useLocation();
+  const isSettingsRoute = location.pathname.startsWith('/settings');
   const {
     isCollapsed,
     toggleSidebar,
@@ -23,6 +27,7 @@ export const Header: React.FC = () => {
   } = useNavigation();
 
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
 
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
@@ -42,24 +47,28 @@ export const Header: React.FC = () => {
       {/* Left Section: Sidebar Toggle & Breadcrumbs */}
       <div className="flex items-center gap-3 min-w-0">
         {/* Mobile menu trigger */}
-        <button
-          onClick={() => setIsMobileOpen(true)}
-          className="md:hidden p-1.5 rounded-md text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text-active)] hover:bg-[var(--sidebar-hover)]"
-          title="Open menu"
-        >
-          <Menu size={18} />
-        </button>
+        {!isSettingsRoute && (
+          <button
+            onClick={() => setIsMobileOpen(true)}
+            className="md:hidden p-1.5 rounded-md text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text-active)] hover:bg-[var(--sidebar-hover)]"
+            title="Open menu"
+          >
+            <Menu size={18} />
+          </button>
+        )}
 
         {/* Desktop sidebar collapse / expand toggle */}
-        <button
-          onClick={toggleSidebar}
-          className="hidden md:flex p-1.5 rounded-md text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text-active)] hover:bg-[var(--sidebar-hover)] border border-transparent hover:border-[var(--sidebar-border)] transition-all duration-200"
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-        </button>
+        {!isSettingsRoute && (
+          <button
+            onClick={toggleSidebar}
+            className="hidden md:flex p-1.5 rounded-md text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text-active)] hover:bg-[var(--sidebar-hover)] border border-transparent hover:border-[var(--sidebar-border)] transition-all duration-200"
+            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+        )}
 
-        <div className="h-4 w-[1px] bg-[var(--header-border)] hidden sm:block" />
+        {!isSettingsRoute && <div className="h-4 w-[1px] bg-[var(--header-border)] hidden sm:block" />}
 
         {/* Breadcrumb Navigation */}
         <Breadcrumbs />
@@ -152,13 +161,17 @@ export const Header: React.FC = () => {
         </div>
 
         {/* User Avatar */}
-        <div className="w-7 h-7 rounded-full overflow-hidden border border-[var(--sidebar-border)] flex-shrink-0 cursor-pointer">
+        <Link
+          to="/settings/account/profile"
+          className="w-7 h-7 rounded-full overflow-hidden border border-[var(--sidebar-border)] hover:border-[#A78BFA] transition-colors flex-shrink-0 cursor-pointer"
+          title="Account Settings"
+        >
           <img
-            src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150"
+            src={user?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
             alt="User avatar"
             className="w-full h-full object-cover"
           />
-        </div>
+        </Link>
       </div>
     </header>
   );

@@ -37,16 +37,39 @@ enum Priority {
   URGENT
 }
 
+enum TeamMemberRole {
+  OWNER
+  ADMIN
+  DEVELOPER
+  FRONTEND_DEVELOPER
+  BACKEND_DEVELOPER
+  TESTER
+  DESIGNER
+  PROJECT_MANAGER
+  VIEWER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
 model User {
-  id            Int          @id @default(autoincrement())
-  email         String       @unique
-  name          String
-  role          Role         @default(MEMBER)
-  avatarUrl     String?
-  projects      Project[]    @relation("ProjectOwner")
-  assignedTasks Task[]       @relation("TaskAssignee")
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id              Int              @id @default(autoincrement())
+  email           String           @unique
+  name            String
+  role            Role             @default(MEMBER)
+  avatarUrl       String?
+  projects        Project[]        @relation("ProjectOwner")
+  assignedTasks   Task[]           @relation("TaskAssignee")
+  createdTeams    Team[]           @relation("TeamCreator")
+  teamMemberships TeamMember[]     @relation("TeamMemberships")
+  sentInvitations TeamInvitation[] @relation("SentInvitations")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@map("users")
 }
@@ -83,4 +106,54 @@ model Task {
   @@index([projectId])
   @@index([assigneeId])
   @@map("tasks")
+}
+
+model Team {
+  id          Int              @id @default(autoincrement())
+  name        String
+  description String?          @db.Text
+  color       String           @default("#8B5CF6")
+  createdById Int
+  createdBy   User             @relation("TeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  members     TeamMember[]
+  invitations TeamInvitation[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id       Int            @id @default(autoincrement())
+  teamId   Int
+  team     Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   Int
+  user     User           @relation("TeamMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  role     TeamMemberRole @default(DEVELOPER)
+  joinedAt DateTime       @default(now())
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model TeamInvitation {
+  id              Int              @id @default(autoincrement())
+  teamId          Int
+  team            Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedById     Int
+  invitedBy       User             @relation("SentInvitations", fields: [invitedById], references: [id], onDelete: Cascade)
+  invitedEmail    String
+  assignedRole    TeamMemberRole   @default(DEVELOPER)
+  invitationToken String           @unique
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  createdAt       DateTime         @default(now())
+  acceptedAt      DateTime?
+
+  @@index([teamId])
+  @@index([invitedEmail])
+  @@index([invitationToken])
+  @@map("team_invitations")
 }

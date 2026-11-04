@@ -21,7 +21,7 @@ interface OnboardingLayoutProps {
 
 export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
   currentStep,
-  totalSteps = 4,
+  totalSteps = 5,
   data,
   onNext,
   onBack,
@@ -33,7 +33,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
 }) => {
   const accent = data.accentColor || '#8B5CF6';
   const isFirstStep = currentStep === 1;
-  const isStep4 = currentStep === 4;
+  const isLastStep = currentStep === totalSteps;
 
   // Track viewport width responsively so mobile viewports (< 768px) never get collapsed to 50%
   const [isDesktop, setIsDesktop] = React.useState(() => {
@@ -249,9 +249,9 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
                   {isNextLoading ? (
                     <div className="flex items-center gap-1.5 font-mono text-[11px] text-[#0A0B10]">
                       <Loader2 size={13} className="animate-spin text-[#0A0B10]" />
-                      <span>{isStep4 ? 'Finalizing...' : 'Checking...'}</span>
+                      <span>{isLastStep ? 'Finalizing...' : 'Checking...'}</span>
                     </div>
-                  ) : isStep4 ? (
+                  ) : isLastStep ? (
                     <>
                       <span>Finish setup</span>
                       <Sparkles size={13} className="group-hover:rotate-12 transition-transform duration-200" />

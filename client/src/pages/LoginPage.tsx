@@ -9,8 +9,12 @@ export const LoginPage: React.FC = () => {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const navigate = useNavigate();
 
-  const handleAuthSuccess = () => {
-    navigate('/');
+  const handleAuthSuccess = (isNewUser?: boolean) => {
+    if (isNewUser) {
+      navigate('/onboarding');
+    } else {
+      navigate('/');
+    }
   };
 
   return (

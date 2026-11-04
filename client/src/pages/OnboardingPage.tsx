@@ -7,13 +7,18 @@ import { StepProfile } from '../components/onboarding/StepProfile';
 import { StepRole } from '../components/onboarding/StepRole';
 import { StepGoals } from '../components/onboarding/StepGoals';
 import { StepProjectSetup } from '../components/onboarding/StepProjectSetup';
+import { StepCreateTeam } from '../components/onboarding/StepCreateTeam';
 import { CinematicTextIntro } from '../components/onboarding/CinematicTextIntro';
 import { OnboardingData } from '../types/onboarding';
+import { saveAccentColor } from '../services/accentTheme.service';
+import { useToast } from '../context/ToastContext';
+import { accountSettingsService } from '../services/accountSettings.service';
 
 const STORAGE_KEY = 'devflow_onboarding_draft';
 
 export const OnboardingPage: React.FC = () => {
   const { user, setIsOnboardingCompleted, updateCurrentUser } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   // Cinematic typewriter blur text sequence states
@@ -24,12 +29,12 @@ export const OnboardingPage: React.FC = () => {
   // Initial onboarding state
   const defaultState: OnboardingData = {
     displayName: user?.name || 'Alex Rivers',
-    username: user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : 'alexrivers',
-    avatarType: 'initials',
-    avatarId: 'initials',
-    avatarUrl: null,
-    avatarColor: '#7C3AED',
-    accentColor: '#8B5CF6',
+    username: user?.username || (user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : 'alexrivers'),
+    avatarType: (user?.avatarType as any) || 'initials',
+    avatarId: user?.avatarId || 'initials',
+    avatarUrl: user?.avatarUrl || null,
+    avatarColor: user?.avatarColor || '#7C3AED',
+    accentColor: user?.accentColor || '#8B5CF6',
     role: null,
     workspaceType: 'startup',
     goals: ['tasks', 'github'],
@@ -37,6 +42,20 @@ export const OnboardingPage: React.FC = () => {
     startingPreference: 'new_project',
     projectName: 'Core Infrastructure v2',
     projectDescription: 'Next-generation software delivery orchestration & sprint tracking.',
+    teamName: 'Core Engineering',
+    teamMembers: [
+      {
+        id: 'current-user',
+        name: user?.name || 'Alex Rivers',
+        username: user?.username || (user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : 'alexrivers'),
+        role: 'Lead',
+        avatarType: (user?.avatarType as any) || 'initials',
+        avatarId: user?.avatarId || 'initials',
+        avatarColor: user?.avatarColor || '#7C3AED',
+        avatarUrl: user?.avatarUrl || null,
+        isCurrentUser: true,
+      },
+    ],
   };
 
   const [step, setStep] = useState<number>(() => {
@@ -44,7 +63,7 @@ export const OnboardingPage: React.FC = () => {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.step && parsed.step >= 1 && parsed.step <= 4) {
+        if (parsed.step && parsed.step >= 1 && parsed.step <= 5) {
           return parsed.step;
         }
       }
@@ -68,9 +87,9 @@ export const OnboardingPage: React.FC = () => {
   const [errors, setErrors] = useState<{ displayName?: string; username?: string }>({});
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
 
-  // Persist draft on step or data changes (1-4)
+  // Persist draft on step or data changes (1-5)
   useEffect(() => {
-    if (step <= 4) {
+    if (step <= 5) {
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({ step, data: formData })
@@ -94,8 +113,15 @@ export const OnboardingPage: React.FC = () => {
       setIsOnboardingCompleted(true);
       updateCurrentUser({
         name: formData.displayName,
+        username: formData.username,
+        avatarType: formData.avatarType,
+        avatarId: formData.avatarId,
         avatarUrl: formData.avatarUrl || user?.avatarUrl,
+        avatarColor: formData.avatarColor,
+        accentColor: formData.accentColor,
+        onboardingCompleted: true,
       });
+      saveAccentColor(formData.accentColor);
       localStorage.removeItem(STORAGE_KEY);
       localStorage.setItem('devflow_show_welcome_checklist', 'true');
       return { success: true };
@@ -109,7 +135,7 @@ export const OnboardingPage: React.FC = () => {
       if (!formData.displayName.trim()) {
         newErrors.displayName = 'Please enter your name to personalize your workspace';
       }
-      const rawUsername = formData.username?.trim().toLowerCase();
+      const rawUsername = formData.username?.trim().toLowerCase().replace(/^@+/, '');
       if (!rawUsername) {
         newErrors.username = 'Please choose a username to continue';
       } else if (rawUsername.length < 3) {
@@ -123,9 +149,8 @@ export const OnboardingPage: React.FC = () => {
         return;
       }
 
-      // Check username validity & uniqueness with an animated spinner
+      // Check username validity & uniqueness against backend database
       setIsCheckingUsername(true);
-      await new Promise((resolve) => setTimeout(resolve, 550));
 
       const reservedHandles = ['admin', 'root', 'devflow', 'system', 'api', 'support', 'owner', 'bot'];
       if (reservedHandles.includes(rawUsername)) {
@@ -134,17 +159,40 @@ export const OnboardingPage: React.FC = () => {
         return;
       }
 
-      setIsCheckingUsername(false);
+      try {
+        const checkResult = await accountSettingsService.checkUsernameAvailability(rawUsername);
+        setIsCheckingUsername(false);
+        if (!checkResult.available) {
+          setErrors({ username: checkResult.message || `@${rawUsername} is already taken. Please choose another.` });
+          return;
+        }
+      } catch {
+        setIsCheckingUsername(false);
+      }
+
       setStep(2);
     } else if (step === 2) {
       setStep(3);
     } else if (step === 3) {
       setStep(4);
     } else if (step === 4) {
-      // Step 4 is the final step ("Finish setup"): submit onboarding and play outro sequence
+      // Step 4 progresses to Step 5 (Create a Team)
+      setStep(5);
+    } else if (step === 5) {
+      // Step 5 is the final step ("Finish setup"): submit onboarding and play outro sequence
       setIsCheckingUsername(true);
-      await handleSubmitOnboarding();
+      const res = await handleSubmitOnboarding();
       setIsCheckingUsername(false);
+
+      if (!res.success) {
+        toast.error(res.error || 'Failed to complete onboarding');
+        if (res.error?.toLowerCase().includes('username') || res.error?.toLowerCase().includes('taken')) {
+          setErrors({ username: res.error });
+          setStep(1); // Return to step 1 so user can easily change the username
+        }
+        return;
+      }
+
       setIsExiting(true);
       setTimeout(() => {
         setShowOutro(true);
@@ -165,9 +213,21 @@ export const OnboardingPage: React.FC = () => {
     } else if (step === 3) {
       setStep(4);
     } else if (step === 4) {
+      setStep(5);
+    } else if (step === 5) {
       setIsCheckingUsername(true);
-      await handleSubmitOnboarding();
+      const res = await handleSubmitOnboarding();
       setIsCheckingUsername(false);
+
+      if (!res.success) {
+        toast.error(res.error || 'Failed to complete onboarding');
+        if (res.error?.toLowerCase().includes('username') || res.error?.toLowerCase().includes('taken')) {
+          setErrors({ username: res.error });
+          setStep(1);
+        }
+        return;
+      }
+
       setIsExiting(true);
       setTimeout(() => {
         setShowOutro(true);
@@ -193,17 +253,17 @@ export const OnboardingPage: React.FC = () => {
         />
       )}
 
-      {/* Main 4-step onboarding experience */}
+      {/* Main 5-step onboarding experience */}
       {!showIntro && !showOutro && (
         <OnboardingLayout
           currentStep={step}
-          totalSteps={4}
+          totalSteps={5}
           data={formData}
           onNext={handleNext}
           onBack={handleBack}
           onSkip={handleSkip}
           isNextLoading={isCheckingUsername}
-          canSkip={step >= 2 && step <= 4}
+          canSkip={step >= 2 && step <= 5}
           isExiting={isExiting}
         >
           {step === 1 && (
@@ -226,6 +286,10 @@ export const OnboardingPage: React.FC = () => {
 
           {step === 4 && (
             <StepProjectSetup data={formData} onChange={handleChange} />
+          )}
+
+          {step === 5 && (
+            <StepCreateTeam data={formData} onChange={handleChange} />
           )}
         </OnboardingLayout>
       )}

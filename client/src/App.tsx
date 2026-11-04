@@ -14,6 +14,10 @@ import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { ToastProvider } from './context/ToastContext';
+import { ProfileSettingsPage } from './pages/settings/account/ProfileSettingsPage';
+import { SecuritySettingsPage } from './pages/settings/account/SecuritySettingsPage';
+import { ConnectedAccountsPage } from './pages/settings/account/ConnectedAccountsPage';
+import { AccountManagementPage } from './pages/settings/account/AccountManagementPage';
 
 // Protected Route Wrapper
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -81,9 +85,15 @@ export const App: React.FC = () => {
                         {/* 6. Activity - Workspace-wide activity */}
                         <Route path="/activity" element={<OverviewView />} />
 
-                        {/* 7. Settings - Workspace configuration */}
-                        <Route path="/settings" element={<SettingsView />} />
-                        <Route path="/profile" element={<SettingsView />} />
+                        {/* 7. Settings - Account Settings & Workspace */}
+                        <Route path="/settings/account/profile" element={<ProfileSettingsPage />} />
+                        <Route path="/settings/account/security" element={<SecuritySettingsPage />} />
+                        <Route path="/settings/account/connections" element={<ConnectedAccountsPage />} />
+                        <Route path="/settings/account/management" element={<AccountManagementPage />} />
+                        <Route path="/settings/account" element={<Navigate to="/settings/account/profile" replace />} />
+                        <Route path="/settings" element={<Navigate to="/settings/account/profile" replace />} />
+                        <Route path="/profile" element={<Navigate to="/settings/account/profile" replace />} />
+                        <Route path="/settings/workspace" element={<SettingsView />} />
 
                         {/* 8. Help & Support - Documentation and support */}
                         <Route path="/help" element={<SettingsView />} />

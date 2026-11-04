@@ -15,6 +15,25 @@ const registerSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+// Helper to guarantee a collision-free username
+async function generateUniqueUsername(baseHandle: string): Promise<string> {
+  let clean = (baseHandle || '')
+    .toLowerCase()
+    .replace(/^@+/, '')
+    .replace(/[^a-z0-9_.-]/g, '_')
+    .slice(0, 24);
+
+  if (clean.length < 3) clean = `user_${Date.now().toString().slice(-4)}`;
+
+  let candidate = clean;
+  let counter = 1;
+  while (await prisma.user.findUnique({ where: { username: candidate } })) {
+    candidate = `${clean.slice(0, 20)}${counter}`;
+    counter++;
+  }
+  return candidate;
+}
+
 // POST /api/auth/login
 authRouter.post('/login', async (req: Request, res: Response) => {
   try {
@@ -30,7 +49,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     const { email, password } = parsed.data;
 
     // Artificial short delay to simulate secure credential verification
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Lookup user in MySQL
     let user = await prisma.user.findUnique({
@@ -43,26 +62,71 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      // If user is testing demo credentials like alice@devflow.io or any seeded user, or creating initial account
-      return res.status(401).json({
-        success: false,
-        error: 'No account found with this email address. Please register or use a demo account.',
+      // New user detected in signin flow! Auto-provision initial account with onboardingCompleted: false
+      const namePart = email.split('@')[0].replace(/[._-]/g, ' ');
+      const formattedName = namePart
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+      const rawHandle = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+      const uniqueUsername = await generateUniqueUsername(rawHandle);
+
+      const newUser = await prisma.user.create({
+        data: {
+          email: email.toLowerCase(),
+          name: formattedName || 'New Developer',
+          username: uniqueUsername,
+          role: 'MEMBER',
+          onboardingCompleted: false,
+          avatarType: 'initials',
+          avatarColor: '#8B5CF6',
+          accentColor: '#8B5CF6',
+          avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(formattedName || 'New Developer')}`,
+        },
+      });
+
+      const token = `devflow_session_${newUser.id}_${Date.now()}`;
+
+      return res.json({
+        success: true,
+        token,
+        isNewUser: true,
+        user: {
+          id: newUser.id,
+          name: newUser.name,
+          username: newUser.username,
+          email: newUser.email,
+          role: newUser.role,
+          avatarType: newUser.avatarType || 'initials',
+          avatarUrl: newUser.avatarUrl,
+          avatarId: newUser.avatarId,
+          avatarColor: newUser.avatarColor || '#8B5CF6',
+          accentColor: newUser.accentColor || '#8B5CF6',
+          onboardingCompleted: false,
+        },
       });
     }
 
-    // In a production app, verify bcrypt hash. For development/demo, generate token:
     const token = `devflow_session_${user.id}_${Date.now()}`;
+    const isNewUser = !user.onboardingCompleted;
 
     res.json({
       success: true,
       token,
+      isNewUser,
       user: {
         id: user.id,
         name: user.name,
+        username: user.username,
         email: user.email,
         role: user.role,
+        avatarType: user.avatarType || 'initials',
         avatarUrl: user.avatarUrl,
-        _count: user._count,
+        avatarId: user.avatarId,
+        avatarColor: user.avatarColor || '#8B5CF6',
+        accentColor: user.accentColor || '#8B5CF6',
+        onboardingCompleted: user.onboardingCompleted,
+        _count: (user as any)._count,
       },
     });
   } catch (error: any) {
@@ -98,11 +162,18 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       });
     }
 
+    const rawHandle = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+    const uniqueUsername = await generateUniqueUsername(rawHandle);
     const user = await prisma.user.create({
       data: {
         name,
         email: email.toLowerCase(),
+        username: uniqueUsername,
         role: 'MEMBER',
+        onboardingCompleted: false,
+        avatarType: 'initials',
+        avatarColor: '#8B5CF6',
+        accentColor: '#8B5CF6',
         avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
       },
     });
@@ -112,7 +183,20 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     res.status(201).json({
       success: true,
       token,
-      user,
+      isNewUser: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        avatarType: user.avatarType,
+        avatarUrl: user.avatarUrl,
+        avatarId: user.avatarId,
+        avatarColor: user.avatarColor,
+        accentColor: user.accentColor,
+        onboardingCompleted: false,
+      },
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -129,19 +213,26 @@ authRouter.post('/social', async (req: Request, res: Response) => {
     }
 
     // Simulate provider handshake
-    await new Promise((resolve) => setTimeout(resolve, 750));
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
-    // Return or link existing user (e.g. Alice Johnson) or provider profile
+    // Return or link existing user
     let user = await prisma.user.findFirst({
-      where: { email: 'alice@devflow.io' },
+      where: { email: `${provider}.developer@devflow.io` },
     });
+
+    const isNewUser = !user || !user.onboardingCompleted;
 
     if (!user) {
       user = await prisma.user.create({
         data: {
           name: provider === 'github' ? 'GitHub Developer' : 'Google Developer',
           email: `${provider}.developer@devflow.io`,
+          username: `${provider}_dev_${Date.now().toString().slice(-4)}`,
           role: 'ADMIN',
+          onboardingCompleted: false,
+          avatarType: 'initials',
+          avatarColor: '#8B5CF6',
+          accentColor: '#8B5CF6',
           avatarUrl:
             provider === 'github'
               ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
@@ -156,7 +247,20 @@ authRouter.post('/social', async (req: Request, res: Response) => {
       success: true,
       provider,
       token,
-      user,
+      isNewUser,
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        avatarType: user.avatarType || 'initials',
+        avatarUrl: user.avatarUrl,
+        avatarId: user.avatarId,
+        avatarColor: user.avatarColor || '#8B5CF6',
+        accentColor: user.accentColor || '#8B5CF6',
+        onboardingCompleted: user.onboardingCompleted,
+      },
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -171,16 +275,37 @@ authRouter.get('/me', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
-    // Default to first user if token exists
-    const user = await prisma.user.findFirst({
-      orderBy: { id: 'asc' },
-    });
+    let userId: number | undefined;
+    if (authHeader.includes('_')) {
+      const parts = authHeader.split('_');
+      const idPart = parts.find((p) => /^\d+$/.test(p));
+      if (idPart) userId = parseInt(idPart, 10);
+    }
+
+    const user = userId
+      ? await prisma.user.findUnique({ where: { id: userId } })
+      : await prisma.user.findFirst({ orderBy: { id: 'asc' } });
 
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    res.json({ success: true, user });
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        avatarType: user.avatarType || 'initials',
+        avatarUrl: user.avatarUrl,
+        avatarId: user.avatarId,
+        avatarColor: user.avatarColor || '#8B5CF6',
+        accentColor: user.accentColor || '#8B5CF6',
+        onboardingCompleted: user.onboardingCompleted,
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -216,8 +341,8 @@ authRouter.post('/onboarding', async (req: Request, res: Response) => {
 
     const data = parsed.data;
 
-    // Simulate backend provisioning step (1s)
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    // Simulate backend provisioning step (500ms)
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Get user from token header or find first user
     const authHeader = req.headers.authorization;
@@ -232,13 +357,54 @@ authRouter.post('/onboarding', async (req: Request, res: Response) => {
       ? await prisma.user.findUnique({ where: { id: userId } })
       : await prisma.user.findFirst({ orderBy: { id: 'asc' } });
 
+    const targetUsername = data.username
+      ? data.username.toLowerCase().replace(/^@+/, '').trim()
+      : undefined;
+
+    if (targetUsername) {
+      if (targetUsername.length < 3) {
+        return res.status(400).json({
+          success: false,
+          error: 'Username must be at least 3 characters',
+        });
+      }
+      if (!/^[a-zA-Z0-9_.-]+$/.test(targetUsername)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Letters, numbers, underscores, dots, and hyphens only',
+        });
+      }
+
+      const existingUserWithUsername = await prisma.user.findFirst({
+        where: {
+          username: {
+            equals: targetUsername,
+          },
+        },
+      });
+
+      if (existingUserWithUsername && (!user || existingUserWithUsername.id !== user.id)) {
+        return res.status(409).json({
+          success: false,
+          error: `@${targetUsername} is already taken by another developer. Please choose a different username.`,
+        });
+      }
+    }
+
     if (!user) {
+      const finalUsername = targetUsername || (await generateUniqueUsername(data.displayName));
       user = await prisma.user.create({
         data: {
           name: data.displayName,
+          username: finalUsername,
           email: `${data.displayName.toLowerCase().replace(/\s+/g, '.')}@devflow.io`,
           role: 'ADMIN',
-          avatarUrl: data.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(data.displayName)}`,
+          avatarType: data.avatarType,
+          avatarId: data.avatarId,
+          avatarUrl: data.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.displayName)}`,
+          avatarColor: data.avatarColor,
+          accentColor: data.accentColor,
+          onboardingCompleted: true,
         },
       });
     } else {
@@ -246,7 +412,13 @@ authRouter.post('/onboarding', async (req: Request, res: Response) => {
         where: { id: user.id },
         data: {
           name: data.displayName,
+          username: targetUsername || user.username,
+          avatarType: data.avatarType,
+          avatarId: data.avatarId,
           avatarUrl: data.avatarUrl || user.avatarUrl,
+          avatarColor: data.avatarColor,
+          accentColor: data.accentColor,
+          onboardingCompleted: true,
         },
       });
     }
@@ -265,12 +437,30 @@ authRouter.post('/onboarding', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      user,
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        avatarType: user.avatarType,
+        avatarUrl: user.avatarUrl,
+        avatarId: user.avatarId,
+        avatarColor: user.avatarColor,
+        accentColor: user.accentColor,
+        onboardingCompleted: true,
+      },
       onboarding: data,
     });
   } catch (error: any) {
     console.error('Onboarding save error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    if (error?.code === 'P2002') {
+      return res.status(409).json({
+        success: false,
+        error: 'This username is already taken. Please choose another username.',
+      });
+    }
+    res.status(500).json({ success: false, error: error?.message || 'Onboarding failed' });
   }
 });
 

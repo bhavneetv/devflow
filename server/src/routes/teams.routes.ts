@@ -418,7 +418,8 @@ teamsRouter.delete('/:id/invitations/:invId', async (req: Request, res: Response
 // GET /api/teams/invitations/:token — validate token (public)
 teamsRouter.get('/invitations/:token', async (req: Request, res: Response) => {
   try {
-    const { token } = req.params;
+    const rawToken = req.params.token;
+    const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
     const invitation = await prisma.teamInvitation.findUnique({
       where: { invitationToken: token },
       include: {
@@ -460,7 +461,8 @@ teamsRouter.post('/invitations/:token/accept', async (req: Request, res: Respons
   if (!userId) return res.status(401).json({ success: false, error: 'You must be logged in to accept an invitation' });
 
   try {
-    const { token } = req.params;
+    const rawToken = req.params.token;
+    const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
     const invitation = await prisma.teamInvitation.findUnique({
       where: { invitationToken: token },
       include: { team: true },
@@ -517,7 +519,8 @@ teamsRouter.post('/invitations/:token/decline', async (req: Request, res: Respon
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
   try {
-    const { token } = req.params;
+    const rawToken = req.params.token;
+    const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
     const invitation = await prisma.teamInvitation.findUnique({ where: { invitationToken: token } });
 
     if (!invitation || invitation.status !== 'PENDING') {

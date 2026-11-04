@@ -10,13 +10,18 @@ import {
   Command,
   X,
   Layers,
+  UserRound,
+  ShieldCheck,
+  GitBranch,
+  Settings2,
+  Sparkles,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useNavigation } from '../../context/NavigationContext';
 
 interface SearchItem {
   id: string;
-  category: 'Pages' | 'Projects' | 'Issues' | 'Teams' | 'Actions';
+  category: 'Pages' | 'Projects' | 'Issues' | 'Teams' | 'Actions' | 'Settings';
   title: string;
   description?: string;
   icon: any;
@@ -29,6 +34,8 @@ export const GlobalSearch: React.FC = () => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const isSettingsRoute = location.pathname.startsWith('/settings');
 
   useEffect(() => {
     if (isSearchOpen) {
@@ -39,6 +46,62 @@ export const GlobalSearch: React.FC = () => {
   }, [isSearchOpen]);
 
   const items: SearchItem[] = [
+    // Settings Quick Search Items
+    {
+      id: 'settings-profile',
+      category: 'Settings',
+      title: 'Profile Settings',
+      description: 'Display name, username, bio, avatar, accent color',
+      icon: UserRound,
+      action: () => {
+        navigate('/settings/account/profile');
+        setIsSearchOpen(false);
+      },
+    },
+    {
+      id: 'settings-accent',
+      category: 'Settings',
+      title: 'Accent Color',
+      description: 'Change interface highlight & workspace theme',
+      icon: Sparkles,
+      action: () => {
+        navigate('/settings/account/profile');
+        setIsSearchOpen(false);
+      },
+    },
+    {
+      id: 'settings-security',
+      category: 'Settings',
+      title: 'Security & Access',
+      description: 'Password, two-factor authentication, active sessions',
+      icon: ShieldCheck,
+      action: () => {
+        navigate('/settings/account/security');
+        setIsSearchOpen(false);
+      },
+    },
+    {
+      id: 'settings-connections',
+      category: 'Settings',
+      title: 'Connected Accounts',
+      description: 'Link GitHub, Google, and Git providers',
+      icon: GitBranch,
+      action: () => {
+        navigate('/settings/account/connections');
+        setIsSearchOpen(false);
+      },
+    },
+    {
+      id: 'settings-management',
+      category: 'Settings',
+      title: 'Account Management',
+      description: 'Data export, deactivate account, delete account',
+      icon: Settings2,
+      action: () => {
+        navigate('/settings/account/management');
+        setIsSearchOpen(false);
+      },
+    },
     // Actions
     {
       id: 'act-new-issue',
@@ -158,12 +221,20 @@ export const GlobalSearch: React.FC = () => {
     },
   ];
 
-  const filteredItems = items.filter(
-    (item) =>
-      item.title.toLowerCase().includes(query.toLowerCase()) ||
-      (item.description && item.description.toLowerCase().includes(query.toLowerCase())) ||
-      item.category.toLowerCase().includes(query.toLowerCase())
-  );
+  const filteredItems = items
+    .filter(
+      (item) =>
+        item.title.toLowerCase().includes(query.toLowerCase()) ||
+        (item.description && item.description.toLowerCase().includes(query.toLowerCase())) ||
+        item.category.toLowerCase().includes(query.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (isSettingsRoute) {
+        if (a.category === 'Settings' && b.category !== 'Settings') return -1;
+        if (b.category === 'Settings' && a.category !== 'Settings') return 1;
+      }
+      return 0;
+    });
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -197,7 +268,11 @@ export const GlobalSearch: React.FC = () => {
             ref={inputRef}
             type="text"
             className="flex-1 bg-transparent border-0 outline-none text-white text-[14px] placeholder-zinc-500 font-normal"
-            placeholder="Search or jump to... (issues, projects, teams)"
+            placeholder={
+              isSettingsRoute
+                ? 'Search in settings...'
+                : 'Search or jump to... (issues, projects, teams)'
+            }
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

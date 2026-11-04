@@ -1,12 +1,19 @@
 import { OnboardingData } from '../types/onboarding';
 import { apiUrl } from '../config/api';
+import { saveAccentColor } from './accentTheme.service';
 
 export interface AuthUser {
   id: number;
   name: string;
+  username?: string | null;
   email: string;
   role: string;
   avatarUrl?: string | null;
+  avatarType?: 'initials' | 'icon' | 'upload' | string | null;
+  avatarId?: string | null;
+  avatarColor?: string | null;
+  accentColor?: string | null;
+  onboardingCompleted?: boolean;
 }
 
 export interface AuthResponse {
@@ -68,8 +75,11 @@ export const authService = {
       const data = await res.json();
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
-        // By default existing seed users like alice@devflow.io are already onboarded
-        this.setOnboardingCompleted(true);
+        const isCompleted = data.user.onboardingCompleted ?? !data.isNewUser;
+        this.setOnboardingCompleted(isCompleted);
+        if (data.user.accentColor) {
+          saveAccentColor(data.user.accentColor);
+        }
       }
       return data;
     } catch (err: any) {
@@ -112,7 +122,11 @@ export const authService = {
       const data = await res.json();
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
-        this.setOnboardingCompleted(true);
+        const isCompleted = data.user.onboardingCompleted ?? !data.isNewUser;
+        this.setOnboardingCompleted(isCompleted);
+        if (data.user.accentColor) {
+          saveAccentColor(data.user.accentColor);
+        }
       }
       return data;
     } catch (err: any) {
@@ -158,9 +172,51 @@ export const authService = {
       if (resData.success && resData.user) {
         this.setOnboardingCompleted(true);
         const currentUser = this.getUser();
-        if (currentUser) {
-          this.setSession(token || '', { ...currentUser, ...resData.user });
+        const updatedUser: AuthUser = {
+          ...(currentUser || {}),
+          ...resData.user,
+          name: data.displayName,
+          username: data.username,
+          avatarType: data.avatarType,
+          avatarId: data.avatarId,
+          avatarUrl: data.avatarUrl || resData.user.avatarUrl,
+          avatarColor: data.avatarColor,
+          accentColor: data.accentColor,
+          onboardingCompleted: true,
+        };
+        this.setSession(token || 'devflow_session', updatedUser);
+
+        if (data.accentColor) {
+          saveAccentColor(data.accentColor);
         }
+
+        // Synchronize account settings cache immediately so settings page has matching user
+        try {
+          const profileCache = {
+            displayName: data.displayName,
+            username: data.username || `user_${resData.user.id}`,
+            email: updatedUser.email,
+            isEmailVerified: true,
+            avatarUrl: updatedUser.avatarUrl || '',
+            avatarType: data.avatarType,
+            avatarId: data.avatarId,
+            avatarColor: data.avatarColor,
+            accentColor: data.accentColor,
+            bio: 'Full-stack software engineer & developer.',
+            jobTitle: data.role ? `${data.role.charAt(0).toUpperCase() + data.role.slice(1)} Engineer` : 'Software Engineer',
+            company: data.projectName || 'DevFlow',
+            location: 'Remote',
+            dateOfBirth: '1996-06-15',
+            gender: 'Female',
+            country: 'US',
+            phoneNumber: '+1 (555) 234-5678',
+            isPublicProfile: true,
+            websiteUrl: '',
+            githubUrl: '',
+            linkedinUrl: '',
+          };
+          localStorage.setItem('devflow_user_profile_settings', JSON.stringify(profileCache));
+        } catch {}
       }
       return resData;
     } catch (err: any) {

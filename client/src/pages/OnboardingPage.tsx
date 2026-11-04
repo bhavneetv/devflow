@@ -9,11 +9,15 @@ import { StepGoals } from '../components/onboarding/StepGoals';
 import { StepProjectSetup } from '../components/onboarding/StepProjectSetup';
 import { CinematicTextIntro } from '../components/onboarding/CinematicTextIntro';
 import { OnboardingData } from '../types/onboarding';
+import { saveAccentColor } from '../services/accentTheme.service';
+import { useToast } from '../context/ToastContext';
+import { accountSettingsService } from '../services/accountSettings.service';
 
 const STORAGE_KEY = 'devflow_onboarding_draft';
 
 export const OnboardingPage: React.FC = () => {
   const { user, setIsOnboardingCompleted, updateCurrentUser } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   // Cinematic typewriter blur text sequence states
@@ -24,12 +28,12 @@ export const OnboardingPage: React.FC = () => {
   // Initial onboarding state
   const defaultState: OnboardingData = {
     displayName: user?.name || 'Alex Rivers',
-    username: user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : 'alexrivers',
-    avatarType: 'initials',
-    avatarId: 'initials',
-    avatarUrl: null,
-    avatarColor: '#7C3AED',
-    accentColor: '#8B5CF6',
+    username: user?.username || (user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : 'alexrivers'),
+    avatarType: (user?.avatarType as any) || 'initials',
+    avatarId: user?.avatarId || 'initials',
+    avatarUrl: user?.avatarUrl || null,
+    avatarColor: user?.avatarColor || '#7C3AED',
+    accentColor: user?.accentColor || '#8B5CF6',
     role: null,
     workspaceType: 'startup',
     goals: ['tasks', 'github'],
@@ -94,8 +98,15 @@ export const OnboardingPage: React.FC = () => {
       setIsOnboardingCompleted(true);
       updateCurrentUser({
         name: formData.displayName,
+        username: formData.username,
+        avatarType: formData.avatarType,
+        avatarId: formData.avatarId,
         avatarUrl: formData.avatarUrl || user?.avatarUrl,
+        avatarColor: formData.avatarColor,
+        accentColor: formData.accentColor,
+        onboardingCompleted: true,
       });
+      saveAccentColor(formData.accentColor);
       localStorage.removeItem(STORAGE_KEY);
       localStorage.setItem('devflow_show_welcome_checklist', 'true');
       return { success: true };
@@ -109,7 +120,7 @@ export const OnboardingPage: React.FC = () => {
       if (!formData.displayName.trim()) {
         newErrors.displayName = 'Please enter your name to personalize your workspace';
       }
-      const rawUsername = formData.username?.trim().toLowerCase();
+      const rawUsername = formData.username?.trim().toLowerCase().replace(/^@+/, '');
       if (!rawUsername) {
         newErrors.username = 'Please choose a username to continue';
       } else if (rawUsername.length < 3) {
@@ -123,9 +134,8 @@ export const OnboardingPage: React.FC = () => {
         return;
       }
 
-      // Check username validity & uniqueness with an animated spinner
+      // Check username validity & uniqueness against backend database
       setIsCheckingUsername(true);
-      await new Promise((resolve) => setTimeout(resolve, 550));
 
       const reservedHandles = ['admin', 'root', 'devflow', 'system', 'api', 'support', 'owner', 'bot'];
       if (reservedHandles.includes(rawUsername)) {
@@ -134,7 +144,17 @@ export const OnboardingPage: React.FC = () => {
         return;
       }
 
-      setIsCheckingUsername(false);
+      try {
+        const checkResult = await accountSettingsService.checkUsernameAvailability(rawUsername);
+        setIsCheckingUsername(false);
+        if (!checkResult.available) {
+          setErrors({ username: checkResult.message || `@${rawUsername} is already taken. Please choose another.` });
+          return;
+        }
+      } catch {
+        setIsCheckingUsername(false);
+      }
+
       setStep(2);
     } else if (step === 2) {
       setStep(3);
@@ -143,8 +163,18 @@ export const OnboardingPage: React.FC = () => {
     } else if (step === 4) {
       // Step 4 is the final step ("Finish setup"): submit onboarding and play outro sequence
       setIsCheckingUsername(true);
-      await handleSubmitOnboarding();
+      const res = await handleSubmitOnboarding();
       setIsCheckingUsername(false);
+
+      if (!res.success) {
+        toast.error(res.error || 'Failed to complete onboarding');
+        if (res.error?.toLowerCase().includes('username') || res.error?.toLowerCase().includes('taken')) {
+          setErrors({ username: res.error });
+          setStep(1); // Return to step 1 so user can easily change the username
+        }
+        return;
+      }
+
       setIsExiting(true);
       setTimeout(() => {
         setShowOutro(true);
@@ -166,8 +196,18 @@ export const OnboardingPage: React.FC = () => {
       setStep(4);
     } else if (step === 4) {
       setIsCheckingUsername(true);
-      await handleSubmitOnboarding();
+      const res = await handleSubmitOnboarding();
       setIsCheckingUsername(false);
+
+      if (!res.success) {
+        toast.error(res.error || 'Failed to complete onboarding');
+        if (res.error?.toLowerCase().includes('username') || res.error?.toLowerCase().includes('taken')) {
+          setErrors({ username: res.error });
+          setStep(1);
+        }
+        return;
+      }
+
       setIsExiting(true);
       setTimeout(() => {
         setShowOutro(true);

@@ -11,6 +11,7 @@ import {
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { UserAvatar } from '../common/UserAvatar';
 
 interface UserMenuProps {
   isCollapsed?: boolean;
@@ -34,10 +35,14 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
   }, []);
 
   const currentUser = {
-    name: authUser?.name || 'Alice Johnson',
-    email: authUser?.email || 'alice@devflow.io',
-    avatarUrl: authUser?.avatarUrl || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-    role: authUser?.role || 'Admin',
+    name: authUser?.name || 'Developer',
+    email: authUser?.email || 'developer@devflow.io',
+    username: authUser?.username,
+    avatarUrl: authUser?.avatarUrl || null,
+    avatarType: authUser?.avatarType || 'initials',
+    avatarId: authUser?.avatarId || null,
+    avatarColor: authUser?.avatarColor || '#8B5CF6',
+    role: authUser?.role || 'Member',
   };
 
   const handleLogout = () => {
@@ -57,18 +62,14 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
         title={`${currentUser.name} (${currentUser.email})`}
       >
         <div className="flex items-center gap-2.5 truncate">
-          <img
-            src={currentUser.avatarUrl}
-            alt={currentUser.name}
-            className="w-7 h-7 rounded-full object-cover border border-sidebar-border flex-shrink-0"
-          />
+          <UserAvatar user={currentUser} size="sm" />
           {!isCollapsed && (
             <div className="text-left truncate">
               <div className="text-[13px] font-medium text-sidebar-text-active truncate leading-tight">
                 {currentUser.name}
               </div>
               <div className="text-[11px] text-sidebar-text-muted truncate leading-none mt-0.5">
-                {currentUser.email}
+                {currentUser.username ? `@${currentUser.username}` : currentUser.email}
               </div>
             </div>
           )}
@@ -98,7 +99,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
 
           <div className="p-1 space-y-0.5">
             <NavLink
-              to="/profile"
+              to="/settings/account/profile"
               onClick={() => setIsOpen(false)}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-sidebar-hover text-zinc-200"
             >
@@ -107,12 +108,12 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isCollapsed }) => {
             </NavLink>
 
             <NavLink
-              to="/settings"
+              to="/settings/account/security"
               onClick={() => setIsOpen(false)}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded hover:bg-sidebar-hover text-zinc-200"
             >
               <Settings size={14} className="text-zinc-400" />
-              <span>Settings</span>
+              <span>Security & Access</span>
             </NavLink>
 
             <div className="my-1 border-t border-sidebar-border" />

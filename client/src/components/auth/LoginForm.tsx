@@ -8,7 +8,7 @@ import { SocialLoginButtons } from './SocialLoginButtons';
 import { useAuth } from '../../context/AuthContext';
 
 interface LoginFormProps {
-  onSuccess?: () => void;
+  onSuccess?: (isNewUser?: boolean) => void;
   onNavigateToRegister?: () => void;
 }
 
@@ -83,7 +83,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       if (result.success) {
         setIsSuccess(true);
         setTimeout(() => {
-          onSuccess?.();
+          if (result.isNewUser) {
+            navigate('/onboarding');
+          } else if (onSuccess) {
+            onSuccess(false);
+          } else {
+            navigate('/');
+          }
         }, 850);
       } else {
         setErrors({ general: result.error || 'Invalid email or password' });
@@ -103,7 +109,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       if (result.success) {
         setIsSuccess(true);
         setTimeout(() => {
-          onSuccess?.();
+          if (result.isNewUser) {
+            navigate('/onboarding');
+          } else if (onSuccess) {
+            onSuccess(false);
+          } else {
+            navigate('/');
+          }
         }, 850);
       } else {
         setErrors({ general: result.error || `Could not sign in with ${provider}` });

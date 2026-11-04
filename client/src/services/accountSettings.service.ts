@@ -1,4 +1,5 @@
 import { authService, AuthUser } from './auth.service';
+import { apiUrl } from '../config/api';
 
 export interface UserProfileData {
   displayName: string;
@@ -9,8 +10,10 @@ export interface UserProfileData {
   avatarType?: 'initials' | 'icon' | 'upload';
   avatarId?: string | null;
   avatarColor?: string;
+  accentColor?: string;
   bio: string;
   jobTitle: string;
+  company?: string;
   location: string;
   dateOfBirth?: string;
   gender?: string;
@@ -87,41 +90,79 @@ export const accountSettingsService = {
     }
 
     const defaultProfile: UserProfileData = {
-      displayName: authUser?.name || 'Emily Johnson',
-      username: (authUser?.email?.split('@')[0] || 'emily_johnson').toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-      email: authUser?.email || 'johnson@example.com',
+      displayName: authUser?.name || 'Alice Johnson',
+      username: (authUser?.email?.split('@')[0] || 'alice_dev').toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+      email: authUser?.email || 'alice@devflow.io',
       isEmailVerified: true,
       avatarUrl: authUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
-      avatarType: 'upload',
-      avatarId: 'emily',
-      avatarColor: '#7C3AED',
+      avatarType: 'initials',
+      avatarId: null,
+      avatarColor: '#8B5CF6',
+      accentColor: authUser?.accentColor || '#8B5CF6',
       bio: 'Full-stack software engineer & open source contributor. Building developer tools and modern web systems.',
       jobTitle: 'Senior Staff Engineer',
+      company: 'DevFlow Technologies',
       location: 'California, United States',
-      dateOfBirth: '1987-01-01',
+      dateOfBirth: '1995-05-15',
       gender: 'Female',
       country: 'US',
-      phoneNumber: '(213) 555-1234',
+      phoneNumber: '+1 (555) 234-5678',
       isPublicProfile: true,
-      websiteUrl: 'https://emilyjohnson.dev',
-      githubUrl: 'https://github.com/emilyjohnson',
-      linkedinUrl: 'https://linkedin.com/in/emilyjohnson',
+      websiteUrl: 'https://alicejohnson.dev',
+      githubUrl: 'https://github.com/alicejohnson',
+      linkedinUrl: 'https://linkedin.com/in/alicejohnson',
     };
 
     localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(defaultProfile));
     return defaultProfile;
   },
 
-  async updateProfile(data: Partial<UserProfileData>): Promise<UserProfileData> {
-    // Artificial small delay for realistic UX
-    await new Promise((r) => setTimeout(r, 400));
+  async fetchProfile(): Promise<UserProfileData> {
+    try {
+      const token = authService.getToken();
+      const res = await fetch(apiUrl('/users/profile'), {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
 
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          const profileData: UserProfileData = {
+            ...this.getProfile(),
+            ...json.data,
+          };
+          localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profileData));
+
+          // Also keep auth user synced
+          const authUser = authService.getUser();
+          if (authUser) {
+            authService.setSession(token || 'devflow_session', {
+              ...authUser,
+              name: profileData.displayName,
+              avatarUrl: profileData.avatarUrl,
+            });
+          }
+
+          return profileData;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend profile fetch failed, using local profile', err);
+    }
+    return this.getProfile();
+  },
+
+  async updateProfile(data: Partial<UserProfileData>): Promise<UserProfileData> {
     const current = this.getProfile();
     const updated: UserProfileData = {
       ...current,
       ...data,
     };
 
+    // Save locally immediately for optimistic UI
     localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updated));
 
     // Also sync with Auth user session if display name or avatar changed
@@ -136,7 +177,94 @@ export const accountSettingsService = {
       authService.setSession(token, updatedAuthUser);
     }
 
+    // Persist to MySQL via PUT /api/users/profile
+    try {
+      const token = authService.getToken();
+      const res = await fetch(apiUrl('/users/profile'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          displayName: updated.displayName,
+          username: updated.username,
+          avatarType: updated.avatarType,
+          avatarUrl: updated.avatarUrl,
+          avatarId: updated.avatarId,
+          avatarColor: updated.avatarColor,
+          accentColor: updated.accentColor,
+          dateOfBirth: updated.dateOfBirth,
+          gender: updated.gender,
+          country: updated.country,
+          phoneNumber: updated.phoneNumber,
+          jobTitle: updated.jobTitle,
+          company: updated.company || '',
+          bio: updated.bio,
+          isPublicProfile: updated.isPublicProfile,
+          githubUrl: updated.githubUrl,
+          linkedinUrl: updated.linkedinUrl,
+          websiteUrl: updated.websiteUrl,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg =
+          errJson.error && errJson.error !== 'Invalid'
+            ? errJson.error
+            : 'Validation failed. Please check your profile details.';
+        throw new Error(msg);
+      }
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        const serverData: UserProfileData = {
+          ...updated,
+          ...json.data,
+        };
+        localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(serverData));
+        return serverData;
+      }
+    } catch (err: any) {
+      console.error('Failed to sync profile to backend:', err);
+      throw err;
+    }
+
     return updated;
+  },
+
+  async checkUsernameAvailability(username: string): Promise<{ available: boolean; message: string }> {
+    try {
+      const token = authService.getToken();
+      const clean = encodeURIComponent(username.trim());
+      const res = await fetch(apiUrl(`/users/check-username?username=${clean}`), {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          return {
+            available: json.available,
+            message: json.message,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Backend username check failed, using fallback check', err);
+    }
+
+    // Fallback format check
+    if (username.length < 3) {
+      return { available: false, message: 'Must be at least 3 characters' };
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return { available: false, message: 'Letters, numbers, and underscores only' };
+    }
+    return { available: true, message: `@${username} is available` };
   },
 
   // ── Security & Access ───────────────────────────────────────────────────

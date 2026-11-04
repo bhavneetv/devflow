@@ -15,6 +15,7 @@ import { Breadcrumbs } from './Breadcrumbs';
 import { NotificationMenu } from './NotificationMenu';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { UserAvatar } from '../common/UserAvatar';
 
 export const Header: React.FC = () => {
   const location = useLocation();
@@ -77,12 +78,12 @@ export const Header: React.FC = () => {
           type="button"
           onClick={() => setIsSearchOpen(true)}
           className="flex items-center justify-between h-[34px] w-48 sm:w-64 px-3 bg-[var(--input-bg)] hover:bg-[var(--sidebar-hover)] border border-[var(--header-border)] hover:border-zinc-500 rounded-lg text-xs text-[var(--sidebar-text-muted)] transition-all duration-150 group cursor-pointer shadow-sm"
-          title="Search or jump to (Ctrl + K)"
+          title={isSettingsRoute ? 'Search in settings (Ctrl + K)' : 'Search or jump to (Ctrl + K)'}
         >
           <div className="flex items-center gap-2 truncate">
             <Search size={14} className="text-[var(--sidebar-icon)] group-hover:text-[var(--sidebar-text-active)] transition-colors" />
             <span className="truncate group-hover:text-[var(--sidebar-text-active)]">
-              Search...
+              {isSettingsRoute ? 'Search in settings...' : 'Search...'}
             </span>
           </div>
 
@@ -159,14 +160,10 @@ export const Header: React.FC = () => {
         {/* User Avatar */}
         <Link
           to="/settings/account/profile"
-          className="w-7 h-7 rounded-full overflow-hidden border border-[var(--sidebar-border)] hover:border-[#A78BFA] transition-colors flex-shrink-0 cursor-pointer"
-          title="Account Settings"
+          className="rounded-full overflow-hidden border border-[var(--sidebar-border)] hover:border-[var(--settings-accent)] transition-all flex-shrink-0 cursor-pointer hover:scale-105"
+          title={`${user?.name || 'Account'} (Settings)`}
         >
-          <img
-            src={user?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
-            alt="User avatar"
-            className="w-full h-full object-cover"
-          />
+          <UserAvatar user={user} size="sm" />
         </Link>
       </div>
     </header>

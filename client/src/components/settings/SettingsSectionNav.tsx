@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAccentTheme } from '../../services/accentTheme.service';
+import { cn } from '../../lib/utils';
 
 export interface SettingsCategory {
   id: string;
@@ -100,7 +101,10 @@ export const SettingsSectionNav: React.FC<SettingsSectionNavProps> = ({
   return (
     <div
       ref={navRef}
-      className={`sticky top-0 z-20 bg-[#0D0F14] border-b border-[#27272A] px-6 sm:px-8 py-0 transition-colors shadow-sm ${className}`}
+      className={cn(
+        'sticky top-0 z-20 bg-[#0D0F14]/95 backdrop-blur-md border-b border-[#27272A] px-6 sm:px-8 py-0 shadow-sm transition-colors',
+        className
+      )}
     >
       <div
         role="tablist"

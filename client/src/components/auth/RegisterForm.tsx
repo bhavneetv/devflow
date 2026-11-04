@@ -3,10 +3,11 @@ import { Mail, Lock, User, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuthInput } from './AuthInput';
 import { LoadingButton } from './LoadingButton';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 interface RegisterFormProps {
-  onSuccess?: () => void;
+  onSuccess?: (isNewUser?: boolean) => void;
   onNavigateToLogin?: () => void;
 }
 
@@ -15,6 +16,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   onNavigateToLogin,
 }) => {
   const { register } = useAuth();
+  const navigate = useNavigate();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -61,7 +63,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       if (result.success) {
         setIsSuccess(true);
         setTimeout(() => {
-          onSuccess?.();
+          if (onSuccess) {
+            onSuccess(true);
+          } else {
+            navigate('/onboarding');
+          }
         }, 800);
       } else {
         setErrors({ general: result.error || 'Registration failed' });

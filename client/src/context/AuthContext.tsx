@@ -8,9 +8,9 @@ interface AuthContextType {
   isLoading: boolean;
   isOnboardingCompleted: boolean;
   setIsOnboardingCompleted: (completed: boolean) => void;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  socialLogin: (provider: 'github' | 'google') => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; isNewUser?: boolean; user?: AuthUser; error?: string }>;
+  register: (name: string, email: string, password: string) => Promise<{ success: boolean; isNewUser?: boolean; user?: AuthUser; error?: string }>;
+  socialLogin: (provider: 'github' | 'google') => Promise<{ success: boolean; isNewUser?: boolean; user?: AuthUser; error?: string }>;
   demoNewUserSession: () => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   updateCurrentUser: (userUpdates: Partial<AuthUser>) => void;
@@ -34,6 +34,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const me = await authService.getMe();
         if (me) {
           setUser(me);
+          if (me.onboardingCompleted !== undefined) {
+            authService.setOnboardingCompleted(me.onboardingCompleted);
+            setIsOnboardingCompletedState(me.onboardingCompleted);
+          }
         } else {
           const localUser = authService.getUser();
           if (localUser) setUser(localUser);
@@ -56,8 +60,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.success && res.user && res.token) {
       setUser(res.user);
       setToken(res.token);
-      setIsOnboardingCompleted(true);
-      return { success: true };
+      const isCompleted = res.user.onboardingCompleted ?? !res.isNewUser;
+      setIsOnboardingCompleted(isCompleted);
+      return { success: true, isNewUser: !isCompleted, user: res.user };
     }
     return { success: false, error: res.error || 'Invalid credentials' };
   };
@@ -70,7 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(res.user);
       setToken(res.token);
       setIsOnboardingCompleted(false);
-      return { success: true };
+      return { success: true, isNewUser: true, user: res.user };
     }
     return { success: false, error: res.error || 'Registration failed' };
   };
@@ -82,8 +87,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.success && res.user && res.token) {
       setUser(res.user);
       setToken(res.token);
-      setIsOnboardingCompleted(true);
-      return { success: true };
+      const isCompleted = res.user.onboardingCompleted ?? !res.isNewUser;
+      setIsOnboardingCompleted(isCompleted);
+      return { success: true, isNewUser: !isCompleted, user: res.user };
     }
     return { success: false, error: res.error || 'Social authentication failed' };
   };

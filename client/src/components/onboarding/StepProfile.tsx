@@ -51,6 +51,7 @@ import {
 } from '../../types/onboarding';
 import { useToast } from '../../context/ToastContext';
 import { saveAccentColor } from '../../services/accentTheme.service';
+import { accountSettingsService } from '../../services/accountSettings.service';
 
 interface StepProfileProps {
   data: OnboardingData;
@@ -108,6 +109,39 @@ export const StepProfile: React.FC<StepProfileProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMoreModal, setShowMoreModal] = useState(false);
   const [hasManualUsername, setHasManualUsername] = useState(false);
+  const [localChecking, setLocalChecking] = useState(false);
+  const [localStatus, setLocalStatus] = useState<'idle' | 'available' | 'taken'>('idle');
+  const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const checkAvailability = (username: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const clean = username.trim().toLowerCase().replace(/^@+/, '');
+    if (!clean || clean.length < 3) {
+      setLocalStatus('idle');
+      setLocalMessage(null);
+      setLocalChecking(false);
+      return;
+    }
+
+    setLocalChecking(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await accountSettingsService.checkUsernameAvailability(clean);
+        setLocalChecking(false);
+        if (res.available) {
+          setLocalStatus('available');
+          setLocalMessage(`@${clean} is available`);
+        } else {
+          setLocalStatus('taken');
+          setLocalMessage(res.message || `@${clean} is already taken`);
+        }
+      } catch {
+        setLocalChecking(false);
+        setLocalStatus('idle');
+      }
+    }, 350);
+  };
 
   const initials = data.displayName
     ?.trim()
@@ -126,6 +160,7 @@ export const StepProfile: React.FC<StepProfileProps> = ({
     if (!hasManualUsername) {
       const autoHandle = name.toLowerCase().replace(/[^a-z0-9]/g, '');
       updates.username = autoHandle;
+      checkAvailability(autoHandle);
     }
     onChange(updates);
   };
@@ -136,6 +171,7 @@ export const StepProfile: React.FC<StepProfileProps> = ({
     // clean username characters
     const clean = val.toLowerCase().replace(/[^a-z0-9_.-]/g, '');
     onChange({ username: clean });
+    checkAvailability(clean);
   };
 
   // Handle image upload with 2MB constraint and custom toast
@@ -271,19 +307,30 @@ export const StepProfile: React.FC<StepProfileProps> = ({
             onChange={(e) => handleUsernameChange(e.target.value)}
             placeholder="alexrivers"
             className={`w-full h-9 pl-7 pr-8 rounded-lg bg-[#111216] border text-[12.5px] font-mono text-white placeholder-zinc-500 transition-colors focus:outline-none focus:ring-1 ${
-              usernameError
+              usernameError || localStatus === 'taken'
                 ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500'
+                : localStatus === 'available'
+                ? 'border-emerald-500/50 focus:border-emerald-500 focus:ring-emerald-500'
                 : 'border-[#27272A] focus:border-zinc-400 focus:ring-zinc-400'
             }`}
           />
-          {isCheckingUsername && (
-            <div className="absolute right-2.5 flex items-center">
+          <div className="absolute right-2.5 flex items-center">
+            {isCheckingUsername || localChecking ? (
               <div className="w-3.5 h-3.5 border-2 border-[#A78BFA] border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
+            ) : localStatus === 'available' && !usernameError ? (
+              <Check size={14} className="text-emerald-400" />
+            ) : null}
+          </div>
         </div>
-        {usernameError && (
-          <span className="text-[10.5px] text-red-400 leading-tight">{usernameError}</span>
+        {(usernameError || (localStatus === 'taken' && localMessage)) && (
+          <span className="text-[10.5px] text-red-400 leading-tight">
+            {usernameError || localMessage}
+          </span>
+        )}
+        {!usernameError && localStatus === 'available' && localMessage && (
+          <span className="text-[10.5px] text-emerald-400 leading-tight">
+            {localMessage}
+          </span>
         )}
       </div>
 

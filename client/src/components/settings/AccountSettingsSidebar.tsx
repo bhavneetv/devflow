@@ -1,5 +1,6 @@
-import React from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   UserRound,
   ShieldCheck,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { useNavigation } from '../../context/NavigationContext';
+import { UserMenu } from '../layout/UserMenu';
 import { cn } from '../../lib/utils';
 
 export const ACCOUNT_NAV_ITEMS = [
@@ -54,7 +56,18 @@ export const AccountSettingsSidebar: React.FC<AccountSettingsSidebarProps> = ({
 }) => {
   const { accentColor } = useAccentTheme();
   const { isCollapsed } = useNavigation();
-  const [isAccountOpen, setIsAccountOpen] = React.useState(true);
+  const [isAccountOpen, setIsAccountOpen] = useState(true);
+  const [isBouncing, setIsBouncing] = useState(false);
+  const navigate = useNavigate();
+
+  const handleBackClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsBouncing(true);
+    setTimeout(() => {
+      onNavigate?.();
+      navigate('/');
+    }, 240);
+  };
 
   return (
     <aside
@@ -66,22 +79,56 @@ export const AccountSettingsSidebar: React.FC<AccountSettingsSidebarProps> = ({
     >
       {/* Top Header / Back navigation to workspace */}
       <div className={cn('p-3 border-b border-[var(--sidebar-border)]/80', isCollapsed && 'px-2 text-center')}>
-        <Link
-          to="/"
+        <motion.button
+          type="button"
+          onClick={handleBackClick}
+          whileHover={{ x: -4 }}
+          whileTap={{ scale: 0.88, x: -8 }}
+          animate={
+            isBouncing
+              ? {
+                  x: [0, -12, 6, -8, 3, 0],
+                  scale: [1, 0.88, 1.08, 0.96, 1],
+                }
+              : {}
+          }
+          transition={{
+            type: 'spring',
+            stiffness: 500,
+            damping: 12,
+            mass: 0.8,
+          }}
           className={cn(
-            'inline-flex items-center text-xs font-medium text-sidebar-text hover:text-sidebar-text-active transition-colors py-1.5 rounded-md hover:bg-sidebar-hover',
+            'inline-flex items-center text-xs font-semibold text-sidebar-text hover:text-sidebar-text-active transition-colors py-1.5 rounded-md hover:bg-sidebar-hover cursor-pointer select-none group',
             isCollapsed ? 'justify-center w-full px-0' : 'gap-2 px-2'
           )}
           title="Back to DevFlow"
         >
-          <ArrowLeft size={15} />
+          <motion.span
+            animate={
+              isBouncing
+                ? {
+                    x: [0, -8, 4, -4, 0],
+                    rotate: [0, -14, 6, -4, 0],
+                  }
+                : {}
+            }
+            transition={{
+              type: 'spring',
+              stiffness: 600,
+              damping: 10,
+            }}
+            className="flex items-center justify-center transition-transform group-hover:-translate-x-1 duration-150"
+          >
+            <ArrowLeft size={16} strokeWidth={2.4} />
+          </motion.span>
           {!isCollapsed && <span>Back to DevFlow</span>}
-        </Link>
+        </motion.button>
 
-        {/* Settings Title (Enlarged, no collapse button inside sidebar) */}
+        {/* Settings Title (Enlarged, prominent header) */}
         {!isCollapsed && (
-          <div className="mt-2.5 px-2">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-sidebar-text-active tracking-tight">
+          <div className="mt-3 px-2">
+            <h1 className="text-[28px] sm:text-[32px] font-black text-sidebar-text-active tracking-tight leading-none">
               Settings
             </h1>
           </div>
@@ -174,6 +221,9 @@ export const AccountSettingsSidebar: React.FC<AccountSettingsSidebarProps> = ({
           )}
         </div>
       </div>
+
+      {/* User profile footer matching main sidebar */}
+      <UserMenu isCollapsed={isCollapsed} />
     </aside>
   );
 };

@@ -9,9 +9,10 @@ import { AnimatedSelect, SelectOption } from '../../../components/settings/Anima
 import { CustomDatePicker } from '../../../components/settings/CustomDatePicker';
 import { accountSettingsService, UserProfileData } from '../../../services/accountSettings.service';
 import { useToast } from '../../../context/ToastContext';
-import { useAccentTheme } from '../../../services/accentTheme.service';
+import { useAccentTheme, saveAccentColor } from '../../../services/accentTheme.service';
 import {
   AVATAR_COLORS,
+  ACCENT_COLORS,
   QUICK_AVATAR_ICONS,
   MORE_AVATAR_ICONS,
   AvatarIconOption,
@@ -37,6 +38,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useNavigation } from '../../../context/NavigationContext';
+import { useAuth } from '../../../context/AuthContext';
 import { cn } from '../../../lib/utils';
 
 const PROFILE_CATEGORIES: SettingsCategory[] = [
@@ -89,6 +91,7 @@ export const ProfileSettingsPage: React.FC = () => {
   const { toast } = useToast();
   const { accentColor } = useAccentTheme();
   const { isCollapsed } = useNavigation();
+  const { updateCurrentUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [profile, setProfile] = useState<UserProfileData>(() => accountSettingsService.getProfile());
@@ -105,9 +108,16 @@ export const ProfileSettingsPage: React.FC = () => {
   const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const loaded = accountSettingsService.getProfile();
-    setProfile(loaded);
-    setFormData(loaded);
+    let isMounted = true;
+    accountSettingsService.fetchProfile().then((loaded) => {
+      if (isMounted) {
+        setProfile(loaded);
+        setFormData(loaded);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Compute initials for avatar preview
@@ -139,7 +149,7 @@ export const ProfileSettingsPage: React.FC = () => {
 
   // Username input handler with animated loading spinner & availability check
   const handleUsernameChange = (val: string) => {
-    const clean = val.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const clean = val.toLowerCase().replace(/^@+/, '').replace(/[^a-z0-9_.-]/g, '');
     setFormData((prev) => ({ ...prev, username: clean }));
 
     if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
@@ -163,17 +173,23 @@ export const ProfileSettingsPage: React.FC = () => {
     setUsernameStatus('checking');
     setUsernameMessage('Checking availability...');
 
-    usernameDebounceRef.current = setTimeout(() => {
-      setIsCheckingUsername(false);
-      const reserved = ['admin', 'root', 'devflow', 'system', 'api', 'support', 'owner', 'bot'];
-      if (reserved.includes(clean)) {
-        setUsernameStatus('taken');
-        setUsernameMessage(`@${clean} is a reserved system handle.`);
-      } else {
+    usernameDebounceRef.current = setTimeout(async () => {
+      try {
+        const result = await accountSettingsService.checkUsernameAvailability(clean);
+        setIsCheckingUsername(false);
+        if (result.available) {
+          setUsernameStatus('available');
+          setUsernameMessage(result.message);
+        } else {
+          setUsernameStatus('taken');
+          setUsernameMessage(result.message);
+        }
+      } catch {
+        setIsCheckingUsername(false);
         setUsernameStatus('available');
-        setUsernameMessage(`@${clean} is available!`);
+        setUsernameMessage(`@${clean} is available`);
       }
-    }, 450);
+    }, 350);
   };
 
   // Avatar Selection Handlers matching Onboarding
@@ -222,19 +238,47 @@ export const ProfileSettingsPage: React.FC = () => {
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!formData.displayName.trim()) {
+    const cleanName = (formData.displayName || '').trim();
+    if (!cleanName) {
       toast.error('Display name is required.');
+      return;
+    }
+
+    const rawUser = formData.username || '';
+    const cleanUsername = rawUser.replace(/^@+/, '').trim().toLowerCase();
+    if (cleanUsername.length < 3) {
+      toast.error('Username must be at least 3 characters.');
       return;
     }
 
     try {
       setIsSaving(true);
-      const updated = await accountSettingsService.updateProfile(formData);
+      const currentAccent = formData.accentColor || accentColor;
+      const toSave: UserProfileData = {
+        ...formData,
+        displayName: cleanName,
+        username: cleanUsername,
+        avatarColor,
+        accentColor: currentAccent,
+      };
+      const updated = await accountSettingsService.updateProfile(toSave);
       setProfile(updated);
       setFormData(updated);
+      updateCurrentUser({
+        name: updated.displayName,
+        username: updated.username,
+        avatarType: updated.avatarType,
+        avatarId: updated.avatarId,
+        avatarUrl: updated.avatarUrl,
+        avatarColor: updated.avatarColor,
+        accentColor: updated.accentColor,
+      });
+      if (updated.accentColor) {
+        saveAccentColor(updated.accentColor);
+      }
       toast.success('Profile changes saved successfully!');
-    } catch {
-      toast.error('Failed to save profile changes.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save profile changes.');
     } finally {
       setIsSaving(false);
     }
@@ -242,6 +286,9 @@ export const ProfileSettingsPage: React.FC = () => {
 
   const handleCancel = () => {
     setFormData(profile);
+    if (profile.accentColor) {
+      saveAccentColor(profile.accentColor);
+    }
     toast.info('Changes discarded.');
   };
 
@@ -568,6 +615,71 @@ export const ProfileSettingsPage: React.FC = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+          </SettingsRow>
+
+          {/* Accent Color Selection */}
+          <SettingsRow
+            label="Accent Color"
+            description="Interface highlight color applied across buttons, badges, active tabs, and navigation."
+          >
+            <div className="max-w-md p-4 bg-[#0E0F13] border border-[#27272A] rounded-xl space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-medium text-zinc-300">
+                  Workspace Accent Palette
+                </span>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#16171D] border border-white/5 text-[11px] font-mono text-zinc-300">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full inline-block shadow-sm"
+                    style={{ backgroundColor: formData.accentColor || accentColor }}
+                  />
+                  <span>
+                    {ACCENT_COLORS.find(
+                      (c) => c.hex.toLowerCase() === (formData.accentColor || accentColor).toLowerCase()
+                    )?.name || 'Custom'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap py-1">
+                {ACCENT_COLORS.map((color) => {
+                  const isSelected =
+                    (formData.accentColor || accentColor).toLowerCase() === color.hex.toLowerCase();
+                  return (
+                    <button
+                      key={color.id}
+                      type="button"
+                      onClick={() => {
+                        handleChange('accentColor', color.hex);
+                        saveAccentColor(color.hex);
+                      }}
+                      className={`relative w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                        isSelected
+                          ? 'scale-115 ring-2 ring-offset-2 ring-offset-[#0C0D10] shadow-lg'
+                          : 'hover:scale-105 opacity-80 hover:opacity-100'
+                      }`}
+                      style={{
+                        backgroundColor: color.hex,
+                        borderColor: isSelected ? '#ffffff' : color.borderHex,
+                        boxShadow: isSelected ? `0 0 12px ${color.hex}60` : undefined,
+                      }}
+                      title={color.name}
+                    >
+                      {isSelected && (
+                        <Check
+                          size={13}
+                          strokeWidth={3}
+                          className="text-white drop-shadow"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="text-[11px] text-zinc-400 leading-snug">
+                Click any color swatch to preview instantly. Applied to buttons, borders, and sidebar items across DevFlow.
+              </p>
             </div>
           </SettingsRow>
 

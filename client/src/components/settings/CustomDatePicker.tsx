@@ -189,12 +189,20 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
 
   return (
     <div ref={containerRef} className={`relative w-full ${className}`}>
-      {/* Input Trigger Button */}
-      <button
-        type="button"
+      {/* Input Trigger (Div button to prevent nested button validateDOMNesting warning) */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => {
           setIsOpen((prev) => !prev);
           setActivePickerView('days');
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsOpen((prev) => !prev);
+            setActivePickerView('days');
+          }
         }}
         className={`w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 bg-[#111216] border rounded-lg text-xs sm:text-[13px] text-left transition-all outline-none ${
           isOpen
@@ -232,7 +240,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
             </button>
           )}
         </div>
-      </button>
+      </div>
 
       {/* Floating Dark Popover Calendar */}
       <AnimatePresence>

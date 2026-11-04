@@ -9,6 +9,7 @@ import { StepGoals } from '../components/onboarding/StepGoals';
 import { StepProjectSetup } from '../components/onboarding/StepProjectSetup';
 import { CinematicTextIntro } from '../components/onboarding/CinematicTextIntro';
 import { OnboardingData } from '../types/onboarding';
+import { saveAccentColor } from '../services/accentTheme.service';
 
 const STORAGE_KEY = 'devflow_onboarding_draft';
 
@@ -96,6 +97,7 @@ export const OnboardingPage: React.FC = () => {
         name: formData.displayName,
         avatarUrl: formData.avatarUrl || user?.avatarUrl,
       });
+      saveAccentColor(formData.accentColor);
       localStorage.removeItem(STORAGE_KEY);
       localStorage.setItem('devflow_show_welcome_checklist', 'true');
       return { success: true };

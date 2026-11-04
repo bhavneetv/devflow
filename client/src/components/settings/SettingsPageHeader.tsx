@@ -1,5 +1,6 @@
 import React from 'react';
 import { BadgeCheck, Camera, Edit3 } from 'lucide-react';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface SettingsPageHeaderProps {
   title: string;
@@ -22,6 +23,8 @@ export const SettingsPageHeader: React.FC<SettingsPageHeaderProps> = ({
   profileSummary,
   action,
 }) => {
+  const { accentColor } = useAccentTheme();
+
   return (
     <div className="px-6 sm:px-8 pt-8 pb-6 bg-[#0F1012] border-b border-[#27272A]/70">
       {/* Title & Top Description */}
@@ -42,7 +45,12 @@ export const SettingsPageHeader: React.FC<SettingsPageHeaderProps> = ({
         <div className="flex flex-col items-center justify-center text-center pt-2 pb-2">
           {/* Circular Avatar with Camera overlay on hover */}
           <div className="relative group cursor-pointer mb-3.5">
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[#27272A] shadow-xl bg-zinc-900 ring-4 ring-[#A78BFA]/10">
+            <div
+              className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[#27272A] shadow-xl bg-zinc-900"
+              style={{
+                boxShadow: `0 0 0 4px ${accentColor}20`,
+              }}
+            >
               <img
                 src={profileSummary.avatarUrl}
                 alt={profileSummary.displayName}
@@ -99,7 +107,7 @@ export const SettingsPageHeader: React.FC<SettingsPageHeaderProps> = ({
               onClick={profileSummary.onEditClick}
               className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#27272A] hover:border-zinc-500 bg-[#171A21] hover:bg-[#1E222A] text-xs font-medium text-[#F4F4F5] transition-all"
             >
-              <Edit3 size={13} className="text-[#A78BFA]" />
+              <Edit3 size={13} style={{ color: accentColor }} />
               <span>Edit Profile Details</span>
             </button>
           )}

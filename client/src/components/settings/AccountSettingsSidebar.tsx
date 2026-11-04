@@ -9,6 +9,8 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
+import { useAccentTheme } from '../../services/accentTheme.service';
+
 export const ACCOUNT_NAV_ITEMS = [
   {
     id: 'profile',
@@ -49,6 +51,8 @@ export const AccountSettingsSidebar: React.FC<AccountSettingsSidebarProps> = ({
   className = '',
   onNavigate,
 }) => {
+  const { accentColor } = useAccentTheme();
+
   return (
     <aside
       className={`w-full md:w-[260px] lg:w-[280px] flex-shrink-0 bg-[#0B0B0C] border-r border-[#27272A] flex flex-col h-full select-none ${className}`}
@@ -63,13 +67,11 @@ export const AccountSettingsSidebar: React.FC<AccountSettingsSidebarProps> = ({
           <span>Back to DevFlow</span>
         </Link>
 
+        {/* Settings Title (Enlarged, Account Center removed) */}
         <div className="mt-3 px-2">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-[#71717A]">
+          <h1 className="text-lg font-bold text-[#F4F4F5] tracking-tight">
             Settings
-          </div>
-          <div className="text-base font-bold text-[#F4F4F5] tracking-tight mt-0.5">
-            Account Center
-          </div>
+          </h1>
         </div>
       </div>
 
@@ -108,17 +110,18 @@ export const AccountSettingsSidebar: React.FC<AccountSettingsSidebarProps> = ({
                       {isActive && (
                         <span
                           aria-hidden="true"
-                          className="absolute left-0 top-2 bottom-2 w-1 bg-[#A78BFA] rounded-r shadow-[0_0_8px_rgba(167,139,250,0.6)]"
+                          className="absolute left-0 top-2 bottom-2 w-1 rounded-r"
+                          style={{
+                            backgroundColor: accentColor,
+                            boxShadow: `0 0 8px ${accentColor}80`,
+                          }}
                         />
                       )}
 
                       <Icon
                         size={17}
-                        className={`flex-shrink-0 transition-colors ${
-                          isActive
-                            ? 'text-[#A78BFA]'
-                            : 'text-[#71717A] group-hover:text-[#A1A1AA]'
-                        }`}
+                        className="flex-shrink-0 transition-colors"
+                        style={isActive ? { color: accentColor } : undefined}
                       />
 
                       <span className="truncate">{item.label}</span>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 export interface SettingsCategory {
   id: string;
@@ -19,6 +20,7 @@ export const SettingsSectionNav: React.FC<SettingsSectionNavProps> = ({
   onSelectCategory,
   className = '',
 }) => {
+  const { accentColor } = useAccentTheme();
   const [internalActive, setInternalActive] = useState<string>(categories[0]?.id || '');
   const activeId = controlledActive || internalActive;
   const isClickingRef = useRef(false);
@@ -95,7 +97,7 @@ export const SettingsSectionNav: React.FC<SettingsSectionNavProps> = ({
               aria-controls={cat.id}
               aria-selected={isActive}
               onClick={() => scrollToSection(cat.id)}
-              className={`group relative flex items-center gap-2 py-3 px-3 sm:px-4 text-xs sm:text-[13px] font-medium whitespace-nowrap transition-colors duration-150 outline-none focus-visible:ring-1 focus-visible:ring-[#A78BFA] rounded-t-md ${
+              className={`group relative flex items-center gap-2 py-3 px-3 sm:px-4 text-xs sm:text-[13px] font-medium whitespace-nowrap transition-colors duration-150 outline-none rounded-t-md ${
                 isActive
                   ? 'text-[#F4F4F5] font-semibold'
                   : 'text-[#A1A1AA] hover:text-[#E4E4E7]'
@@ -106,20 +108,30 @@ export const SettingsSectionNav: React.FC<SettingsSectionNavProps> = ({
               {cat.badge !== undefined && (
                 <span
                   className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono leading-none ${
-                    isActive
-                      ? 'bg-[#A78BFA]/20 text-[#C4B5FD]'
-                      : 'bg-zinc-800 text-zinc-400 group-hover:text-zinc-300'
+                    !isActive ? 'bg-zinc-800 text-zinc-400 group-hover:text-zinc-300' : ''
                   }`}
+                  style={
+                    isActive
+                      ? {
+                          backgroundColor: `${accentColor}25`,
+                          color: accentColor,
+                        }
+                      : undefined
+                  }
                 >
                   {cat.badge}
                 </span>
               )}
 
-              {/* Active Violet Underline Highlight */}
+              {/* Active Underline Highlight with user's selected accent color */}
               {isActive && (
                 <span
                   aria-hidden="true"
-                  className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#A78BFA] shadow-[0_0_12px_rgba(167,139,250,0.5)] rounded-full animate-in fade-in duration-200"
+                  className="absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full animate-in fade-in duration-200"
+                  style={{
+                    backgroundColor: accentColor,
+                    boxShadow: `0 0 12px ${accentColor}80`,
+                  }}
                 />
               )}
             </button>

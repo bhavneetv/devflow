@@ -7,6 +7,7 @@ import { SettingsRow } from '../../../components/settings/SettingsRow';
 import { ProfileAvatarEditor } from '../../../components/settings/ProfileAvatarEditor';
 import { accountSettingsService, UserProfileData } from '../../../services/accountSettings.service';
 import { useToast } from '../../../context/ToastContext';
+import { useAccentTheme } from '../../../services/accentTheme.service';
 import {
   Globe,
   Github,
@@ -26,6 +27,7 @@ const PROFILE_CATEGORIES: SettingsCategory[] = [
 
 export const ProfileSettingsPage: React.FC = () => {
   const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const [profile, setProfile] = useState<UserProfileData>(() => accountSettingsService.getProfile());
   const [formData, setFormData] = useState<UserProfileData>(profile);
   const [isAvatarEditorOpen, setIsAvatarEditorOpen] = useState(false);
@@ -334,7 +336,10 @@ export const ProfileSettingsPage: React.FC = () => {
                 onChange={(e) => handleChange('isPublicProfile', e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#A78BFA]" />
+              <div
+                className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"
+                style={formData.isPublicProfile ? { backgroundColor: accentColor } : undefined}
+              />
               <span className="ml-3 text-xs text-zinc-300">
                 {formData.isPublicProfile ? 'Public to Workspace' : 'Hidden / Private'}
               </span>
@@ -344,13 +349,19 @@ export const ProfileSettingsPage: React.FC = () => {
           {/* Live Card Preview */}
           <div className="pt-2">
             <div className="text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Eye size={13} className="text-[#A78BFA]" />
+              <Eye size={13} style={{ color: accentColor }} />
               <span>Teammate View Preview</span>
             </div>
 
             <div className="p-5 bg-[#171A21] border border-[#27272A] rounded-2xl max-w-md shadow-xl space-y-4">
               <div className="flex items-start gap-3.5">
-                <div className="w-12 h-12 rounded-full overflow-hidden border border-[#A78BFA]/40 ring-2 ring-[#A78BFA]/10 flex-shrink-0">
+                <div
+                  className="w-12 h-12 rounded-full overflow-hidden border flex-shrink-0"
+                  style={{
+                    borderColor: `${accentColor}80`,
+                    boxShadow: `0 0 0 2px ${accentColor}25`,
+                  }}
+                >
                   <img
                     src={formData.avatarUrl}
                     alt={formData.displayName}
@@ -368,7 +379,7 @@ export const ProfileSettingsPage: React.FC = () => {
                       </svg>
                     </span>
                   </div>
-                  <div className="text-[11px] font-mono text-[#A78BFA]">
+                  <div className="text-[11px] font-mono" style={{ color: accentColor }}>
                     @{formData.username || 'username'}
                   </div>
                   <div className="text-xs text-[#A1A1AA] mt-0.5">
@@ -384,7 +395,14 @@ export const ProfileSettingsPage: React.FC = () => {
               )}
 
               <div className="flex items-center gap-2 pt-1 border-t border-[#27272A]/70">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#A78BFA]/15 text-[#C4B5FD] border border-[#A78BFA]/30">
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border"
+                  style={{
+                    backgroundColor: `${accentColor}20`,
+                    color: accentColor,
+                    borderColor: `${accentColor}40`,
+                  }}
+                >
                   <Sparkles size={10} />
                   <span>Verified Member</span>
                 </span>
@@ -416,7 +434,7 @@ export const ProfileSettingsPage: React.FC = () => {
                 value={formData.githubUrl || ''}
                 onChange={(e) => handleChange('githubUrl', e.target.value)}
                 placeholder="https://github.com/username"
-                className="w-full pl-9 pr-3 py-2 bg-[#111216] border border-[#27272A] focus:border-[#A78BFA] rounded-lg text-xs sm:text-[13px] text-[#F4F4F5] outline-none transition-colors"
+                className="w-full pl-9 pr-3 py-2 bg-[#111216] border border-[#27272A] focus:border-[var(--settings-accent)] rounded-lg text-xs sm:text-[13px] text-[#F4F4F5] outline-none transition-colors"
               />
             </div>
           </SettingsRow>
@@ -435,7 +453,7 @@ export const ProfileSettingsPage: React.FC = () => {
                 value={formData.linkedinUrl || ''}
                 onChange={(e) => handleChange('linkedinUrl', e.target.value)}
                 placeholder="https://linkedin.com/in/username"
-                className="w-full pl-9 pr-3 py-2 bg-[#111216] border border-[#27272A] focus:border-[#A78BFA] rounded-lg text-xs sm:text-[13px] text-[#F4F4F5] outline-none transition-colors"
+                className="w-full pl-9 pr-3 py-2 bg-[#111216] border border-[#27272A] focus:border-[var(--settings-accent)] rounded-lg text-xs sm:text-[13px] text-[#F4F4F5] outline-none transition-colors"
               />
             </div>
           </SettingsRow>
@@ -454,7 +472,7 @@ export const ProfileSettingsPage: React.FC = () => {
                 value={formData.websiteUrl || ''}
                 onChange={(e) => handleChange('websiteUrl', e.target.value)}
                 placeholder="https://yourwebsite.com"
-                className="w-full pl-9 pr-3 py-2 bg-[#111216] border border-[#27272A] focus:border-[#A78BFA] rounded-lg text-xs sm:text-[13px] text-[#F4F4F5] outline-none transition-colors"
+                className="w-full pl-9 pr-3 py-2 bg-[#111216] border border-[#27272A] focus:border-[var(--settings-accent)] rounded-lg text-xs sm:text-[13px] text-[#F4F4F5] outline-none transition-colors"
               />
             </div>
           </SettingsRow>
@@ -473,7 +491,11 @@ export const ProfileSettingsPage: React.FC = () => {
           <button
             type="submit"
             disabled={isSaving}
-            className="px-5 py-2 rounded-lg bg-[#A78BFA] hover:bg-[#9061F9] text-black font-semibold text-xs shadow-lg transition-all disabled:opacity-50"
+            className="px-5 py-2 rounded-lg text-black font-semibold text-xs shadow-lg transition-all disabled:opacity-50"
+            style={{
+              backgroundColor: accentColor,
+              boxShadow: `0 4px 14px ${accentColor}45`,
+            }}
           >
             {isSaving ? 'Saving Changes...' : 'Save Changes'}
           </button>

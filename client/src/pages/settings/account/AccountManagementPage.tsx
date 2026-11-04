@@ -6,6 +6,7 @@ import { SettingsSection } from '../../../components/settings/SettingsSection';
 import { DangerZone } from '../../../components/settings/DangerZone';
 import { accountSettingsService } from '../../../services/accountSettings.service';
 import { useToast } from '../../../context/ToastContext';
+import { useAccentTheme } from '../../../services/accentTheme.service';
 import {
   Download,
   FileText,
@@ -23,6 +24,7 @@ const MANAGEMENT_CATEGORIES: SettingsCategory[] = [
 
 export const AccountManagementPage: React.FC = () => {
   const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const [exportLoading, setExportLoading] = useState(false);
   const [lastExport, setLastExport] = useState<{
     downloadUrl: string;
@@ -80,7 +82,14 @@ export const AccountManagementPage: React.FC = () => {
           <div className="p-5 bg-[#171A21] border border-[#27272A] rounded-xl space-y-4">
             <div className="flex items-start justify-between gap-4 flex-col sm:flex-row sm:items-center">
               <div className="flex items-start gap-3.5">
-                <div className="w-10 h-10 rounded-lg bg-[#A78BFA]/10 border border-[#A78BFA]/20 flex items-center justify-center text-[#A78BFA] flex-shrink-0">
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{
+                    backgroundColor: `${accentColor}18`,
+                    border: `1px solid ${accentColor}35`,
+                    color: accentColor,
+                  }}
+                >
                   <Database size={20} />
                 </div>
                 <div>
@@ -97,7 +106,11 @@ export const AccountManagementPage: React.FC = () => {
                 type="button"
                 onClick={handleRequestExport}
                 disabled={exportLoading}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#A78BFA] hover:bg-[#9061F9] text-black font-semibold text-xs transition-colors flex-shrink-0 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-black font-semibold text-xs transition-colors flex-shrink-0 disabled:opacity-50"
+                style={{
+                  backgroundColor: accentColor,
+                  boxShadow: `0 2px 10px ${accentColor}40`,
+                }}
               >
                 <Download size={14} />
                 <span>{exportLoading ? 'Generating Export...' : 'Request Data Export'}</span>
@@ -128,15 +141,15 @@ export const AccountManagementPage: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-[11px] text-zinc-400">
               <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111216]/60 border border-[#27272A]/50">
-                <FileText size={14} className="text-[#A78BFA]" />
+                <FileText size={14} style={{ color: accentColor }} />
                 <span>Profile & Customizations</span>
               </div>
               <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111216]/60 border border-[#27272A]/50">
-                <Lock size={14} className="text-[#A78BFA]" />
+                <Lock size={14} style={{ color: accentColor }} />
                 <span>Active Tokens & Audit Logs</span>
               </div>
               <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111216]/60 border border-[#27272A]/50">
-                <Database size={14} className="text-[#A78BFA]" />
+                <Database size={14} style={{ color: accentColor }} />
                 <span>Assigned Issues & Projects</span>
               </div>
             </div>

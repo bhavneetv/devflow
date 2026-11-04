@@ -7,6 +7,7 @@ import {
   Link as LinkIcon,
 } from 'lucide-react';
 import { ConnectedAccount } from '../../services/accountSettings.service';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface ConnectedAccountCardProps {
   account: ConnectedAccount;
@@ -17,6 +18,7 @@ export const ConnectedAccountCard: React.FC<ConnectedAccountCardProps> = ({
   account,
   onToggle,
 }) => {
+  const { accentColor } = useAccentTheme();
   const [loading, setLoading] = useState(false);
   const [showConfirmDisconnect, setShowConfirmDisconnect] = useState(false);
 
@@ -67,7 +69,7 @@ export const ConnectedAccountCard: React.FC<ConnectedAccountCardProps> = ({
           </svg>
         );
       default:
-        return <GitBranch size={20} className="text-[#A78BFA]" />;
+        return <GitBranch size={20} style={{ color: accentColor }} />;
     }
   };
 
@@ -101,7 +103,7 @@ export const ConnectedAccountCard: React.FC<ConnectedAccountCardProps> = ({
           </p>
 
           {account.isConnected && account.connectedIdentifier && (
-            <div className="text-[11px] font-mono text-[#A78BFA] mt-1.5 flex items-center gap-2">
+            <div className="text-[11px] font-mono mt-1.5 flex items-center gap-2" style={{ color: accentColor }}>
               <span>Account: @{account.connectedIdentifier}</span>
               {account.connectedAt && (
                 <span className="text-[10px] text-zinc-500">• {account.connectedAt}</span>
@@ -127,9 +129,9 @@ export const ConnectedAccountCard: React.FC<ConnectedAccountCardProps> = ({
             type="button"
             onClick={handleAction}
             disabled={loading}
-            className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-[#1A1D24] hover:bg-[#222630] border border-[#27272A] hover:border-[#A78BFA]/50 text-xs font-medium text-[#F4F4F5] transition-all inline-flex items-center justify-center gap-1.5"
+            className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-[#1A1D24] hover:bg-[#222630] border border-[#27272A] hover:border-zinc-500 text-xs font-medium text-[#F4F4F5] transition-all inline-flex items-center justify-center gap-1.5"
           >
-            <LinkIcon size={13} className="text-[#A78BFA]" />
+            <LinkIcon size={13} style={{ color: accentColor }} />
             <span>{loading ? 'Connecting...' : `Connect ${account.name}`}</span>
           </button>
         )}

@@ -50,6 +50,7 @@ import {
   AvatarIconOption,
 } from '../../types/onboarding';
 import { useToast } from '../../context/ToastContext';
+import { saveAccentColor } from '../../services/accentTheme.service';
 
 interface StepProfileProps {
   data: OnboardingData;
@@ -197,6 +198,7 @@ export const StepProfile: React.FC<StepProfileProps> = ({
         detail: { color: hex, x: centerX, y: centerY },
       })
     );
+    saveAccentColor(hex);
     onChange({ accentColor: hex });
   };
 

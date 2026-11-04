@@ -9,6 +9,7 @@ import {
   ConnectedAccount,
 } from '../../../services/accountSettings.service';
 import { useToast } from '../../../context/ToastContext';
+import { useAccentTheme } from '../../../services/accentTheme.service';
 import { GitBranch, Shield, KeyRound } from 'lucide-react';
 
 const CONNECTION_CATEGORIES: SettingsCategory[] = [
@@ -18,6 +19,7 @@ const CONNECTION_CATEGORIES: SettingsCategory[] = [
 
 export const ConnectedAccountsPage: React.FC = () => {
   const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const [connections, setConnections] = useState<ConnectedAccount[]>(() =>
     accountSettingsService.getConnectedAccounts()
   );
@@ -71,7 +73,7 @@ export const ConnectedAccountsPage: React.FC = () => {
           </div>
 
           <div className="p-4 bg-[#111216] border border-[#27272A] rounded-xl flex items-start gap-3 mt-4 text-xs text-[#A1A1AA] leading-relaxed">
-            <GitBranch size={16} className="text-[#A78BFA] flex-shrink-0 mt-0.5" />
+            <GitBranch size={16} style={{ color: accentColor }} className="flex-shrink-0 mt-0.5" />
             <div>
               <span className="font-semibold text-white">Repository permissions note:</span>{' '}
               Repository access scopes only sync commits and issues assigned to your account.
@@ -97,7 +99,7 @@ export const ConnectedAccountsPage: React.FC = () => {
           </div>
 
           <div className="p-4 bg-[#111216] border border-[#27272A] rounded-xl flex items-start gap-3 mt-4 text-xs text-[#A1A1AA] leading-relaxed">
-            <KeyRound size={16} className="text-[#A78BFA] flex-shrink-0 mt-0.5" />
+            <KeyRound size={16} style={{ color: accentColor }} className="flex-shrink-0 mt-0.5" />
             <div>
               <span className="font-semibold text-white">Account recovery safeguard:</span>{' '}
               You cannot disconnect your only active sign-in method unless a verified password

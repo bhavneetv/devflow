@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Upload, Check, RotateCcw, Image as ImageIcon } from 'lucide-react';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface ProfileAvatarEditorProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export const ProfileAvatarEditor: React.FC<ProfileAvatarEditorProps> = ({
   currentAvatar,
   onSaveAvatar,
 }) => {
+  const { accentColor } = useAccentTheme();
   const [selectedAvatar, setSelectedAvatar] = useState(currentAvatar);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -123,7 +125,8 @@ export const ProfileAvatarEditor: React.FC<ProfileAvatarEditorProps> = ({
             <button
               type="button"
               onClick={handleReset}
-              className="text-[11px] text-[#A78BFA] hover:text-[#B7A1FF] flex items-center gap-1"
+              className="text-[11px] flex items-center gap-1 hover:underline"
+              style={{ color: accentColor }}
             >
               <RotateCcw size={11} />
               <span>Reset</span>
@@ -140,9 +143,17 @@ export const ProfileAvatarEditor: React.FC<ProfileAvatarEditorProps> = ({
                   onClick={() => setSelectedAvatar(url)}
                   className={`relative aspect-square rounded-full overflow-hidden border-2 transition-all p-0.5 ${
                     isSelected
-                      ? 'border-[#A78BFA] ring-2 ring-[#A78BFA]/40 scale-105'
+                      ? 'scale-105'
                       : 'border-[#27272A] hover:border-zinc-500 opacity-80 hover:opacity-100'
                   }`}
+                  style={
+                    isSelected
+                      ? {
+                          borderColor: accentColor,
+                          boxShadow: `0 0 0 2px ${accentColor}60`,
+                        }
+                      : undefined
+                  }
                 >
                   <img
                     src={url}
@@ -150,7 +161,10 @@ export const ProfileAvatarEditor: React.FC<ProfileAvatarEditorProps> = ({
                     className="w-full h-full object-cover rounded-full"
                   />
                   {isSelected && (
-                    <div className="absolute inset-0 bg-[#A78BFA]/30 flex items-center justify-center">
+                    <div
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{ backgroundColor: `${accentColor}40` }}
+                    >
                       <Check size={14} className="text-white drop-shadow" />
                     </div>
                   )}
@@ -172,7 +186,11 @@ export const ProfileAvatarEditor: React.FC<ProfileAvatarEditorProps> = ({
           <button
             type="button"
             onClick={handleApply}
-            className="px-4 py-2 rounded-lg bg-[#A78BFA] hover:bg-[#9061F9] text-black font-semibold text-xs shadow-md transition-all"
+            className="px-4 py-2 rounded-lg text-black font-semibold text-xs shadow-md transition-all"
+            style={{
+              backgroundColor: accentColor,
+              boxShadow: `0 2px 10px ${accentColor}40`,
+            }}
           >
             Save Avatar
           </button>

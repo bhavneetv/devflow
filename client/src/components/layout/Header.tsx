@@ -47,15 +47,13 @@ export const Header: React.FC = () => {
       {/* Left Section: Sidebar Toggle & Breadcrumbs */}
       <div className="flex items-center gap-3 min-w-0">
         {/* Mobile menu trigger */}
-        {!isSettingsRoute && (
-          <button
-            onClick={() => setIsMobileOpen(true)}
-            className="md:hidden p-1.5 rounded-md text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text-active)] hover:bg-[var(--sidebar-hover)]"
-            title="Open menu"
-          >
-            <Menu size={18} />
-          </button>
-        )}
+        <button
+          onClick={() => setIsMobileOpen(true)}
+          className="md:hidden p-1.5 rounded-md text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text-active)] hover:bg-[var(--sidebar-hover)]"
+          title="Open menu"
+        >
+          <Menu size={18} />
+        </button>
 
         {/* Desktop sidebar collapse / expand toggle */}
         {!isSettingsRoute && (

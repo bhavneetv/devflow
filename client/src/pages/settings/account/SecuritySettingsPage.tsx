@@ -11,6 +11,7 @@ import {
   LoginActivityEvent,
 } from '../../../services/accountSettings.service';
 import { useToast } from '../../../context/ToastContext';
+import { useAccentTheme } from '../../../services/accentTheme.service';
 import {
   Key,
   Shield,
@@ -32,6 +33,7 @@ const SECURITY_CATEGORIES: SettingsCategory[] = [
 
 export const SecuritySettingsPage: React.FC = () => {
   const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const [securitySettings, setSecuritySettings] = useState(() =>
     accountSettingsService.getSecuritySettings()
   );
@@ -177,7 +179,7 @@ export const SecuritySettingsPage: React.FC = () => {
           {isChangingPassword && (
             <div className="p-4 bg-[#111216] border border-[#27272A] rounded-xl space-y-4 animate-in fade-in">
               <div className="text-xs font-semibold text-[#F4F4F5] flex items-center gap-2">
-                <Lock size={14} className="text-[#A78BFA]" />
+                <Lock size={14} style={{ color: accentColor }} />
                 <span>Change Account Password</span>
               </div>
 
@@ -193,7 +195,7 @@ export const SecuritySettingsPage: React.FC = () => {
                       required
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="w-full px-3 py-2 pr-9 bg-[#161619] border border-[#27272A] focus:border-[#A78BFA] rounded-lg text-xs text-white outline-none"
+                      className="w-full px-3 py-2 pr-9 bg-[#161619] border border-[#27272A] focus:border-[var(--settings-accent)] rounded-lg text-xs text-white outline-none"
                       placeholder="Enter current password"
                     />
                     <button
@@ -218,7 +220,7 @@ export const SecuritySettingsPage: React.FC = () => {
                       minLength={8}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full px-3 py-2 pr-9 bg-[#161619] border border-[#27272A] focus:border-[#A78BFA] rounded-lg text-xs text-white outline-none"
+                      className="w-full px-3 py-2 pr-9 bg-[#161619] border border-[#27272A] focus:border-[var(--settings-accent)] rounded-lg text-xs text-white outline-none"
                       placeholder="Enter strong new password"
                     />
                     <button
@@ -242,7 +244,7 @@ export const SecuritySettingsPage: React.FC = () => {
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full px-3 py-2 pr-9 bg-[#161619] border border-[#27272A] focus:border-[#A78BFA] rounded-lg text-xs text-white outline-none"
+                      className="w-full px-3 py-2 pr-9 bg-[#161619] border border-[#27272A] focus:border-[var(--settings-accent)] rounded-lg text-xs text-white outline-none"
                       placeholder="Repeat new password"
                     />
                     <button
@@ -263,7 +265,11 @@ export const SecuritySettingsPage: React.FC = () => {
                   <button
                     type="submit"
                     disabled={passwordLoading}
-                    className="px-3.5 py-1.5 rounded-lg bg-[#A78BFA] hover:bg-[#9061F9] text-black font-semibold text-xs transition-colors"
+                    className="px-3.5 py-1.5 rounded-lg text-black font-semibold text-xs transition-colors"
+                    style={{
+                      backgroundColor: accentColor,
+                      boxShadow: `0 2px 10px ${accentColor}40`,
+                    }}
                   >
                     {passwordLoading ? 'Updating...' : 'Update Password'}
                   </button>
@@ -408,7 +414,7 @@ export const SecuritySettingsPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md bg-[#161619] border border-[#27272A] rounded-2xl p-6 space-y-5 shadow-2xl">
             <div className="flex items-center gap-2.5 text-[#F4F4F5] font-semibold text-base">
-              <Smartphone size={20} className="text-[#A78BFA]" />
+              <Smartphone size={20} style={{ color: accentColor }} />
               <span>
                 {securitySettings.is2FAEnabled
                   ? 'Disable Two-Factor Authentication'
@@ -442,7 +448,7 @@ export const SecuritySettingsPage: React.FC = () => {
                     value={twoFactorCode}
                     onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
                     placeholder="123456"
-                    className="w-full text-center tracking-[0.5em] text-lg font-mono py-2 bg-[#111216] border border-[#27272A] focus:border-[#A78BFA] rounded-lg text-white outline-none"
+                    className="w-full text-center tracking-[0.5em] text-lg font-mono py-2 bg-[#111216] border border-[#27272A] focus:border-[var(--settings-accent)] rounded-lg text-white outline-none"
                   />
                 </div>
               </div>
@@ -465,7 +471,11 @@ export const SecuritySettingsPage: React.FC = () => {
                 type="button"
                 onClick={handleToggle2FA}
                 disabled={twoFactorLoading}
-                className="px-4 py-2 rounded-lg bg-[#A78BFA] hover:bg-[#9061F9] text-black font-semibold text-xs shadow-md"
+                className="px-4 py-2 rounded-lg text-black font-semibold text-xs shadow-md"
+                style={{
+                  backgroundColor: accentColor,
+                  boxShadow: `0 4px 14px ${accentColor}40`,
+                }}
               >
                 {twoFactorLoading
                   ? 'Processing...'

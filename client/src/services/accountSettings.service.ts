@@ -6,12 +6,15 @@ export interface UserProfileData {
   email: string;
   isEmailVerified: boolean;
   avatarUrl: string;
+  avatarType?: 'initials' | 'icon' | 'upload';
+  avatarId?: string | null;
+  avatarColor?: string;
   bio: string;
   jobTitle: string;
   location: string;
   dateOfBirth?: string;
   gender?: string;
-  nationality?: string;
+  country?: string;
   phoneNumber?: string;
   isPublicProfile: boolean;
   websiteUrl?: string;
@@ -89,12 +92,15 @@ export const accountSettingsService = {
       email: authUser?.email || 'johnson@example.com',
       isEmailVerified: true,
       avatarUrl: authUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+      avatarType: 'upload',
+      avatarId: 'emily',
+      avatarColor: '#7C3AED',
       bio: 'Full-stack software engineer & open source contributor. Building developer tools and modern web systems.',
       jobTitle: 'Senior Staff Engineer',
       location: 'California, United States',
-      dateOfBirth: 'January 1, 1987',
+      dateOfBirth: '1987-01-01',
       gender: 'Female',
-      nationality: 'American',
+      country: 'US',
       phoneNumber: '(213) 555-1234',
       isPublicProfile: true,
       websiteUrl: 'https://emilyjohnson.dev',

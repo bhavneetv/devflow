@@ -56,17 +56,15 @@ export const Header: React.FC = () => {
         </button>
 
         {/* Desktop sidebar collapse / expand toggle */}
-        {!isSettingsRoute && (
-          <button
-            onClick={toggleSidebar}
-            className="hidden md:flex p-1.5 rounded-md text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text-active)] hover:bg-[var(--sidebar-hover)] border border-transparent hover:border-[var(--sidebar-border)] transition-all duration-200"
-            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-          </button>
-        )}
+        <button
+          onClick={toggleSidebar}
+          className="hidden md:flex p-1.5 rounded-md text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text-active)] hover:bg-[var(--sidebar-hover)] border border-transparent hover:border-[var(--sidebar-border)] transition-all duration-200"
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+        </button>
 
-        {!isSettingsRoute && <div className="h-4 w-[1px] bg-[var(--header-border)] hidden sm:block" />}
+        <div className="h-4 w-[1px] bg-[var(--header-border)] hidden sm:block" />
 
         {/* Breadcrumb Navigation */}
         <Breadcrumbs />

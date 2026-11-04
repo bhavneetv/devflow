@@ -21,14 +21,14 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
     <section
       id={id}
       aria-labelledby={`heading-${id}`}
-      className={`scroll-mt-20 pt-8 pb-10 border-b border-[#27272A]/80 last:border-b-0 space-y-6 ${className}`}
+      className={`scroll-mt-28 pt-8 pb-10 border-b border-[#27272A]/80 last:border-b-0 space-y-6 ${className}`}
     >
       {/* Section Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2
             id={`heading-${id}`}
-            className="text-base sm:text-lg font-semibold text-[#F4F4F5] tracking-tight"
+            className="text-xl sm:text-2xl font-extrabold text-[#FFFFFF] tracking-tight"
           >
             {title}
           </h2>

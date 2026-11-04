@@ -17,7 +17,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const { isMobileOpen, setIsMobileOpen } = useNavigation();
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--app-bg)] text-[var(--sidebar-text-active)] font-sans antialiased transition-colors duration-200">
+    <div className="flex h-full w-full overflow-hidden bg-[var(--app-bg)] text-[var(--sidebar-text-active)] font-sans antialiased transition-colors duration-200">
       {/* 1. Main Workspace Sidebar (when not in settings) */}
       {!isSettingsRoute && <Sidebar />}
 
@@ -49,7 +49,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         <Header />
 
         {/* Scrollable View Area */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto min-w-0">
           {children}
         </main>
       </div>

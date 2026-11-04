@@ -7,6 +7,7 @@ import { StepProfile } from '../components/onboarding/StepProfile';
 import { StepRole } from '../components/onboarding/StepRole';
 import { StepGoals } from '../components/onboarding/StepGoals';
 import { StepProjectSetup } from '../components/onboarding/StepProjectSetup';
+import { StepCreateTeam } from '../components/onboarding/StepCreateTeam';
 import { CinematicTextIntro } from '../components/onboarding/CinematicTextIntro';
 import { OnboardingData } from '../types/onboarding';
 import { saveAccentColor } from '../services/accentTheme.service';
@@ -41,6 +42,20 @@ export const OnboardingPage: React.FC = () => {
     startingPreference: 'new_project',
     projectName: 'Core Infrastructure v2',
     projectDescription: 'Next-generation software delivery orchestration & sprint tracking.',
+    teamName: 'Core Engineering',
+    teamMembers: [
+      {
+        id: 'current-user',
+        name: user?.name || 'Alex Rivers',
+        username: user?.username || (user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : 'alexrivers'),
+        role: 'Lead',
+        avatarType: (user?.avatarType as any) || 'initials',
+        avatarId: user?.avatarId || 'initials',
+        avatarColor: user?.avatarColor || '#7C3AED',
+        avatarUrl: user?.avatarUrl || null,
+        isCurrentUser: true,
+      },
+    ],
   };
 
   const [step, setStep] = useState<number>(() => {
@@ -48,7 +63,7 @@ export const OnboardingPage: React.FC = () => {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.step && parsed.step >= 1 && parsed.step <= 4) {
+        if (parsed.step && parsed.step >= 1 && parsed.step <= 5) {
           return parsed.step;
         }
       }
@@ -72,9 +87,9 @@ export const OnboardingPage: React.FC = () => {
   const [errors, setErrors] = useState<{ displayName?: string; username?: string }>({});
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
 
-  // Persist draft on step or data changes (1-4)
+  // Persist draft on step or data changes (1-5)
   useEffect(() => {
-    if (step <= 4) {
+    if (step <= 5) {
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({ step, data: formData })
@@ -161,7 +176,10 @@ export const OnboardingPage: React.FC = () => {
     } else if (step === 3) {
       setStep(4);
     } else if (step === 4) {
-      // Step 4 is the final step ("Finish setup"): submit onboarding and play outro sequence
+      // Step 4 progresses to Step 5 (Create a Team)
+      setStep(5);
+    } else if (step === 5) {
+      // Step 5 is the final step ("Finish setup"): submit onboarding and play outro sequence
       setIsCheckingUsername(true);
       const res = await handleSubmitOnboarding();
       setIsCheckingUsername(false);
@@ -195,6 +213,8 @@ export const OnboardingPage: React.FC = () => {
     } else if (step === 3) {
       setStep(4);
     } else if (step === 4) {
+      setStep(5);
+    } else if (step === 5) {
       setIsCheckingUsername(true);
       const res = await handleSubmitOnboarding();
       setIsCheckingUsername(false);
@@ -233,17 +253,17 @@ export const OnboardingPage: React.FC = () => {
         />
       )}
 
-      {/* Main 4-step onboarding experience */}
+      {/* Main 5-step onboarding experience */}
       {!showIntro && !showOutro && (
         <OnboardingLayout
           currentStep={step}
-          totalSteps={4}
+          totalSteps={5}
           data={formData}
           onNext={handleNext}
           onBack={handleBack}
           onSkip={handleSkip}
           isNextLoading={isCheckingUsername}
-          canSkip={step >= 2 && step <= 4}
+          canSkip={step >= 2 && step <= 5}
           isExiting={isExiting}
         >
           {step === 1 && (
@@ -266,6 +286,10 @@ export const OnboardingPage: React.FC = () => {
 
           {step === 4 && (
             <StepProjectSetup data={formData} onChange={handleChange} />
+          )}
+
+          {step === 5 && (
+            <StepCreateTeam data={formData} onChange={handleChange} />
           )}
         </OnboardingLayout>
       )}

@@ -13,7 +13,136 @@ export interface OnboardingData {
   startingPreference: 'new_project' | 'github_import' | 'sample' | null;
   projectName: string | null;
   projectDescription: string | null;
+  teamName?: string;
+  teamMembers?: TeamMemberSetup[];
 }
+
+export interface TeamMemberSetup {
+  id: string;
+  name: string;
+  username: string;
+  role: string;
+  avatarType: 'initials' | 'icon' | 'upload' | 'preset';
+  avatarId?: string | null;
+  avatarColor: string;
+  avatarUrl?: string | null;
+  isCurrentUser?: boolean;
+}
+
+export interface PublicAccountOption {
+  id: string;
+  name: string;
+  username: string;
+  email: string;
+  avatarType: 'initials' | 'icon' | 'upload' | 'preset';
+  avatarId?: string | null;
+  avatarColor: string;
+  avatarUrl?: string | null;
+  isPublicProfile: boolean;
+  defaultRole?: string;
+}
+
+export const MOCK_PUBLIC_ACCOUNTS: PublicAccountOption[] = [
+  {
+    id: 'u-1',
+    name: 'Sarah Chen',
+    username: 'sarahc',
+    email: 'sarah.chen@devflow.io',
+    avatarType: 'icon',
+    avatarId: 'code',
+    avatarColor: '#059669',
+    isPublicProfile: true,
+    defaultRole: 'Engineer',
+  },
+  {
+    id: 'u-2',
+    name: 'Marcus Vance',
+    username: 'marcusv',
+    email: 'marcus.v@devflow.io',
+    avatarType: 'icon',
+    avatarId: 'terminal',
+    avatarColor: '#4F46E5',
+    isPublicProfile: true,
+    defaultRole: 'Lead',
+  },
+  {
+    id: 'u-3',
+    name: 'Elena Rostova',
+    username: 'elenar',
+    email: 'elena.rostova@devflow.io',
+    avatarType: 'icon',
+    avatarId: 'layers',
+    avatarColor: '#C026D3',
+    isPublicProfile: true,
+    defaultRole: 'Designer',
+  },
+  {
+    id: 'u-4',
+    name: 'Liam Becker',
+    username: 'liamb',
+    email: 'liam.b@devflow.io',
+    avatarType: 'icon',
+    avatarId: 'cpu',
+    avatarColor: '#0284C7',
+    isPublicProfile: true,
+    defaultRole: 'Engineer',
+  },
+  {
+    id: 'u-5',
+    name: 'Priya Patel',
+    username: 'priyap',
+    email: 'priya.patel@devflow.io',
+    avatarType: 'icon',
+    avatarId: 'rocket',
+    avatarColor: '#D97706',
+    isPublicProfile: true,
+    defaultRole: 'Product Manager',
+  },
+  {
+    id: 'u-6',
+    name: 'David Kim',
+    username: 'davidk',
+    email: 'david.kim@devflow.io',
+    avatarType: 'icon',
+    avatarId: 'flame',
+    avatarColor: '#E11D48',
+    isPublicProfile: true,
+    defaultRole: 'Engineer',
+  },
+  {
+    id: 'u-7',
+    name: 'Sofia Torres',
+    username: 'sofiat',
+    email: 'sofia.t@devflow.io',
+    avatarType: 'icon',
+    avatarId: 'sparkles',
+    avatarColor: '#7C3AED',
+    isPublicProfile: true,
+    defaultRole: 'Designer',
+  },
+  {
+    id: 'u-8',
+    name: 'Alex Novak',
+    username: 'alexn',
+    email: 'alex.novak@devflow.io',
+    avatarType: 'icon',
+    avatarId: 'zap',
+    avatarColor: '#F59E0B',
+    isPublicProfile: true,
+    defaultRole: 'Engineer',
+  },
+  {
+    id: 'u-9',
+    name: 'Private Member',
+    username: 'secret_dev',
+    email: 'private@devflow.io',
+    avatarType: 'initials',
+    avatarId: 'initials',
+    avatarColor: '#27272A',
+    isPublicProfile: false,
+    defaultRole: 'Viewer',
+  },
+];
 
 export interface ColorOption {
   id: string;

@@ -265,10 +265,23 @@ const createUserSchema = z.object({
   avatarUrl: z.string().url().optional().or(z.literal('')),
 });
 
-// GET /api/users - List all users
-usersRouter.get('/', async (_req: Request, res: Response) => {
+// GET /api/users - List all users (with optional ?search=)
+usersRouter.get('/', async (req: Request, res: Response) => {
   try {
+    const rawSearch = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const cleanSearch = rawSearch.replace(/^@+/, '').toLowerCase();
+
+    const where: any = {};
+    if (cleanSearch) {
+      where.OR = [
+        { username: { contains: cleanSearch } },
+        { name: { contains: cleanSearch } },
+        { email: { contains: cleanSearch } },
+      ];
+    }
+
     const users = await prisma.user.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {

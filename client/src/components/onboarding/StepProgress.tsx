@@ -9,7 +9,7 @@ interface StepProgressProps {
 
 export const StepProgress: React.FC<StepProgressProps> = ({
   currentStep,
-  totalSteps = 4,
+  totalSteps = 5,
   accentColor,
 }) => {
   return (
@@ -55,8 +55,9 @@ export const StepProgress: React.FC<StepProgressProps> = ({
         <span className="text-[10px] uppercase tracking-wider text-zinc-600">
           {currentStep === 1 && 'Profile'}
           {currentStep === 2 && 'Role'}
-          {currentStep === 3 && 'Workspace'}
-          {currentStep === 4 && 'Team Setup'}
+          {currentStep === 3 && 'Goals'}
+          {currentStep === 4 && 'Workspace'}
+          {currentStep === 5 && 'Create Team'}
         </span>
       </div>
     </div>

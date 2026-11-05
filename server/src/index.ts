@@ -7,6 +7,7 @@ import { projectsRouter } from './routes/projects.routes.js';
 import { tasksRouter } from './routes/tasks.routes.js';
 import { seedRouter } from './routes/seed.routes.js';
 import { authRouter } from './routes/auth.routes.js';
+import { teamsRouter } from './routes/teams.routes.js';
 
 dotenv.config();
 
@@ -69,6 +70,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/seed', seedRouter);
+app.use('/api/teams', teamsRouter);
 
 // Root route
 app.get('/', (_req: Request, res: Response) => {

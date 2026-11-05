@@ -12,6 +12,7 @@ import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
 import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { ToastProvider } from './context/ToastContext';
 import { ProfileSettingsPage } from './pages/settings/account/ProfileSettingsPage';
 import { SecuritySettingsPage } from './pages/settings/account/SecuritySettingsPage';
@@ -52,6 +53,7 @@ export const App: React.FC = () => {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<LoginPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/invite/:token" element={<InviteAcceptPage />} />
 
             {/* Authenticated Workspace Application */}
             <Route

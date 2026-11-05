@@ -32,6 +32,7 @@ import { AnimatedSelect, SelectOption } from '../settings/AnimatedSelect';
 import { teamService } from '../../services/team.service';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useAccentTheme } from '../../services/accentTheme.service';
 import { apiUrl } from '../../config/api';
 
 interface CreateTeamModalProps {
@@ -98,6 +99,7 @@ function suggestIdentifier(teamName: string): string {
 export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCreated }) => {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
+  const { accentColor } = useAccentTheme();
 
   // Modal Step State: 1 = Team Identity, 2 = Add Members
   const [step, setStep] = useState<1 | 2>(1);
@@ -647,7 +649,7 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
             <div className="w-full space-y-2.5 shrink-0 pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accentColor }} />
                   <span className="text-[10.5px] font-mono text-zinc-400 uppercase tracking-widest font-semibold">
                     Team Setup
                   </span>
@@ -668,7 +670,7 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
               <div className="w-full space-y-1.5" aria-label={`Step ${step} of 2`}>
                 <div className="flex items-center gap-1.5 w-full">
                   <div className="relative h-1 flex-1 rounded-full overflow-hidden bg-white/[0.08]">
-                    <div className="absolute inset-0 rounded-full bg-[#8B5CF6]" />
+                    <div className="absolute inset-0 rounded-full" style={{ backgroundColor: accentColor }} />
                   </div>
                   <div className="relative h-1 flex-1 rounded-full overflow-hidden bg-white/[0.08]">
                     {step === 2 && (
@@ -676,7 +678,8 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                         initial={{ scaleX: 0, originX: 0 }}
                         animate={{ scaleX: 1 }}
                         transition={{ duration: 0.35, ease: 'easeOut' }}
-                        className="absolute inset-0 rounded-full bg-[#8B5CF6]"
+                        className="absolute inset-0 rounded-full"
+                        style={{ backgroundColor: accentColor }}
                       />
                     )}
                   </div>
@@ -809,7 +812,10 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                         >
                           {teamInitials}
                           {avatarType === 'initials' && (
-                            <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-white bg-[#8B5CF6] text-[7px] shadow">
+                            <div
+                              className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-white text-[7px] shadow"
+                              style={{ backgroundColor: accentColor }}
+                            >
                               <Check size={8} strokeWidth={3} />
                             </div>
                           )}
@@ -842,7 +848,10 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                             >
                               <IconComp size={14} strokeWidth={2.2} />
                               {isSelected && (
-                                <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-white bg-[#8B5CF6] text-[7px] shadow">
+                                <div
+                                  className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-white text-[7px] shadow"
+                                  style={{ backgroundColor: accentColor }}
+                                >
                                   <Check size={8} strokeWidth={3} />
                                 </div>
                               )}
@@ -872,7 +881,10 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                             <MoreHorizontal size={14} />
                           )}
                           {isCurrentMoreIcon && (
-                            <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-white bg-[#8B5CF6] text-[7px] shadow">
+                            <div
+                              className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-white text-[7px] shadow"
+                              style={{ backgroundColor: accentColor }}
+                            >
                               <Check size={8} strokeWidth={3} />
                             </div>
                           )}
@@ -1021,9 +1033,10 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                             onClick={() => setIsAccountOpen((prev) => !prev)}
                             className={`w-full h-[38px] flex items-center justify-between gap-2 px-3 bg-[#111216] border rounded-lg text-xs text-left transition-all outline-none cursor-pointer ${
                               isAccountOpen
-                                ? 'border-[#8B5CF6] ring-1 ring-[#8B5CF6] shadow-md'
+                                ? 'shadow-md'
                                 : 'border-[#27272A] hover:border-zinc-600'
                             }`}
+                            style={isAccountOpen ? { borderColor: accentColor, boxShadow: `0 0 0 1px ${accentColor}` } : {}}
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                               {selectedAccount ? (
@@ -1032,10 +1045,10 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                                   <span className="text-white font-medium truncate">
                                     {selectedAccount.name}
                                   </span>
-                                  <span className="text-[10.5px] font-mono text-[#A78BFA] truncate flex items-center gap-1">
+                                  <span className="text-[10.5px] font-mono text-zinc-400 truncate flex items-center gap-1">
                                     <span
                                       className="w-1.5 h-1.5 rounded-full shrink-0"
-                                      style={{ backgroundColor: selectedAccount.avatarColor || '#8B5CF6' }}
+                                      style={{ backgroundColor: selectedAccount.avatarColor || accentColor }}
                                     />
                                     <span>@{selectedAccount.username || selectedAccount.email.split('@')[0]}</span>
                                   </span>
@@ -1066,8 +1079,9 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                               <ChevronDown
                                 size={13}
                                 className={`text-zinc-500 transition-transform duration-200 ${
-                                  isAccountOpen ? 'rotate-180 text-[#8B5CF6]' : ''
+                                  isAccountOpen ? 'rotate-180' : ''
                                 }`}
+                                style={isAccountOpen ? { color: accentColor } : {}}
                               />
                             </div>
                           </button>
@@ -1136,9 +1150,10 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                                           }}
                                           className={`w-full flex items-center justify-between gap-2 p-2 rounded-lg text-xs text-left transition-all cursor-pointer ${
                                             isSelected
-                                              ? 'bg-[#8B5CF6]/20 text-white font-medium'
+                                              ? 'text-white font-medium'
                                               : 'text-zinc-300 hover:bg-white/[0.06] hover:text-white'
                                           }`}
+                                          style={isSelected ? { backgroundColor: `${accentColor}25` } : {}}
                                         >
                                           <div className="flex items-center gap-2.5 min-w-0">
                                             {renderMemberAvatar(acc, 'w-6 h-6', 11)}
@@ -1189,7 +1204,7 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                             value={selectedRole}
                             onChange={(val) => setSelectedRole(val)}
                             options={ROLE_OPTIONS}
-                            accentColor="#8B5CF6"
+                            accentColor={accentColor}
                             placeholder="Select role..."
                             searchPlaceholder="Filter roles..."
                             className="w-full"
@@ -1204,7 +1219,8 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                           <button
                             type="button"
                             onClick={() => handleAddMember()}
-                            className="h-[38px] w-full sm:w-[38px] rounded-lg font-semibold text-black bg-[#8B5CF6] hover:brightness-110 active:scale-95 shadow-md shadow-[#8B5CF6]/25 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                            className="h-[38px] w-full sm:w-[38px] rounded-lg font-semibold text-black hover:brightness-110 active:scale-95 shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                            style={{ backgroundColor: accentColor, boxShadow: `0 3px 12px ${accentColor}40` }}
                             title="Add member to team"
                           >
                             <span className="sm:hidden text-xs">Add</span>
@@ -1221,12 +1237,15 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                           <span className="text-[11.5px] font-semibold text-zinc-300">
                             Team Members
                           </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-medium bg-[#8B5CF6]/20 text-[#A78BFA]">
+                          <span
+                            className="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-medium"
+                            style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+                          >
                             {teamMembers.length}
                           </span>
                         </div>
                         <span className="text-[10px] text-zinc-400 flex items-center gap-1">
-                          <Sparkles size={10} className="text-[#A78BFA]" />
+                          <Sparkles size={10} style={{ color: accentColor }} />
                           <span>Click avatar to customize icon & color</span>
                         </span>
                       </div>
@@ -1248,7 +1267,8 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                               >
                                 {renderMemberAvatar(member, 'w-7 h-7', 12)}
                                 <div
-                                  className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-[7px] text-zinc-950 shadow bg-[#8B5CF6]"
+                                  className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center text-[7px] text-zinc-950 shadow"
+                                  style={{ backgroundColor: accentColor }}
                                 >
                                   <Palette size={6} strokeWidth={3} />
                                 </div>
@@ -1270,7 +1290,14 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
 
                               {/* Delete / Close or You Badge */}
                               {member.isCurrentUser ? (
-                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium border bg-[#8B5CF6]/20 border-[#8B5CF6]/40 text-[#A78BFA] shrink-0">
+                                <span
+                                  className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium border shrink-0"
+                                  style={{
+                                    backgroundColor: `${accentColor}25`,
+                                    borderColor: `${accentColor}40`,
+                                    color: accentColor,
+                                  }}
+                                >
                                   You
                                 </span>
                               ) : (
@@ -1299,7 +1326,7 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
               </AnimatePresence>
             </div>
 
-            {/* Bottom Navigation Buttons: Fixed to DevFlow standard purple (#8B5CF6), never team color */}
+            {/* Bottom Navigation Buttons: Follows accentColor */}
             <div className="w-full pt-3 border-t border-white/[0.06] flex items-center justify-between shrink-0 bg-[#0C0D10]">
               {step === 1 ? (
                 <button
@@ -1337,7 +1364,8 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                   <button
                     type="button"
                     onClick={handleProceedToStep2}
-                    className="h-9 px-4 rounded-xl text-xs font-semibold text-black bg-[#8B5CF6] hover:brightness-110 active:scale-[0.98] shadow-md shadow-[#8B5CF6]/25 transition-all flex items-center gap-1.5 cursor-pointer"
+                    className="h-9 px-4 rounded-xl text-xs font-semibold text-black hover:brightness-110 active:scale-[0.98] shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    style={{ backgroundColor: accentColor, boxShadow: `0 4px 14px ${accentColor}40` }}
                   >
                     <span>Continue</span>
                     <ArrowRight size={13} strokeWidth={2.5} />
@@ -1347,7 +1375,8 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
                     type="button"
                     onClick={handleCreateTeamSubmit}
                     disabled={isSubmitting}
-                    className="h-9 px-4 rounded-xl text-xs font-semibold text-black bg-[#8B5CF6] hover:brightness-110 active:scale-[0.98] shadow-md shadow-[#8B5CF6]/25 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="h-9 px-4 rounded-xl text-xs font-semibold text-black hover:brightness-110 active:scale-[0.98] shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: accentColor, boxShadow: `0 4px 14px ${accentColor}40` }}
                   >
                     {isSubmitting ? (
                       <>

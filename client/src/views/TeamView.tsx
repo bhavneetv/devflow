@@ -7,15 +7,24 @@ import {
   Copy, Check, AlertCircle, Loader2, Mail, Building2, Plus,
   Filter, UserMinus, Settings, LayoutGrid, List, ArrowLeft, ArrowRight,
   Star, Edit3, Key, Terminal, Code, Sparkles, Globe, UserCheck, RotateCcw,
-  FolderKanban, PieChart, TrendingUp, CheckSquare, Activity, Info
+  FolderKanban, PieChart, TrendingUp, CheckSquare, Activity, Info, Palette, Smile
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { teamService } from '../services/team.service';
 import { authService } from '../services/auth.service';
+import { accountSettingsService } from '../services/accountSettings.service';
 import { CreateTeamModal } from '../components/team/CreateTeamModal';
 import { AVATAR_ICON_COMPONENTS } from '../components/onboarding/StepProfile';
 import { AnimatedSelect, SelectOption } from '../components/settings/AnimatedSelect';
+import { SettingsSectionNav, SettingsCategory } from '../components/settings/SettingsSectionNav';
+import { SettingsSection } from '../components/settings/SettingsSection';
+import { SettingsRow } from '../components/settings/SettingsRow';
+import { AccountSettingsLayout } from '../components/settings/AccountSettingsLayout';
+import { useAccentTheme } from '../services/accentTheme.service';
+import { useNavigation } from '../context/NavigationContext';
+import { QUICK_AVATAR_ICONS, MORE_AVATAR_ICONS, AVATAR_COLORS } from '../types/onboarding';
+import { cn } from '../lib/utils';
 import { apiUrl } from '../config/api';
 import type { Team, TeamMember, TeamInvitation, TeamMemberRole } from '../types/team';
 import { ROLE_LABELS, ROLE_COLORS, ASSIGNABLE_ROLES } from '../types/team';
@@ -68,6 +77,15 @@ const INVITE_ROLE_OPTIONS: SelectOption[] = [
   { value: 'VIEWER', label: 'Viewer', icon: <UserCheck size={14} className="text-zinc-400" />, sublabel: 'Read-only access' },
 ];
 
+const EDIT_ROLE_OPTIONS: SelectOption[] = [
+  { value: 'OWNER', label: 'Lead', icon: <Crown size={14} className="text-amber-400" />, sublabel: 'Leadership & ownership' },
+  { value: 'ADMIN', label: 'Admin', icon: <Shield size={14} className="text-indigo-400" />, sublabel: 'Manage & settings' },
+  { value: 'DEVELOPER', label: 'Engineer', icon: <Users size={14} className="text-emerald-400" />, sublabel: 'Code & reviews' },
+  { value: 'DESIGNER', label: 'Designer', icon: <Sparkles size={14} className="text-purple-400" />, sublabel: 'Design & assets' },
+  { value: 'PROJECT_MANAGER', label: 'Product Manager', icon: <Globe size={14} className="text-blue-400" />, sublabel: 'Roadmaps & sprints' },
+  { value: 'VIEWER', label: 'Viewer', icon: <UserCheck size={14} className="text-zinc-400" />, sublabel: 'Read-only access' },
+];
+
 const ROLE_FILTER_OPTIONS: SelectOption[] = [
   { value: '', label: 'All roles', icon: <Filter size={13} className="text-zinc-400" /> },
   { value: 'OWNER', label: 'Lead', icon: <Crown size={13} className="text-amber-400" />, sublabel: 'Leadership' },
@@ -101,24 +119,62 @@ function getAvatarBg(str: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
+const getCustomMemberAvatar = (
+  userId?: number | string | null
+): { color: string; iconId: string; type: 'initials' | 'icon' } | null => {
+  if (!userId) return null;
+  try {
+    const saved = localStorage.getItem('devflow_team_member_custom_avatars');
+    if (!saved) return null;
+    const map = JSON.parse(saved);
+    return map[String(userId)] || null;
+  } catch {
+    return null;
+  }
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const Avatar: React.FC<{ name: string; avatarUrl?: string | null; size?: number; muted?: boolean }> = ({
-  name, avatarUrl, size = 32, muted = false
+const Avatar: React.FC<{
+  name: string;
+  avatarUrl?: string | null;
+  size?: number;
+  muted?: boolean;
+  avatarColor?: string | null;
+  avatarId?: string | null;
+  avatarType?: 'initials' | 'icon' | 'upload' | string | null;
+  userId?: number | string | null;
+}> = ({
+  name,
+  avatarUrl,
+  size = 32,
+  muted = false,
+  avatarColor,
+  avatarId,
+  avatarType,
+  userId,
 }) => {
-  const bg = getAvatarBg(name);
+  const custom = userId ? getCustomMemberAvatar(userId) : null;
+  const effectiveColor = avatarColor || custom?.color || getAvatarBg(name);
+  const effectiveType = avatarType || custom?.type;
+  const effectiveId = avatarId || custom?.iconId;
+  const IconComp = effectiveType === 'icon' && effectiveId ? (AVATAR_ICON_COMPONENTS[effectiveId] || Sparkles) : null;
+
   return (
     <div
       className="rounded-full flex items-center justify-center shrink-0 overflow-hidden font-semibold text-white shadow-sm"
       style={{
-        width: size, height: size,
-        backgroundColor: avatarUrl ? 'transparent' : bg,
+        width: size,
+        height: size,
+        backgroundColor: avatarUrl ? 'transparent' : effectiveColor,
         fontSize: size * 0.33,
         opacity: muted ? 0.5 : 1,
       }}
     >
       {avatarUrl ? (
         <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
+      ) : IconComp ? (
+        <IconComp size={Math.round(size * 0.52)} strokeWidth={2.2} />
       ) : (
         getInitials(name)
       )}
@@ -210,34 +266,55 @@ const renderTeamAvatar = (
 
 // ─── Audi-Style Overlapping Circle Group for Team Members ───────────────────
 
-const renderMemberAvatarStack = (members: TeamMember[], max: number = 6) => {
+const renderMemberAvatarStack = (
+  members: any[],
+  max: number = 6,
+  onMemberClick?: (member: any) => void
+) => {
   if (!members || members.length === 0) return null;
   const visible = members.slice(0, max);
   const remaining = members.length - max;
 
   return (
     <div className="flex items-center -space-x-2.5 overflow-visible select-none py-0.5">
-      {visible.map((m, idx) => {
-        const bg = getAvatarBg(m.user.name);
+      {visible.map((m: any, idx: number) => {
+        const uName = m?.user?.name || m?.name || 'Member';
+        const uAvatar = m?.user?.avatarUrl || m?.avatarUrl;
+        const uUserId = m?.userId || m?.user?.id || m?.id;
+        const custom = getCustomMemberAvatar(uUserId);
+        const uColor = m?.user?.avatarColor || m?.avatarColor || custom?.color || getAvatarBg(uName);
+        const uType = m?.user?.avatarType || m?.avatarType || custom?.type;
+        const uIconId = m?.user?.avatarId || m?.avatarId || custom?.iconId;
+        const uRole = m?.role ? (ROLE_LABELS[m.role as TeamMemberRole] || m.role) : 'Member';
+        const IconComp = uType === 'icon' && uIconId ? (AVATAR_ICON_COMPONENTS[uIconId] || Sparkles) : null;
+
         return (
           <div
-            key={m.id || idx}
+            key={m?.id || idx}
+            onClick={() => onMemberClick && onMemberClick(m)}
             className="relative rounded-full ring-2 ring-[#0C0D10] overflow-hidden shrink-0 hover:z-30 hover:scale-115 transition-all duration-150 cursor-pointer shadow-md"
             style={{
               width: 30,
               height: 30,
               zIndex: 10 - idx,
             }}
-            title={`${m.user.name} (${ROLE_LABELS[m.role] || m.role})`}
+            title={`${uName} (${uRole})`}
           >
-            {m.user.avatarUrl ? (
-              <img src={m.user.avatarUrl} alt={m.user.name} className="w-full h-full object-cover" />
+            {uAvatar ? (
+              <img src={uAvatar} alt={uName} className="w-full h-full object-cover" />
+            ) : IconComp ? (
+              <div
+                className="w-full h-full flex items-center justify-center font-bold text-white"
+                style={{ backgroundColor: uColor }}
+              >
+                <IconComp size={15} strokeWidth={2.2} />
+              </div>
             ) : (
               <div
                 className="w-full h-full flex items-center justify-center font-bold text-white text-[10px]"
-                style={{ backgroundColor: bg }}
+                style={{ backgroundColor: uColor }}
               >
-                {getInitials(m.user.name)}
+                {getInitials(uName)}
               </div>
             )}
           </div>
@@ -283,6 +360,7 @@ const InviteModal: React.FC<{
   onInvited: (invitation: TeamInvitation, inviteLink: string) => void;
 }> = ({ teamId, teamName, onClose, onInvited }) => {
   const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const [role, setRole] = useState<TeamMemberRole>('DEVELOPER');
   const [remarks, setRemarks] = useState('');
   const [loading, setLoading] = useState(false);
@@ -436,8 +514,8 @@ const InviteModal: React.FC<{
               <p className="text-[11px] text-zinc-500">The link expires in 7 days. The invited user must log in with this account.</p>
               <button
                 onClick={onClose}
-                className="w-full h-9 rounded-lg bg-[#8B5CF6] hover:brightness-110 text-[#0A0B10] text-[13px] font-semibold transition-all cursor-pointer shadow-md"
-                style={{ boxShadow: '0 3px 14px #8B5CF630' }}
+                className="w-full h-9 rounded-lg hover:brightness-110 text-[#0A0B10] text-[13px] font-semibold transition-all cursor-pointer shadow-md"
+                style={{ backgroundColor: accentColor, boxShadow: `0 3px 14px ${accentColor}30` }}
               >
                 Done
               </button>
@@ -463,19 +541,20 @@ const InviteModal: React.FC<{
                   onClick={() => setIsAccountOpen((prev) => !prev)}
                   className={`w-full h-10 flex items-center justify-between gap-2 px-3 bg-[#111216] border rounded-lg text-xs sm:text-[13px] text-left transition-all outline-none cursor-pointer ${
                     isAccountOpen
-                      ? 'border-[#8B5CF6] ring-1 ring-[#8B5CF6] shadow-md'
+                      ? 'shadow-md'
                       : 'border-[#27272A] hover:border-zinc-500'
                   }`}
+                  style={isAccountOpen ? { borderColor: accentColor, boxShadow: `0 0 0 1px ${accentColor}` } : {}}
                 >
                   <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                     {selectedUser ? (
                       <div className="flex items-center gap-2 truncate">
                         <Avatar name={selectedUser.name} avatarUrl={selectedUser.avatarUrl} size={22} />
                         <span className="text-white font-medium truncate">{selectedUser.name}</span>
-                        <span className="text-[11px] font-mono text-[#A78BFA] truncate flex items-center gap-1">
+                        <span className="text-[11px] font-mono text-zinc-400 truncate flex items-center gap-1">
                           <span
                             className="w-1.5 h-1.5 rounded-full shrink-0"
-                            style={{ backgroundColor: selectedUser.avatarColor || '#8B5CF6' }}
+                            style={{ backgroundColor: selectedUser.avatarColor || accentColor }}
                           />
                           <span>@{selectedUser.username || selectedUser.email.split('@')[0]}</span>
                         </span>
@@ -509,8 +588,9 @@ const InviteModal: React.FC<{
                     <ChevronDown
                       size={13}
                       className={`text-zinc-400 transition-transform duration-200 ${
-                        isAccountOpen ? 'rotate-180 text-[#8B5CF6]' : ''
+                        isAccountOpen ? 'rotate-180' : ''
                       }`}
+                      style={isAccountOpen ? { color: accentColor } : {}}
                     />
                   </div>
                 </button>
@@ -616,7 +696,7 @@ const InviteModal: React.FC<{
                   onChange={(val) => setRole(val as TeamMemberRole)}
                   options={INVITE_ROLE_OPTIONS}
                   placeholder="Select role..."
-                  accentColor="#8B5CF6"
+                  accentColor={accentColor}
                 />
               </div>
 
@@ -644,8 +724,8 @@ const InviteModal: React.FC<{
                 <button
                   onClick={handleSend}
                   disabled={!effectiveEmail || loading}
-                  className="flex-1 h-9 rounded-lg bg-[#8B5CF6] hover:brightness-110 text-[#0A0B10] text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
-                  style={{ boxShadow: '0 3px 14px #8B5CF630' }}
+                  className="flex-1 h-9 rounded-lg hover:brightness-110 text-[#0A0B10] text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer"
+                  style={{ backgroundColor: accentColor, boxShadow: `0 3px 14px ${accentColor}30` }}
                 >
                   {loading ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
                   <span>{loading ? 'Sending...' : 'Save & Send Invitation'}</span>
@@ -663,23 +743,64 @@ const InviteModal: React.FC<{
 
 const EditMemberModal: React.FC<{
   member: TeamMember;
+  isSelf: boolean;
   onClose: () => void;
   onSaveRole: (role: TeamMemberRole) => void;
-}> = ({ member, onClose, onSaveRole }) => {
+  onSaveDetails?: (
+    memberId: number,
+    userId: number,
+    role: TeamMemberRole,
+    avatarColor: string,
+    avatarId: string,
+    avatarType: 'initials' | 'icon'
+  ) => void;
+}> = ({ member, isSelf, onClose, onSaveRole, onSaveDetails }) => {
+  const { accentColor } = useAccentTheme();
+  const { user } = useAuth();
+  const customSaved = getCustomMemberAvatar(member.userId);
   const [selectedRole, setSelectedRole] = useState<TeamMemberRole>(member.role);
-  const [remarks, setRemarks] = useState('');
+  const [avatarColor, setAvatarColor] = useState<string>(
+    (member.user as any)?.avatarColor || customSaved?.color || (isSelf ? (user as any)?.avatarColor : null) || getAvatarBg(member.user.name)
+  );
+  const [avatarId, setAvatarId] = useState<string>(
+    (member.user as any)?.avatarId || customSaved?.iconId || (isSelf ? (user as any)?.avatarId : null) || 'smile'
+  );
+  const [avatarType, setAvatarType] = useState<'initials' | 'icon'>(
+    ((member.user as any)?.avatarType || customSaved?.type || (isSelf ? (user as any)?.avatarType : null)) === 'icon' ? 'icon' : 'initials'
+  );
+  const [showMoreModal, setShowMoreModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = () => {
+  const isCurrentMoreIcon =
+    avatarType === 'icon' &&
+    MORE_AVATAR_ICONS.some((m) => m.id === avatarId);
+  const CurrentMoreIconComponent =
+    isCurrentMoreIcon && avatarId ? AVATAR_ICON_COMPONENTS[avatarId] || Sparkles : null;
+
+  const handleSave = async () => {
     setIsSaving(true);
-    onSaveRole(selectedRole);
-    setIsSaving(false);
-    onClose();
+    try {
+      if (onSaveDetails) {
+        await onSaveDetails(
+          member.id,
+          member.userId,
+          selectedRole,
+          avatarColor,
+          avatarId,
+          avatarType
+        );
+      } else {
+        onSaveRole(selectedRole);
+      }
+    } finally {
+      setIsSaving(false);
+      onClose();
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -688,57 +809,265 @@ const EditMemberModal: React.FC<{
         className="relative z-10 w-full max-w-md bg-[#0C0D10] border border-[#27272A] rounded-2xl shadow-2xl overflow-visible"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header with Live Avatar Preview */}
         <div className="flex items-center justify-between p-5 border-b border-[#27272A]">
           <div className="flex items-center gap-3">
-            <Avatar name={member.user.name} avatarUrl={member.user.avatarUrl} size={36} />
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-md transition-all shrink-0 ring-2 ring-white/10 overflow-hidden"
+              style={{ backgroundColor: avatarColor }}
+            >
+              {avatarType === 'icon' && avatarId && AVATAR_ICON_COMPONENTS[avatarId] ? (
+                React.createElement(AVATAR_ICON_COMPONENTS[avatarId], { size: 20, strokeWidth: 2.2 })
+              ) : (
+                <span className="text-sm font-semibold">{getInitials(member.user.name)}</span>
+              )}
+            </div>
             <div>
-              <h2 className="text-[15px] font-semibold text-white">Edit Team Member</h2>
+              <h2 className="text-[15px] font-semibold text-white">
+                {isSelf ? 'Edit My Details' : 'Edit Team Member'}
+              </h2>
               <p className="text-[12px] text-zinc-400 mt-0.5">{member.user.name} · {member.user.email}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+          >
             <X size={15} />
           </button>
         </div>
 
+        {/* Content: Just Role, Color, and Icons */}
         <div className="p-5 space-y-4">
-          <div className="relative z-30">
-            <label className="block text-[12px] font-medium text-zinc-300 mb-1.5">Permission / Role</label>
+          {/* 1. Permission / Role */}
+          <div className="space-y-1.5">
+            <label className="block text-[12px] font-medium text-zinc-300">
+              Role & Permission
+            </label>
             <AnimatedSelect
               value={selectedRole}
               onChange={(val) => setSelectedRole(val as TeamMemberRole)}
-              options={INVITE_ROLE_OPTIONS}
+              options={EDIT_ROLE_OPTIONS}
               placeholder="Select role..."
+              accentColor={accentColor}
             />
           </div>
 
-          <div>
-            <label className="block text-[12px] font-medium text-zinc-300 mb-1.5">
-              Remarks <span className="text-zinc-500">(optional)</span>
-            </label>
-            <textarea
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder="Add remarks or notes about this team member..."
-              rows={3}
-              className="w-full px-3 py-2.5 rounded-lg bg-[#111216] border border-[#27272A] text-[13px] text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition-colors resize-none"
-            />
+          {/* 2. Color Palette */}
+          <div className="space-y-2 pt-2 border-t border-[#27272A]/70">
+            <div className="flex items-center justify-between">
+              <label className="text-[12px] font-medium text-zinc-300 flex items-center gap-1.5">
+                <Palette size={13} style={{ color: accentColor }} />
+                <span>Avatar Color</span>
+              </label>
+              <span className="text-[10.5px] font-mono text-zinc-500">Pick theme</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap py-0.5">
+              {AVATAR_COLORS.map((c) => {
+                const isSelected = avatarColor.toLowerCase() === c.hex.toLowerCase();
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setAvatarColor(c.hex)}
+                    className={`relative w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                      isSelected
+                        ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#0C0D10] shadow-md'
+                        : 'hover:scale-105 opacity-80 hover:opacity-100'
+                    }`}
+                    style={{ backgroundColor: c.hex }}
+                    title={c.name}
+                  >
+                    {isSelected && <Check size={11} strokeWidth={3} className="text-white drop-shadow" />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="flex gap-2 pt-2">
+          {/* 3. Developer Icon / Emoji Selector */}
+          <div className="space-y-2 pt-2 border-t border-[#27272A]/70">
+            <div className="flex items-center justify-between">
+              <label className="text-[12px] font-medium text-zinc-300 flex items-center gap-1.5">
+                <Smile size={13} style={{ color: accentColor }} />
+                <span>Developer Icon</span>
+              </label>
+              <span className="text-[10.5px] font-mono text-zinc-500">
+                {avatarType === 'initials' ? 'Initials active' : 'Icon active'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap relative">
+              {/* Option 1: Initials */}
+              <button
+                type="button"
+                onClick={() => setAvatarType('initials')}
+                className={`relative h-8 px-2.5 rounded-xl text-xs font-mono font-bold flex items-center justify-center transition-all cursor-pointer ${
+                  avatarType === 'initials'
+                    ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0C0D10] shadow-md scale-105 text-white'
+                    : 'border border-[#27272A] bg-[#111216] text-zinc-400 hover:text-white hover:border-zinc-500'
+                }`}
+                style={{
+                  backgroundColor: avatarType === 'initials' ? avatarColor : '#111216',
+                }}
+                title="Use member initials"
+              >
+                <span>{getInitials(member.user.name)}</span>
+                {avatarType === 'initials' && (
+                  <div
+                    className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-black text-[7px] font-bold shadow"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    ✓
+                  </div>
+                )}
+              </button>
+
+              {/* Option 2: 5 Quick Icons */}
+              {QUICK_AVATAR_ICONS.map((iconOpt) => {
+                const isSelected = avatarType === 'icon' && avatarId === iconOpt.id;
+                const IconComponent = AVATAR_ICON_COMPONENTS[iconOpt.id] || Sparkles;
+
+                return (
+                  <button
+                    key={iconOpt.id}
+                    type="button"
+                    onClick={() => {
+                      setAvatarId(iconOpt.id);
+                      setAvatarType('icon');
+                    }}
+                    className={`relative w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                      isSelected
+                        ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0C0D10] shadow-md scale-105'
+                        : 'border border-[#27272A] bg-[#111216] text-zinc-400 hover:text-white hover:border-zinc-500'
+                    }`}
+                    style={{
+                      backgroundColor: isSelected ? avatarColor : '#111216',
+                      color: isSelected ? '#FFFFFF' : undefined,
+                    }}
+                    title={iconOpt.name}
+                  >
+                    <IconComponent size={15} strokeWidth={2.2} />
+                    {isSelected && (
+                      <div
+                        className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-black text-[7px] font-bold shadow"
+                        style={{ backgroundColor: accentColor }}
+                      >
+                        ✓
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Option 3: 3-Dot More Button */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowMoreModal((prev) => !prev)}
+                  className={`relative w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                    isCurrentMoreIcon
+                      ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0C0D10] shadow-md scale-105'
+                      : 'border border-[#27272A] bg-[#111216] text-zinc-400 hover:text-white hover:border-zinc-500'
+                  }`}
+                  style={{
+                    backgroundColor: isCurrentMoreIcon ? avatarColor : '#111216',
+                    color: isCurrentMoreIcon ? '#FFFFFF' : undefined,
+                  }}
+                  title="More developer emoji icons"
+                >
+                  {isCurrentMoreIcon && CurrentMoreIconComponent ? (
+                    <CurrentMoreIconComponent size={15} strokeWidth={2.2} />
+                  ) : (
+                    <MoreHorizontal size={15} />
+                  )}
+                  {isCurrentMoreIcon && (
+                    <div
+                      className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-black text-[7px] font-bold shadow"
+                      style={{ backgroundColor: accentColor }}
+                    >
+                      ✓
+                    </div>
+                  )}
+                </button>
+
+                {/* Popover Emoji Grid Modal */}
+                <AnimatePresence>
+                  {showMoreModal && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                      transition={{ duration: 0.16 }}
+                      className="absolute left-0 bottom-11 z-50 p-3 rounded-2xl bg-[#17181D] border border-[#27272A] shadow-2xl w-72 backdrop-blur-xl"
+                    >
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
+                        <span className="text-[11.5px] font-medium text-white flex items-center gap-1.5">
+                          <Sparkles size={12} style={{ color: accentColor }} />
+                          <span>Choose Emoji ({MORE_AVATAR_ICONS.length})</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowMoreModal(false)}
+                          className="text-zinc-500 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-6 gap-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-700">
+                        {MORE_AVATAR_ICONS.map((iconOpt) => {
+                          const IconComponent = AVATAR_ICON_COMPONENTS[iconOpt.id] || Sparkles;
+                          const isSelected = avatarType === 'icon' && avatarId === iconOpt.id;
+
+                          return (
+                            <button
+                              key={iconOpt.id}
+                              type="button"
+                              onClick={() => {
+                                setAvatarId(iconOpt.id);
+                                setAvatarType('icon');
+                                setShowMoreModal(false);
+                              }}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'text-black font-bold scale-105 shadow'
+                                  : 'hover:bg-white/[0.08] text-zinc-300 hover:text-white'
+                              }`}
+                              style={isSelected ? { backgroundColor: accentColor } : undefined}
+                              title={iconOpt.name}
+                            >
+                              <IconComponent size={14} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2.5 pt-3 border-t border-[#27272A]/70">
             <button
+              type="button"
               onClick={onClose}
-              className="flex-1 h-9 rounded-lg border border-[#27272A] text-zinc-400 hover:text-white text-[13px] font-medium transition-colors hover:bg-white/[0.04] cursor-pointer"
+              disabled={isSaving}
+              className="flex-1 h-9 rounded-xl border border-[#27272A] text-zinc-400 hover:text-white text-[13px] font-medium transition-colors hover:bg-white/[0.04] cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="flex-1 h-9 rounded-lg bg-[#8B5CF6] hover:brightness-110 text-[#0A0B10] text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
-              style={{ boxShadow: '0 3px 14px #8B5CF630' }}
+              className="flex-1 h-9 rounded-xl hover:brightness-110 text-[#0A0B10] text-[13px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: accentColor, boxShadow: `0 3px 14px ${accentColor}35` }}
             >
-              {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              {isSaving ? <Loader2 size={14} className="animate-spin text-black" /> : <Check size={14} strokeWidth={2.5} />}
               <span>Save Changes</span>
             </button>
           </div>
@@ -748,105 +1077,644 @@ const EditMemberModal: React.FC<{
   );
 };
 
-// ─── Team Settings Modal (from Card Setting button) ──────────────────────────
+// ─── Team Settings Full Page Screen (Matching Account Settings Layout) ───────
 
-const TeamSettingsModal: React.FC<{
+const TEAM_SETTINGS_CATEGORIES: SettingsCategory[] = [
+  { id: 'general-information', label: 'General Information' },
+  { id: 'appearance-branding', label: 'Appearance & Branding' },
+  { id: 'members-access', label: 'Members & Access' },
+  { id: 'danger-zone', label: 'Danger Zone' },
+];
+
+const TeamSettingsPage: React.FC<{
   team: any;
-  onClose: () => void;
+  onBack: () => void;
   onUpdated: (updatedTeam: any) => void;
-}> = ({ team, onClose, onUpdated }) => {
+}> = ({ team, onBack, onUpdated }) => {
   const { toast } = useToast();
-  const [name, setName] = useState(team.name);
-  const [color, setColor] = useState(team.color || '#8B5CF6');
-  const [isSaving, setIsSaving] = useState(false);
+  const { accentColor } = useAccentTheme();
+  const { isCollapsed } = useNavigation();
+  const initialMeta = parseTeamMetadata(team.description, team.name);
 
-  const handleSave = async () => {
-    if (!name.trim()) return;
+  const [name, setName] = useState(team.name || '');
+  const [key, setKey] = useState(initialMeta.key || '');
+  const [desc, setDesc] = useState(initialMeta.cleanDesc || '');
+  const [color, setColor] = useState(team.color || accentColor || '#8B5CF6');
+  const [customColor, setCustomColor] = useState(team.color || accentColor || '#8B5CF6');
+  const [icon, setIcon] = useState(initialMeta.icon || 'initials');
+  const [avatarType, setAvatarType] = useState<'initials' | 'icon'>(
+    initialMeta.icon && initialMeta.icon !== 'initials' ? 'icon' : 'initials'
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showMoreModal, setShowMoreModal] = useState(false);
+
+  const isCurrentMoreIcon =
+    avatarType === 'icon' &&
+    MORE_AVATAR_ICONS.some((m) => m.id === icon);
+  const CurrentMoreIconComponent =
+    isCurrentMoreIcon && icon ? AVATAR_ICON_COMPONENTS[icon] || Sparkles : null;
+
+  const teamInitials = key.slice(0, 3) || getInitials(name || team.name || 'Team');
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(window.location.origin + '/teams/' + team.id);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+    toast.success('Link copied', 'Team URL copied to clipboard');
+  };
+
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!name.trim()) {
+      toast.error('Team name cannot be empty');
+      return;
+    }
     setIsSaving(true);
-    const res = await teamService.updateTeam(team.id, { name: name.trim(), color });
+    let serializedDesc = '';
+    if (key.trim()) serializedDesc += `[key:${key.trim().toUpperCase()}] `;
+    if (avatarType === 'icon' && icon && icon !== 'initials') {
+      serializedDesc += `[icon:${icon}] `;
+    }
+    serializedDesc += desc.trim();
+
+    const res = await teamService.updateTeam(team.id, {
+      name: name.trim(),
+      color,
+      description: serializedDesc,
+    });
     setIsSaving(false);
+
     if (res.success && res.data) {
-      toast.success('Team updated successfully');
-      onUpdated(res.data);
-      onClose();
+      toast.success('Team settings saved', 'Team details updated successfully');
+      onUpdated({ ...team, ...res.data, color, description: serializedDesc, name: name.trim() });
     } else {
       toast.error('Failed to update team', res.error);
     }
   };
 
+  const presetColors = [
+    '#8B5CF6', '#6366F1', '#3B82F6', '#06B6D4',
+    '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#27272A'
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 8 }}
-        transition={{ duration: 0.18 }}
-        className="relative z-10 w-full max-w-md bg-[#0C0D10] border border-[#27272A] rounded-2xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-5 border-b border-[#27272A]">
-          <div>
-            <h2 className="text-[15px] font-semibold text-white">Team Settings</h2>
-            <p className="text-[12px] text-zinc-400 mt-0.5">Manage team identity and preferences</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer">
-            <X size={15} />
-          </button>
-        </div>
+    <AccountSettingsLayout>
+      {/* Top Back Navigation Button */}
+      <div className="pt-2 pb-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-400 hover:text-white transition-colors cursor-pointer group"
+        >
+          <ArrowLeft size={14} className="transition-transform duration-150 group-hover:-translate-x-1" />
+          <span>Back to {team.name || 'teams'}</span>
+        </button>
+      </div>
 
-        <div className="p-5 space-y-4">
+      {/* Header and Hero Summary Banner */}
+      <div className="space-y-6 pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <label className="block text-[12px] font-medium text-zinc-300 mb-1.5">Team Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-[#111216] border border-[#27272A] text-[13px] text-white focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition-colors"
-            />
+            <h1 className="text-2xl sm:text-3xl md:text-[32px] font-extrabold text-[#FFFFFF] tracking-tight leading-tight">
+              Team Settings
+            </h1>
+            <p className="text-sm sm:text-[14.5px] text-[#A1A1AA] mt-1.5 leading-relaxed">
+              Manage your team workspace, visual branding, members, and configuration.
+            </p>
           </div>
-
-          <div>
-            <label className="block text-[12px] font-medium text-zinc-300 mb-1.5">Team Theme Color</label>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              {['#8B5CF6', '#6366F1', '#3B82F6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#EC4899'].map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-7 h-7 rounded-full transition-transform cursor-pointer flex items-center justify-center ${
-                    color === c ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#0C0D10]' : 'hover:scale-105'
-                  }`}
-                  style={{ backgroundColor: c }}
-                >
-                  {color === c && <Check size={12} className="text-white" strokeWidth={3} />}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-2">
+          <div className="flex items-center gap-2 self-start sm:self-auto">
             <button
-              onClick={onClose}
-              className="flex-1 h-9 rounded-lg border border-[#27272A] text-zinc-400 hover:text-white text-[13px] font-medium transition-colors hover:bg-white/[0.04] cursor-pointer"
+              type="button"
+              onClick={onBack}
+              className="h-9 px-4 rounded-xl border border-[#27272A] text-zinc-400 hover:text-white text-xs font-medium hover:bg-white/[0.04] transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSave}
               disabled={isSaving || !name.trim()}
-              className="flex-1 h-9 rounded-lg bg-[#8B5CF6] hover:brightness-110 text-[#0A0B10] text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
-              style={{ boxShadow: '0 3px 14px #8B5CF630' }}
+              className="h-9 px-5 rounded-xl hover:brightness-110 active:scale-[0.98] text-[#0A0B10] text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: accentColor, boxShadow: `0 2px 14px ${accentColor}30` }}
             >
-              {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              <span>Save Changes</span>
+              {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={2.5} />}
+              <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
             </button>
           </div>
         </div>
-      </motion.div>
-    </div>
+
+        {/* Hero Profile Summary Banner with Square-Type Card Background matching Screenshot 3 */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-[#161820] to-[#111217] border border-[#27272A] p-6 sm:p-7 shadow-lg flex flex-col items-center justify-center text-center">
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 opacity-[0.03] pointer-events-none"
+            style={{
+              backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)',
+              backgroundSize: '16px 16px',
+            }}
+          />
+
+          {/* Avatar with square-type background & color glow */}
+          <div className="relative mb-3.5 z-10">
+            <div
+              className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-[#27272A] shadow-xl transition-all duration-300 flex items-center justify-center text-white font-mono font-bold text-2xl sm:text-3xl"
+              style={{
+                backgroundColor: color,
+                boxShadow: `0 0 0 3px ${color}30, 0 8px 24px rgba(0,0,0,0.5)`,
+              }}
+            >
+              {avatarType === 'icon' && icon && icon !== 'initials' && AVATAR_ICON_COMPONENTS[icon] ? (
+                React.createElement(AVATAR_ICON_COMPONENTS[icon], { size: 36, strokeWidth: 2.2 })
+              ) : (
+                teamInitials
+              )}
+            </div>
+          </div>
+
+          {/* Name & Key Badge */}
+          <div className="flex items-center justify-center gap-2 z-10">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#F4F4F5] tracking-tight">
+              {name || team.name}
+            </h2>
+            {key && (
+              <span
+                className="px-2 py-0.5 rounded font-mono text-[11px] font-bold border"
+                style={{
+                  backgroundColor: `${color}18`,
+                  borderColor: `${color}40`,
+                  color: color,
+                }}
+              >
+                {key.toUpperCase()}
+              </span>
+            )}
+          </div>
+
+          {/* Creator & Status */}
+          <p className="text-xs sm:text-[13px] text-[#A1A1AA] mt-1 font-mono z-10 flex items-center gap-2">
+            <span>{team.createdBy?.name ? `Created by ${team.createdBy.name}` : 'DevFlow Team Workspace'}</span>
+            <span>•</span>
+            <span className="text-emerald-400 font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Active Workspace
+            </span>
+          </p>
+        </div>
+      </div>
+
+      {/* Sticky Horizontal Category Navigation Bar */}
+      {/* When the user scrolls down, this bar sticks to the top of the screen */}
+      <SettingsSectionNav categories={TEAM_SETTINGS_CATEGORIES} />
+
+      {/* ONE continuous scrollable screen with all sections matching DevFlow Settings layout */}
+      <form onSubmit={handleSave} className="pb-28 space-y-2">
+        {/* ── Section 1: General Information ── */}
+        <SettingsSection
+          id="general-information"
+          title="General Information"
+          description="Configure your team workspace display name, key identifier, and description."
+        >
+          <SettingsRow
+            label="Team Name"
+            description="Used on dashboards, sidebars, issue cards, and project headers."
+            required
+          >
+            <div className="max-w-md">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Frontend Engineering, Product Design"
+                className="w-full h-10 px-3.5 rounded-xl bg-[#111216] border border-[#27272A] text-xs sm:text-[13px] text-white placeholder-zinc-500 focus:outline-none focus:border-[var(--settings-accent)] transition-colors"
+                style={{ '--settings-accent': accentColor } as React.CSSProperties}
+              />
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            label="Team Key / Identifier"
+            description="Short 2-5 letter prefix used for team badges and issue keys."
+          >
+            <div className="max-w-xs space-y-1">
+              <input
+                type="text"
+                maxLength={5}
+                value={key}
+                onChange={(e) => setKey(e.target.value.toUpperCase())}
+                placeholder="e.g. ENG, DES, PROD"
+                className="w-40 h-10 px-3.5 rounded-xl bg-[#111216] border border-[#27272A] text-xs font-mono font-bold text-white placeholder-zinc-500 focus:outline-none focus:border-[var(--settings-accent)] uppercase transition-colors"
+                style={{ '--settings-accent': accentColor } as React.CSSProperties}
+              />
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            label="Team Description"
+            description="Brief overview of this team's mission, stack, and domain."
+          >
+            <div className="max-w-xl">
+              <textarea
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="What does this team build and collaborate on?"
+                rows={3}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111216] border border-[#27272A] text-xs sm:text-[13px] text-white placeholder-zinc-500 focus:outline-none focus:border-[var(--settings-accent)] transition-colors resize-none"
+                style={{ '--settings-accent': accentColor } as React.CSSProperties}
+              />
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            label="Workspace Status"
+            description="Current operational status of this team workspace."
+          >
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-medium text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Active Workspace</span>
+              </span>
+            </div>
+          </SettingsRow>
+        </SettingsSection>
+
+        {/* ── Section 2: Appearance & Branding ── */}
+        <SettingsSection
+          id="appearance-branding"
+          title="Appearance & Branding"
+          description="Customize your team visual identity, avatar style, developer icons, and color palette."
+        >
+          {/* Avatar Style Picker */}
+          <SettingsRow
+            label="Avatar Style"
+            description="Choose whether this team displays initial letters or a developer icon."
+          >
+            <div className="flex items-center gap-2.5 max-w-md">
+              <button
+                type="button"
+                onClick={() => { setAvatarType('initials'); setIcon('initials'); }}
+                className={`flex-1 py-2.5 px-3.5 rounded-xl border text-xs font-medium flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  avatarType === 'initials'
+                    ? 'text-white ring-1 shadow-sm'
+                    : 'border-[#27272A] bg-[#111216] text-zinc-400 hover:text-white'
+                }`}
+                style={
+                  avatarType === 'initials'
+                    ? {
+                        borderColor: accentColor,
+                        backgroundColor: `${accentColor}20`,
+                        boxShadow: `0 0 14px ${accentColor}25`,
+                      }
+                    : undefined
+                }
+              >
+                <span className="w-4 h-4 rounded font-mono font-bold text-[10px] flex items-center justify-center bg-white/20 text-white">
+                  {teamInitials.slice(0, 2)}
+                </span>
+                <span>Team Initials</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAvatarType('icon');
+                  if (!icon || icon === 'initials') setIcon('smile');
+                }}
+                className={`flex-1 py-2.5 px-3.5 rounded-xl border text-xs font-medium flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  avatarType === 'icon'
+                    ? 'text-white ring-1 shadow-sm'
+                    : 'border-[#27272A] bg-[#111216] text-zinc-400 hover:text-white'
+                }`}
+                style={
+                  avatarType === 'icon'
+                    ? {
+                        borderColor: accentColor,
+                        backgroundColor: `${accentColor}20`,
+                        boxShadow: `0 0 14px ${accentColor}25`,
+                      }
+                    : undefined
+                }
+              >
+                <Sparkles size={13} style={{ color: accentColor }} />
+                <span>Developer Icon</span>
+              </button>
+            </div>
+          </SettingsRow>
+
+          {/* Quick Icons + 3-Dot More Modal (exact matching ProfileSettingsPage) */}
+          {avatarType === 'icon' && (
+            <SettingsRow
+              label="Choose Developer Icon"
+              description="Select a quick emoji or open the 3-dot menu for extended developer icons."
+            >
+              <div className="flex items-center gap-2.5 flex-wrap max-w-lg">
+                {/* 5 Quick Icons */}
+                {QUICK_AVATAR_ICONS.map((iconOpt) => {
+                  const isSelected = avatarType === 'icon' && icon === iconOpt.id;
+                  const IconComponent = AVATAR_ICON_COMPONENTS[iconOpt.id] || Sparkles;
+
+                  return (
+                    <button
+                      key={iconOpt.id}
+                      type="button"
+                      onClick={() => {
+                        setIcon(iconOpt.id);
+                        setAvatarType('icon');
+                      }}
+                      className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                        isSelected
+                          ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0C0D10] shadow-md scale-105'
+                          : 'border border-[#27272A] bg-[#111216] text-zinc-400 hover:text-white hover:border-zinc-500'
+                      }`}
+                      style={{
+                        backgroundColor: isSelected ? color : '#111216',
+                        color: isSelected ? '#FFFFFF' : undefined,
+                      }}
+                      title={iconOpt.name}
+                    >
+                      <IconComponent size={16} strokeWidth={2.2} />
+                      {isSelected && (
+                        <div
+                          className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-black text-[8px] font-bold shadow"
+                          style={{ backgroundColor: accentColor }}
+                        >
+                          ✓
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* 3-Dots Button ('More' Emojis Popup) */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowMoreModal((prev) => !prev)}
+                    className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                      isCurrentMoreIcon
+                        ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0C0D10] shadow-md scale-105'
+                        : 'border border-[#27272A] bg-[#111216] text-zinc-400 hover:text-white hover:border-zinc-500'
+                    }`}
+                    style={{
+                      backgroundColor: isCurrentMoreIcon ? color : '#111216',
+                      color: isCurrentMoreIcon ? '#FFFFFF' : undefined,
+                    }}
+                    title="More developer emoji icons"
+                  >
+                    {isCurrentMoreIcon && CurrentMoreIconComponent ? (
+                      <CurrentMoreIconComponent size={16} strokeWidth={2.2} />
+                    ) : (
+                      <MoreHorizontal size={16} />
+                    )}
+                    {isCurrentMoreIcon && (
+                      <div
+                        className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-black text-[8px] font-bold shadow"
+                        style={{ backgroundColor: accentColor }}
+                      >
+                        ✓
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Popover Emoji Grid Modal */}
+                  <AnimatePresence>
+                    {showMoreModal && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                        transition={{ duration: 0.16 }}
+                        className="absolute left-0 bottom-12 z-50 p-3 rounded-2xl bg-[#17181D] border border-[#27272A] shadow-2xl w-72 backdrop-blur-xl"
+                      >
+                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
+                          <span className="text-[11.5px] font-medium text-white flex items-center gap-1.5">
+                            <Sparkles size={12} style={{ color: accentColor }} />
+                            <span>Choose Emoji ({MORE_AVATAR_ICONS.length})</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowMoreModal(false)}
+                            className="text-zinc-500 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-6 gap-1.5 max-h-52 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-700">
+                          {MORE_AVATAR_ICONS.map((iconOpt) => {
+                            const IconComponent = AVATAR_ICON_COMPONENTS[iconOpt.id] || Sparkles;
+                            const isSelected = avatarType === 'icon' && icon === iconOpt.id;
+
+                            return (
+                              <button
+                                key={iconOpt.id}
+                                type="button"
+                                onClick={() => {
+                                  setIcon(iconOpt.id);
+                                  setAvatarType('icon');
+                                  setShowMoreModal(false);
+                                }}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'text-black font-bold scale-105 shadow'
+                                    : 'hover:bg-white/[0.08] text-zinc-300 hover:text-white'
+                                }`}
+                                style={isSelected ? { backgroundColor: accentColor } : undefined}
+                                title={iconOpt.name}
+                              >
+                                <IconComponent size={14} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </SettingsRow>
+          )}
+
+          {/* Theme Color Picker */}
+          <SettingsRow
+            label="Team Theme Color"
+            description="Accent color applied to badges, avatar background, and highlights."
+          >
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {presetColors.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => { setColor(c); setCustomColor(c); }}
+                    className={`w-7 h-7 rounded-full transition-transform cursor-pointer flex items-center justify-center ${
+                      color === c ? 'scale-115 ring-2 ring-white ring-offset-2 ring-offset-[#0C0D10]' : 'hover:scale-105'
+                    }`}
+                    style={{ backgroundColor: c }}
+                    title={c}
+                  >
+                    {color === c && <Check size={12} className="text-white" strokeWidth={3} />}
+                  </button>
+                ))}
+                <div className="flex items-center gap-1.5 pl-2 border-l border-zinc-700">
+                  <input
+                    type="color"
+                    value={customColor}
+                    onChange={(e) => { setCustomColor(e.target.value); setColor(e.target.value); }}
+                    className="w-7 h-7 rounded-full cursor-pointer bg-transparent border-0"
+                    title="Custom color picker"
+                  />
+                  <span className="text-[11px] text-zinc-500 font-mono">{color}</span>
+                </div>
+              </div>
+            </div>
+          </SettingsRow>
+        </SettingsSection>
+
+        {/* ── Section 3: Members & Access ── */}
+        <SettingsSection
+          id="members-access"
+          title="Members & Access"
+          description="View active team members, membership status, and direct invite link."
+        >
+          <SettingsRow
+            label="Active Members"
+            description="Collaborators currently active in this workspace."
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              {team.members && team.members.length > 0 ? (
+                <div className="p-3.5 rounded-2xl bg-[#111216] border border-[#27272A] flex items-center gap-4 max-w-md">
+                  {renderMemberAvatarStack(team.members, 6)}
+
+                  <div className="border-l border-[#27272A] pl-3 py-0.5">
+                    <span className="text-sm font-bold text-white block">
+                      {team.members.length} {team.members.length === 1 ? 'Member' : 'Members'}
+                    </span>
+                    <span className="text-[11px] text-zinc-400">Assigned with roles & permissions</span>
+                  </div>
+                </div>
+              ) : (
+                <span className="text-xs text-zinc-500">No active members yet</span>
+              )}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            label="Pending Invitations"
+            description="Invites sent waiting for recipient confirmation."
+          >
+            <div className="p-3.5 rounded-xl bg-[#111216] border border-[#27272A] inline-flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center">
+                <Clock size={16} />
+              </div>
+              <div>
+                <span className="text-base font-bold text-white block">{team.invitations?.length || 0} Pending</span>
+                <span className="text-[11px] text-zinc-400">Awaiting workspace join response</span>
+              </div>
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            label="Share Team Link"
+            description="Workspace teammates can quickly navigate to this team view using this link."
+          >
+            <div className="max-w-md flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 rounded-lg bg-[#0C0D10] border border-[#27272A] text-xs font-mono text-zinc-300 truncate">
+                {window.location.origin}/teams/{team.id}
+              </code>
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="h-9 px-3 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+              >
+                {copiedLink ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+              </button>
+            </div>
+          </SettingsRow>
+        </SettingsSection>
+
+        {/* ── Section 4: Danger Zone ── */}
+        <SettingsSection
+          id="danger-zone"
+          title="Danger Zone"
+          description="Destructive actions that permanently impact this team workspace."
+        >
+          <div className="p-4 sm:p-5 rounded-2xl bg-red-500/[0.03] border border-red-500/20 space-y-4 max-w-3xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-xs sm:text-[13px] font-semibold text-white block">Archive Team</span>
+                <span className="text-[11px] text-zinc-400">Lock all member activities, boards, and make this team read-only.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => toast.info('Team archived', 'Team workspace has been archived.')}
+                className="px-3.5 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-medium transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+              >
+                Archive Team
+              </button>
+            </div>
+
+            <div className="pt-3.5 border-t border-red-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-xs sm:text-[13px] font-semibold text-red-300 block">Delete Team</span>
+                <span className="text-[11px] text-zinc-500">Permanently delete this team and remove all memberships. This cannot be undone.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => toast.error('Action restricted', 'Only root workspace owner can delete teams.')}
+                className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+              >
+                Delete Team
+              </button>
+            </div>
+          </div>
+        </SettingsSection>
+
+        {/* ── Fixed Bottom Actions Bar matching ProfileSettingsPage ── */}
+        <div
+          className={cn(
+            'fixed bottom-0 right-0 z-40 bg-[#0D0F14]/95 backdrop-blur-xl border-t border-[#27272A] px-6 sm:px-8 py-3.5 flex items-center justify-between shadow-[0_-8px_30px_rgba(0,0,0,0.7)] transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]',
+            isCollapsed ? 'left-0 md:left-[60px]' : 'left-0 md:left-[250px]'
+          )}
+        >
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accentColor }} />
+            <span className="hidden sm:inline font-medium text-white">{name || team.name}</span>
+            <span className="text-zinc-600 hidden sm:inline">•</span>
+            <span className="text-zinc-500 text-[11px] truncate max-w-[200px] sm:max-w-none">
+              Save changes to update workspace profile
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={isSaving}
+              className="px-4 py-2 rounded-lg border border-[#27272A] hover:border-zinc-500 text-xs font-semibold text-[#A1A1AA] hover:text-white bg-[#14161C] hover:bg-[#1A1C23] transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving || !name.trim()}
+              className="px-5 py-2 rounded-lg text-black font-bold text-xs shadow-lg transition-all disabled:opacity-50 cursor-pointer hover:brightness-110 active:scale-[0.98] flex items-center gap-1.5"
+              style={{
+                backgroundColor: accentColor,
+                boxShadow: `0 4px 14px ${accentColor}40`,
+              }}
+            >
+              {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={2.5} />}
+              <span>{isSaving ? 'Saving Changes...' : 'Save Changes'}</span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </AccountSettingsLayout>
   );
 };
+
+const TeamSettingsModal = TeamSettingsPage;
 
 // ─── Active Member Row (List View) ──────────────────────────────────────────
 
@@ -858,6 +1726,8 @@ const MemberRow: React.FC<{
   onRoleChange: (memberId: number, role: TeamMemberRole) => void;
   onRemove: (member: TeamMember) => void;
 }> = ({ member, myRole, currentUserId, onEdit, onRoleChange, onRemove }) => {
+  const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const [showMenu, setShowMenu] = useState(false);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
 
@@ -869,14 +1739,33 @@ const MemberRow: React.FC<{
 
   return (
     <div className="group flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02] transition-colors border-b border-[#27272A]/40 last:border-b-0">
-      <Avatar name={member.user.name} avatarUrl={member.user.avatarUrl} size={34} />
+      <Avatar
+        name={member.user.name}
+        avatarUrl={member.user.avatarUrl}
+        userId={member.userId}
+        avatarColor={(member.user as any)?.avatarColor}
+        avatarId={(member.user as any)?.avatarId}
+        avatarType={(member.user as any)?.avatarType}
+        size={34}
+      />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-medium text-white truncate">{member.user.name}</span>
           {isSelf && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#8B5CF620] text-[#A78BFA] border border-[#8B5CF640] font-medium">
-              You
-            </span>
+            <button
+              type="button"
+              onClick={() => onEdit(member)}
+              className="text-[10px] px-1.5 py-0.5 rounded font-medium border flex items-center gap-1 hover:brightness-125 transition-all cursor-pointer"
+              style={{
+                backgroundColor: `${accentColor}25`,
+                borderColor: `${accentColor}40`,
+                color: accentColor,
+              }}
+              title="Click to edit your details"
+            >
+              <span>You</span>
+              <Edit3 size={9} />
+            </button>
           )}
         </div>
         <span className="text-[11px] text-zinc-500 truncate block">{member.user.email}</span>
@@ -932,7 +1821,7 @@ const MemberRow: React.FC<{
 
       <span className="hidden lg:block text-[11px] text-zinc-500 whitespace-nowrap">{formatDate(member.joinedAt)}</span>
 
-      {/* 3-Dot Dropdown Actions: edit team member, change permission, remove */}
+      {/* 3-Dot Dropdown Actions: edit team member, change permission, copy email, remove/leave */}
       <div className="relative">
         <button
           onClick={() => setShowMenu(!showMenu)}
@@ -952,40 +1841,64 @@ const MemberRow: React.FC<{
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 4, scale: 0.97 }}
                 transition={{ duration: 0.14 }}
-                className="absolute right-0 top-full mt-1 z-20 w-48 bg-[#17181D] border border-[#27272A] rounded-xl shadow-xl overflow-hidden py-1"
+                className="absolute right-0 top-full mt-1 z-20 w-52 bg-[#17181D] border border-[#27272A] rounded-xl shadow-xl overflow-hidden py-1"
               >
-                {canModifyThisMember && (
-                  <>
-                    <button
-                      onClick={() => { setShowMenu(false); onEdit(member); }}
-                      className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
-                    >
-                      <Edit3 size={13} className="text-zinc-400" />
-                      <span>Edit team member</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowMenu(false); setShowRoleDropdown(true); }}
-                      className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
-                    >
-                      <Shield size={13} className="text-indigo-400" />
-                      <span>Change permission</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowMenu(false); onRemove(member); }}
-                      className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer"
-                    >
-                      <UserMinus size={13} />
-                      <span>{isSelf ? 'Leave team' : 'Remove member'}</span>
-                    </button>
-                  </>
+                {isOwner && (
+                  <div className="px-3 py-1.5 border-b border-[#27272A]/70 flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold bg-amber-400/5">
+                    <Crown size={12} className="shrink-0" />
+                    <span>Team Lead / Owner</span>
+                  </div>
                 )}
-                {isSelf && !isOwner && !canModifyThisMember && (
+
+                {(canManage || isSelf) && (
+                  <button
+                    onClick={() => { setShowMenu(false); onEdit(member); }}
+                    className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
+                  >
+                    <Edit3 size={13} className="text-zinc-400" />
+                    <span>{isSelf ? 'Edit my details' : 'Edit team member'}</span>
+                  </button>
+                )}
+
+                {canModifyThisMember && (
+                  <button
+                    onClick={() => { setShowMenu(false); setShowRoleDropdown(true); }}
+                    className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
+                  >
+                    <Shield size={13} className="text-indigo-400" />
+                    <span>Change permission</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    navigator.clipboard.writeText(member.user.email);
+                    toast.success('Email copied', member.user.email);
+                  }}
+                  className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
+                >
+                  <Copy size={13} className="text-zinc-400" />
+                  <span>Copy email</span>
+                </button>
+
+                {isSelf && !isOwner && (
                   <button
                     onClick={() => { setShowMenu(false); onRemove(member); }}
-                    className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer border-t border-[#27272A]/50 mt-1"
                   >
                     <UserMinus size={13} />
                     <span>Leave team</span>
+                  </button>
+                )}
+
+                {!isSelf && canModifyThisMember && (
+                  <button
+                    onClick={() => { setShowMenu(false); onRemove(member); }}
+                    className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer border-t border-[#27272A]/50 mt-1"
+                  >
+                    <Trash2 size={13} />
+                    <span>Remove member</span>
                   </button>
                 )}
               </motion.div>
@@ -1007,6 +1920,8 @@ const MemberCard: React.FC<{
   onRoleChange: (memberId: number, role: TeamMemberRole) => void;
   onRemove: (member: TeamMember) => void;
 }> = ({ member, myRole, currentUserId, onEdit, onRoleChange, onRemove }) => {
+  const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const [showMenu, setShowMenu] = useState(false);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const isSelf = member.userId === currentUserId;
@@ -1020,7 +1935,15 @@ const MemberCard: React.FC<{
         {/* Top: Avatar + Status + 3-dot */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Avatar name={member.user.name} avatarUrl={member.user.avatarUrl} size={38} />
+            <Avatar
+              name={member.user.name}
+              avatarUrl={member.user.avatarUrl}
+              userId={member.userId}
+              avatarColor={(member.user as any)?.avatarColor}
+              avatarId={(member.user as any)?.avatarId}
+              avatarType={(member.user as any)?.avatarType}
+              size={38}
+            />
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10.5px] font-medium text-emerald-400">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span>Active</span>
@@ -1044,40 +1967,64 @@ const MemberCard: React.FC<{
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 4, scale: 0.97 }}
                     transition={{ duration: 0.14 }}
-                    className="absolute right-0 top-full mt-1 z-30 w-48 bg-[#17181D] border border-[#27272A] rounded-xl shadow-xl overflow-hidden py-1"
+                    className="absolute right-0 top-full mt-1 z-30 w-52 bg-[#17181D] border border-[#27272A] rounded-xl shadow-xl overflow-hidden py-1"
                   >
-                    {canModifyThisMember && (
-                      <>
-                        <button
-                          onClick={() => { setShowMenu(false); onEdit(member); }}
-                          className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
-                        >
-                          <Edit3 size={13} className="text-zinc-400" />
-                          <span>Edit team member</span>
-                        </button>
-                        <button
-                          onClick={() => { setShowMenu(false); setShowRoleDropdown(true); }}
-                          className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
-                        >
-                          <Shield size={13} className="text-indigo-400" />
-                          <span>Change permission</span>
-                        </button>
-                        <button
-                          onClick={() => { setShowMenu(false); onRemove(member); }}
-                          className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer"
-                        >
-                          <UserMinus size={13} />
-                          <span>{isSelf ? 'Leave team' : 'Remove member'}</span>
-                        </button>
-                      </>
+                    {isOwner && (
+                      <div className="px-3 py-1.5 border-b border-[#27272A]/70 flex items-center gap-1.5 text-[11px] text-amber-400 font-semibold bg-amber-400/5">
+                        <Crown size={12} className="shrink-0" />
+                        <span>Team Lead / Owner</span>
+                      </div>
                     )}
-                    {isSelf && !isOwner && !canModifyThisMember && (
+
+                    {(canManage || isSelf) && (
+                      <button
+                        onClick={() => { setShowMenu(false); onEdit(member); }}
+                        className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
+                      >
+                        <Edit3 size={13} className="text-zinc-400" />
+                        <span>{isSelf ? 'Edit my details' : 'Edit team member'}</span>
+                      </button>
+                    )}
+
+                    {canModifyThisMember && (
+                      <button
+                        onClick={() => { setShowMenu(false); setShowRoleDropdown(true); }}
+                        className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
+                      >
+                        <Shield size={13} className="text-indigo-400" />
+                        <span>Change permission</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        navigator.clipboard.writeText(member.user.email);
+                        toast.success('Email copied', member.user.email);
+                      }}
+                      className="w-full px-3 py-2 text-left text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <Copy size={13} className="text-zinc-400" />
+                      <span>Copy email</span>
+                    </button>
+
+                    {isSelf && !isOwner && (
                       <button
                         onClick={() => { setShowMenu(false); onRemove(member); }}
-                        className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer"
+                        className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer border-t border-[#27272A]/50 mt-1"
                       >
                         <UserMinus size={13} />
                         <span>Leave team</span>
+                      </button>
+                    )}
+
+                    {!isSelf && canModifyThisMember && (
+                      <button
+                        onClick={() => { setShowMenu(false); onRemove(member); }}
+                        className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer border-t border-[#27272A]/50 mt-1"
+                      >
+                        <Trash2 size={13} />
+                        <span>Remove member</span>
                       </button>
                     )}
                   </motion.div>
@@ -1092,7 +2039,14 @@ const MemberCard: React.FC<{
           <div className="flex items-center gap-2">
             <h4 className="font-semibold text-sm text-white truncate">{member.user.name}</h4>
             {isSelf && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#8B5CF620] text-[#A78BFA] border border-[#8B5CF640] font-medium">
+              <span
+                className="text-[10px] px-1.5 py-0.2 rounded font-medium border"
+                style={{
+                  backgroundColor: `${accentColor}25`,
+                  borderColor: `${accentColor}40`,
+                  color: accentColor,
+                }}
+              >
                 You
               </span>
             )}
@@ -1100,9 +2054,48 @@ const MemberCard: React.FC<{
           <p className="text-xs text-zinc-400 truncate mt-0.5">{member.user.email}</p>
         </div>
 
-        {/* Role badge */}
-        <div>
-          <RoleBadge role={member.role} small />
+        {/* Role badge with interactive dropdown if can modify */}
+        <div className="relative">
+          {canModifyThisMember ? (
+            <div>
+              <button
+                onClick={() => setShowRoleDropdown(!showRoleDropdown)}
+                className="flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer"
+              >
+                <RoleBadge role={member.role} small />
+                <ChevronDown size={10} className="text-zinc-500" />
+              </button>
+              <AnimatePresence>
+                {showRoleDropdown && (
+                  <>
+                    <div className="fixed inset-0 z-20" onClick={() => setShowRoleDropdown(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                      transition={{ duration: 0.14 }}
+                      className="absolute left-0 bottom-full mb-1 z-30 w-48 bg-[#17181D] border border-[#27272A] rounded-xl shadow-xl overflow-hidden py-1"
+                    >
+                      {ASSIGNABLE_ROLES.map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => { onRoleChange(member.userId, r); setShowRoleDropdown(false); }}
+                          className={`w-full px-3 py-2 text-left text-[12px] flex items-center justify-between hover:bg-white/[0.05] transition-colors cursor-pointer ${
+                            member.role === r ? 'text-white font-medium' : 'text-zinc-400'
+                          }`}
+                        >
+                          <span>{DISPLAY_ROLE_LABELS[r] || ROLE_LABELS[r]}</span>
+                          {member.role === r && <Check size={11} className="text-[#A78BFA]" />}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <RoleBadge role={member.role} small />
+          )}
         </div>
       </div>
 
@@ -1561,7 +2554,9 @@ function getDefaultTeamProjects(teamName: string) {
 const TeamActivityLineGraph: React.FC<{
   changes: Array<{ id: string; title: string; time: string; timestamp: number }>;
   accentColor?: string;
-}> = ({ changes, accentColor = '#8B5CF6' }) => {
+}> = ({ changes, accentColor: propAccent }) => {
+  const { accentColor: themeAccent } = useAccentTheme();
+  const accentColor = propAccent || themeAccent;
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const chronological = useMemo(() => {
@@ -1635,8 +2630,8 @@ const TeamActivityLineGraph: React.FC<{
               <stop offset="100%" stopColor={accentColor} stopOpacity="0.0" />
             </linearGradient>
             <linearGradient id="strokeGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#C084FC" />
-              <stop offset="100%" stopColor="#8B5CF6" />
+              <stop offset="0%" stopColor={accentColor} />
+              <stop offset="100%" stopColor={accentColor} />
             </linearGradient>
             <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
               <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor={accentColor} floodOpacity="0.4" />
@@ -1690,8 +2685,11 @@ const TeamActivityLineGraph: React.FC<{
 
         {/* Hover Tooltip */}
         {hoveredIdx !== null && points[hoveredIdx] && (
-          <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-[#181922] border border-[#8B5CF6]/40 text-[10px] text-white shadow-xl pointer-events-none max-w-[200px] truncate">
-            <span className="text-[#A78BFA] font-mono">#{hoveredIdx + 1} </span>
+          <div
+            className="absolute top-2 right-2 px-2 py-1 rounded-md bg-[#181922] border text-[10px] text-white shadow-xl pointer-events-none max-w-[200px] truncate"
+            style={{ borderColor: `${accentColor}40` }}
+          >
+            <span className="font-mono" style={{ color: accentColor }}>#{hoveredIdx + 1} </span>
             <span>{points[hoveredIdx].change.title}</span>
           </div>
         )}
@@ -1708,9 +2706,10 @@ const TeamActivityLineGraph: React.FC<{
               onMouseLeave={() => setHoveredIdx(null)}
               className={`p-2 rounded-lg border transition-all text-left ${
                 isHovered
-                  ? 'bg-[#181924] border-[#8B5CF6]/60 shadow-sm'
+                  ? 'bg-[#181924] shadow-sm'
                   : 'bg-[#111216]/80 border-[#27272A]/50 hover:border-zinc-600'
               }`}
+              style={isHovered ? { borderColor: `${accentColor}60` } : {}}
             >
               <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5 min-w-0">
@@ -1742,6 +2741,7 @@ const TeamDetailsBox: React.FC<{
   userRole: TeamMemberRole;
 }> = ({ team, metadata, onOpenSettings, onLeaveTeam, canManage, userRole }) => {
   const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const [activeTab, setActiveTab] = useState<'projects' | 'details'>('projects');
   const [copiedLink, setCopiedLink] = useState(false);
   const [projects, setProjects] = useState<any[]>(() => getDefaultTeamProjects(team.name));
@@ -1807,7 +2807,7 @@ const TeamDetailsBox: React.FC<{
   const circumference = 2 * Math.PI * 38; // r = 38 => ~238.76
 
   const statusConfigs = [
-    { status: 'IN_PROGRESS', label: 'In Progress', count: statusCounts.IN_PROGRESS, color: '#8B5CF6' },
+    { status: 'IN_PROGRESS', label: 'In Progress', count: statusCounts.IN_PROGRESS, color: accentColor },
     { status: 'COMPLETED', label: 'Completed', count: statusCounts.COMPLETED, color: '#10B981' },
     { status: 'PLANNING', label: 'Planning', count: statusCounts.PLANNING, color: '#F59E0B' },
     { status: 'ARCHIVED', label: 'Archived', count: statusCounts.ARCHIVED, color: '#6B7280' },
@@ -1873,37 +2873,71 @@ const TeamDetailsBox: React.FC<{
         </div>
       </div>
 
-      {/* 2 Tabs: 1st is Projects, 2nd is Details */}
-      <div className="flex items-center p-1 rounded-xl bg-[#111216] border border-[#27272A]/80">
+      {/* 2 Tabs: 1st is Projects, 2nd is Details (Smooth Animated Pill Switcher) */}
+      <div className="relative flex items-center p-1 rounded-xl bg-[#111216] border border-[#27272A]/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]">
         <button
           type="button"
           onClick={() => setActiveTab('projects')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-            activeTab === 'projects'
-              ? 'bg-[#8B5CF6] text-[#0A0B10] shadow-sm'
-              : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-          }`}
+          className="relative flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer select-none"
         >
-          <FolderKanban size={13} />
-          <span>Projects</span>
+          {activeTab === 'projects' && (
+            <motion.div
+              layoutId="teamDetailsTabPill"
+              className="absolute inset-0 rounded-lg shadow-md"
+              style={{
+                backgroundColor: accentColor,
+                boxShadow: `0 2px 12px ${accentColor}40`,
+              }}
+              transition={{ type: 'spring', bounce: 0.18, duration: 0.32 }}
+            />
+          )}
+          <span
+            className={`relative z-10 flex items-center gap-1.5 transition-colors duration-150 ${
+              activeTab === 'projects' ? 'text-black font-bold' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <FolderKanban size={13} />
+            <span>Projects</span>
+          </span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('details')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-            activeTab === 'details'
-              ? 'bg-[#8B5CF6] text-[#0A0B10] shadow-sm'
-              : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-          }`}
+          className="relative flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer select-none"
         >
-          <Info size={13} />
-          <span>Details</span>
+          {activeTab === 'details' && (
+            <motion.div
+              layoutId="teamDetailsTabPill"
+              className="absolute inset-0 rounded-lg shadow-md"
+              style={{
+                backgroundColor: accentColor,
+                boxShadow: `0 2px 12px ${accentColor}40`,
+              }}
+              transition={{ type: 'spring', bounce: 0.18, duration: 0.32 }}
+            />
+          )}
+          <span
+            className={`relative z-10 flex items-center gap-1.5 transition-colors duration-150 ${
+              activeTab === 'details' ? 'text-black font-bold' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Info size={13} />
+            <span>Details</span>
+          </span>
         </button>
       </div>
 
-      {/* ── Tab 1: PROJECTS TAB (Pie Chart & Tasks below) ────────────────── */}
-      {activeTab === 'projects' && (
-        <div className="space-y-4">
+      <AnimatePresence mode="wait">
+        {/* ── Tab 1: PROJECTS TAB (Pie Chart & Tasks below) ────────────────── */}
+        {activeTab === 'projects' ? (
+          <motion.div
+            key="team-tab-projects"
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.16 }}
+            className="space-y-4"
+          >
           {/* Total Projects Pie / Donut Chart */}
           <div className="p-3.5 rounded-xl bg-[#111216] border border-[#27272A]/70 space-y-3">
             <div className="flex items-center justify-between">
@@ -1979,7 +3013,7 @@ const TeamDetailsBox: React.FC<{
               <div className="flex items-center gap-1.5 text-[10px] font-mono">
                 <span className="text-emerald-400">{allTasks.filter((t) => t.status === 'DONE').length} done</span>
                 <span className="text-zinc-600">·</span>
-                <span className="text-[#A78BFA]">{allTasks.filter((t) => t.status === 'IN_PROGRESS').length} in prog</span>
+                <span style={{ color: accentColor }}>{allTasks.filter((t) => t.status === 'IN_PROGRESS').length} in prog</span>
               </div>
             </div>
 
@@ -1998,7 +3032,7 @@ const TeamDetailsBox: React.FC<{
                         {task.status === 'DONE' ? (
                           <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
                         ) : task.status === 'IN_PROGRESS' ? (
-                          <Clock size={13} className="text-[#8B5CF6] shrink-0" />
+                          <Clock size={13} className="shrink-0" style={{ color: accentColor }} />
                         ) : task.status === 'IN_REVIEW' ? (
                           <AlertCircle size={13} className="text-amber-400 shrink-0" />
                         ) : (
@@ -2013,19 +3047,19 @@ const TeamDetailsBox: React.FC<{
                             task.status === 'DONE'
                               ? '#10B98115'
                               : task.status === 'IN_PROGRESS'
-                              ? '#8B5CF618'
+                              ? `${accentColor}25`
                               : '#F59E0B15',
                           borderColor:
                             task.status === 'DONE'
                               ? '#10B98135'
                               : task.status === 'IN_PROGRESS'
-                              ? '#8B5CF635'
+                              ? `${accentColor}40`
                               : '#F59E0B35',
                           color:
                             task.status === 'DONE'
                               ? '#34D399'
                               : task.status === 'IN_PROGRESS'
-                              ? '#C084FC'
+                              ? accentColor
                               : '#FBBF24',
                         }}
                       >
@@ -2051,12 +3085,17 @@ const TeamDetailsBox: React.FC<{
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* ── Tab 2: DETAILS TAB (Details, Dates, Description, Line Graph) ─── */}
-      {activeTab === 'details' && (
-        <div className="space-y-4">
+        </motion.div>
+      ) : (
+        /* ── Tab 2: DETAILS TAB (Details, Dates, Description, Line Graph) ─── */
+        <motion.div
+          key="team-tab-details"
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -5 }}
+          transition={{ duration: 0.16 }}
+          className="space-y-4"
+        >
           {/* Section 1: DETAILS */}
           <div className="space-y-3">
             <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">Details</p>
@@ -2091,17 +3130,20 @@ const TeamDetailsBox: React.FC<{
               <div className="flex items-center justify-between gap-2">
                 <span className="text-zinc-400">Lead:</span>
                 <div className="flex items-center gap-2 truncate max-w-[200px]">
-                  <Avatar name={leadName} avatarUrl={leadAvatar} size={20} />
+                  <Avatar name={leadName} avatarUrl={leadAvatar} userId={leadMember?.userId} size={20} />
                   <span className="text-white font-medium truncate">{leadName}</span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="text-zinc-400">Members:</span>
-                <span className="text-zinc-200 font-mono font-medium">
-                  {team.members.length} active
-                  {team.invitations.length > 0 && ` • ${team.invitations.length} pending`}
-                </span>
+                <div className="flex items-center gap-2">
+                  {renderMemberAvatarStack(team.members, 4)}
+                  <span className="text-zinc-200 font-mono font-medium text-xs">
+                    {team.members.length} active
+                    {team.invitations.length > 0 && ` • ${team.invitations.length} pending`}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -2136,8 +3178,9 @@ const TeamDetailsBox: React.FC<{
             </p>
             <TeamActivityLineGraph changes={recentChanges} accentColor={team.color || '#8B5CF6'} />
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Bottom Actions: Copy link and settings removed; only Leave Team if non-owner */}
       {!isOwner && (
@@ -2163,6 +3206,7 @@ export const TeamView: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
 
   const [teams, setTeams] = useState<any[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -2229,6 +3273,18 @@ export const TeamView: React.FC = () => {
       console.error(e);
     }
   };
+
+  // Persisted custom avatars for team members
+  const [memberAvatarsMap, setMemberAvatarsMap] = useState<
+    Record<string, { color: string; iconId: string; type: 'initials' | 'icon' }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem('devflow_team_member_custom_avatars');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const loadTeamDetail = useCallback(async (id: number) => {
     setTeamLoading(true);
@@ -2372,6 +3428,87 @@ export const TeamView: React.FC = () => {
     } else {
       toast.error('Failed to change role', res.error);
     }
+  };
+
+  const handleSaveMemberDetails = async (
+    memberId: number,
+    userId: number,
+    newRole: TeamMemberRole,
+    avatarColor: string,
+    avatarId: string,
+    avatarType: 'initials' | 'icon'
+  ) => {
+    // 1. If role changed, sync with backend if possible
+    if (selectedTeam) {
+      const currentMember = selectedTeam.members.find((m) => m.userId === userId);
+      if (currentMember && currentMember.role !== newRole) {
+        try {
+          const res = await teamService.changeMemberRole(selectedTeam.id, userId, newRole);
+          if (!res.success) {
+            console.warn('Backend role update notice:', res.error);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+
+    // 2. Persist custom avatar to map and localStorage
+    const updatedMap = {
+      ...memberAvatarsMap,
+      [String(userId)]: { color: avatarColor, iconId: avatarId, type: avatarType },
+    };
+    setMemberAvatarsMap(updatedMap);
+    try {
+      localStorage.setItem('devflow_team_member_custom_avatars', JSON.stringify(updatedMap));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // 3. If editing oneself, update user profile and active session
+    if (user && user.id === userId) {
+      const authUser = authService.getUser();
+      if (authUser) {
+        authService.setSession(authService.getToken() || 'devflow_token', {
+          ...authUser,
+          avatarColor,
+          avatarId,
+          avatarType,
+        });
+      }
+      try {
+        await accountSettingsService.updateProfile({ avatarColor, avatarId, avatarType });
+      } catch (e) {
+        console.error('Failed to sync profile update:', e);
+      }
+    }
+
+    // 4. Update selectedTeam state in-memory so UI immediately reflects role & avatar
+    if (selectedTeam) {
+      setSelectedTeam((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          members: prev.members.map((m) =>
+            m.userId === userId
+              ? {
+                  ...m,
+                  role: newRole,
+                  user: {
+                    ...m.user,
+                    avatarColor,
+                    avatarId,
+                    avatarType,
+                  },
+                }
+              : m
+          ),
+        };
+      });
+    }
+
+    toast.success('Details updated', 'Member details updated successfully');
+    setMemberToEdit(null);
   };
 
   const handleRemoveMember = async () => {
@@ -2532,8 +3669,8 @@ export const TeamView: React.FC = () => {
             action={
               <button
                 onClick={() => setShowCreateTeamModal(true)}
-                className="inline-flex items-center justify-center gap-2 h-10 px-6 rounded-xl bg-[#8B5CF6] hover:brightness-110 text-[#0A0B10] text-sm font-semibold transition-all shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer mx-auto"
-                style={{ boxShadow: '0 4px 18px #8B5CF635' }}
+                className="inline-flex items-center justify-center gap-2 h-10 px-6 rounded-xl hover:brightness-110 text-[#0A0B10] text-sm font-semibold transition-all shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer mx-auto"
+                style={{ backgroundColor: accentColor, boxShadow: `0 4px 18px ${accentColor}35` }}
               >
                 <Plus size={16} strokeWidth={2.5} />
                 <span>Create your first team</span>
@@ -2552,6 +3689,19 @@ export const TeamView: React.FC = () => {
 
   const totalFilteredCount =
     filteredMembers.length + filteredInvitations.length + filteredRemovedMembers.length;
+
+  if (settingsTeam) {
+    return (
+      <TeamSettingsPage
+        team={settingsTeam}
+        onBack={() => setSettingsTeam(null)}
+        onUpdated={(updated) => {
+          handleTeamUpdated(updated);
+          setSettingsTeam(null);
+        }}
+      />
+    );
+  }
 
   return (
     <div className={`w-full ${teamId ? 'pr-4 sm:pr-8 lg:pr-10' : 'max-w-7xl pr-4 sm:pr-8 mr-auto'} pl-4 sm:pl-8 lg:pl-10 pt-4 sm:pt-6 pb-16 space-y-6`}>
@@ -2574,15 +3724,10 @@ export const TeamView: React.FC = () => {
         {memberToEdit && (
           <EditMemberModal
             member={memberToEdit}
+            isSelf={memberToEdit.userId === user?.id}
             onClose={() => setMemberToEdit(null)}
             onSaveRole={(newRole) => handleRoleChange(memberToEdit.userId, newRole)}
-          />
-        )}
-        {settingsTeam && (
-          <TeamSettingsModal
-            team={settingsTeam}
-            onClose={() => setSettingsTeam(null)}
-            onUpdated={handleTeamUpdated}
+            onSaveDetails={handleSaveMemberDetails}
           />
         )}
         {memberToRemove && (
@@ -2615,8 +3760,8 @@ export const TeamView: React.FC = () => {
             <div className="flex items-center gap-2.5">
               <button
                 onClick={() => setShowCreateTeamModal(true)}
-                className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-[#8B5CF6] hover:brightness-110 active:scale-[0.98] text-[#0A0B10] text-xs sm:text-sm font-semibold transition-all shadow-md cursor-pointer"
-                style={{ boxShadow: '0 4px 18px #8B5CF635' }}
+                className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl hover:brightness-110 active:scale-[0.98] text-[#0A0B10] text-xs sm:text-sm font-semibold transition-all shadow-md cursor-pointer"
+                style={{ backgroundColor: accentColor, boxShadow: `0 4px 18px ${accentColor}35` }}
               >
                 <Plus size={16} strokeWidth={2.5} />
                 <span>New team</span>
@@ -2659,9 +3804,10 @@ export const TeamView: React.FC = () => {
                   onClick={() => setTeamsViewMode('grid')}
                   className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                     teamsViewMode === 'grid'
-                      ? 'bg-[#8B5CF6] text-black shadow-sm font-bold'
+                      ? 'text-black shadow-sm font-bold'
                       : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
                   }`}
+                  style={teamsViewMode === 'grid' ? { backgroundColor: accentColor } : {}}
                   title="Grid / Card view"
                 >
                   <LayoutGrid size={15} />
@@ -2671,9 +3817,10 @@ export const TeamView: React.FC = () => {
                   onClick={() => setTeamsViewMode('list')}
                   className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                     teamsViewMode === 'list'
-                      ? 'bg-[#8B5CF6] text-black shadow-sm font-bold'
+                      ? 'text-black shadow-sm font-bold'
                       : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
                   }`}
+                  style={teamsViewMode === 'list' ? { backgroundColor: accentColor } : {}}
                   title="List view"
                 >
                   <List size={15} />
@@ -2789,8 +3936,8 @@ export const TeamView: React.FC = () => {
 
                     {/* Bottom Row: Members count & View team */}
                     <div className="pt-3.5 mt-3.5 border-t border-[#27272A]/70 flex items-center justify-between text-xs text-zinc-400 relative z-10">
-                      <div className="flex items-center gap-1.5">
-                        <Users size={13} className="text-zinc-500" />
+                      <div className="flex items-center gap-2">
+                        {renderMemberAvatarStack(team.members, 3)}
                         <span>
                           {membersCount} {membersCount === 1 ? 'member' : 'members'}
                         </span>
@@ -2858,8 +4005,8 @@ export const TeamView: React.FC = () => {
 
                     {/* Right Side: Members Count + Role Badge + Fav + Settings + Arrow */}
                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                      <div className="hidden sm:flex items-center gap-1.5 text-xs text-zinc-400">
-                        <Users size={13} className="text-zinc-500" />
+                      <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400">
+                        {renderMemberAvatarStack(team.members, 4)}
                         <span>
                           {membersCount} {membersCount === 1 ? 'member' : 'members'}
                         </span>
@@ -2962,7 +4109,14 @@ export const TeamView: React.FC = () => {
             <div className="flex items-center gap-2.5 shrink-0">
               {selectedTeam && selectedTeam.members && selectedTeam.members.length > 0 && (
                 <div className="flex items-center">
-                  {renderMemberAvatarStack(selectedTeam.members, 6)}
+                  {renderMemberAvatarStack(selectedTeam.members, 6, (m) => {
+                    const memberObj = selectedTeam.members.find(
+                      (sm) => sm.userId === (m.userId || m.user?.id || m.id)
+                    );
+                    if (memberObj) {
+                      setMemberToEdit(memberObj);
+                    }
+                  })}
                 </div>
               )}
 
@@ -2990,8 +4144,8 @@ export const TeamView: React.FC = () => {
               {canManageTeam && (
                 <button
                   onClick={() => setShowInviteModal(true)}
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#8B5CF6] hover:brightness-110 text-[#0A0B10] text-[12px] font-semibold transition-all shadow-sm cursor-pointer"
-                  style={{ boxShadow: '0 2px 10px #8B5CF625' }}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg hover:brightness-110 text-[#0A0B10] text-[12px] font-semibold transition-all shadow-sm cursor-pointer"
+                  style={{ backgroundColor: accentColor, boxShadow: `0 2px 10px ${accentColor}25` }}
                 >
                   <UserPlus size={13} />
                   <span>Invite member</span>
@@ -3073,7 +4227,7 @@ export const TeamView: React.FC = () => {
                       options={ROLE_FILTER_OPTIONS}
                       placeholder="All roles"
                       searchPlaceholder="Filter role..."
-                      accentColor="#8B5CF6"
+                      accentColor={accentColor}
                       dropdownMinWidth="w-52"
                     />
                   </div>
@@ -3085,9 +4239,10 @@ export const TeamView: React.FC = () => {
                       onClick={() => setMembersViewMode('list')}
                       className={`p-1.5 rounded-md transition-all cursor-pointer ${
                         membersViewMode === 'list'
-                          ? 'bg-[#8B5CF6] text-black shadow-sm font-bold'
+                          ? 'text-black shadow-sm font-bold'
                           : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
                       }`}
+                      style={membersViewMode === 'list' ? { backgroundColor: accentColor } : {}}
                       title="List view"
                     >
                       <List size={14} />
@@ -3097,9 +4252,10 @@ export const TeamView: React.FC = () => {
                       onClick={() => setMembersViewMode('card')}
                       className={`p-1.5 rounded-md transition-all cursor-pointer ${
                         membersViewMode === 'card'
-                          ? 'bg-[#8B5CF6] text-black shadow-sm font-bold'
+                          ? 'text-black shadow-sm font-bold'
                           : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
                       }`}
+                      style={membersViewMode === 'card' ? { backgroundColor: accentColor } : {}}
                       title="Card view"
                     >
                       <LayoutGrid size={14} />

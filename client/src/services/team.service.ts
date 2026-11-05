@@ -70,6 +70,18 @@ export const teamService = {
     }
   },
 
+  async deleteTeam(teamId: number): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}`), {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete team' };
+    }
+  },
+
   // ─── Members ──────────────────────────────────────────────────────────────
 
   async changeMemberRole(teamId: number, memberId: number, role: TeamMemberRole): Promise<{ success: boolean; data?: TeamMember; error?: string }> {

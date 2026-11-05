@@ -1090,7 +1090,8 @@ const TeamSettingsPage: React.FC<{
   team: any;
   onBack: () => void;
   onUpdated: (updatedTeam: any) => void;
-}> = ({ team, onBack, onUpdated }) => {
+  onDeleted?: (deletedTeamId: number) => void;
+}> = ({ team, onBack, onUpdated, onDeleted }) => {
   const { toast } = useToast();
   const { accentColor } = useAccentTheme();
   const { isCollapsed } = useNavigation();
@@ -1106,6 +1107,8 @@ const TeamSettingsPage: React.FC<{
     initialMeta.icon && initialMeta.icon !== 'initials' ? 'icon' : 'initials'
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showMoreModal, setShowMoreModal] = useState(false);
 
@@ -1150,6 +1153,22 @@ const TeamSettingsPage: React.FC<{
       onUpdated({ ...team, ...res.data, color, description: serializedDesc, name: name.trim() });
     } else {
       toast.error('Failed to update team', res.error);
+    }
+  };
+
+  const handleDeleteTeam = async () => {
+    setIsDeleting(true);
+    const res = await teamService.deleteTeam(team.id);
+    setIsDeleting(false);
+    if (res.success) {
+      toast.success('Team deleted', `"${team.name}" has been permanently removed.`);
+      if (onDeleted) {
+        onDeleted(team.id);
+      } else {
+        onBack();
+      }
+    } else {
+      toast.error('Failed to delete team', res.error || 'Only the team owner can delete this team.');
     }
   };
 
@@ -1661,13 +1680,55 @@ const TeamSettingsPage: React.FC<{
               </div>
               <button
                 type="button"
-                onClick={() => toast.error('Action restricted', 'Only root workspace owner can delete teams.')}
+                onClick={() => setShowDeleteConfirm(true)}
                 className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
               >
                 Delete Team
               </button>
             </div>
           </div>
+
+          {/* Delete confirmation modal */}
+          {showDeleteConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}>
+              <div
+                className="w-full max-w-sm bg-[#0E0E10] border border-red-500/30 rounded-2xl p-5 space-y-4 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-3 text-red-400">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
+                    <Trash2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Delete &ldquo;{name || team.name}&rdquo;?</h3>
+                    <p className="text-[11px] text-zinc-400">This action cannot be undone.</p>
+                  </div>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  All active team member roles, boards, issues, and pending invitations associated with this team will be permanently deleted.
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#27272A]">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={isDeleting}
+                    className="px-3 py-1.5 rounded-lg border border-[#27272A] text-zinc-400 hover:text-white text-xs font-medium cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteTeam}
+                    disabled={isDeleting}
+                    className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    <span>{isDeleting ? 'Deleting...' : 'Yes, Delete Team'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </SettingsSection>
 
         {/* ── Fixed Bottom Actions Bar matching ProfileSettingsPage ── */}
@@ -3698,6 +3759,16 @@ export const TeamView: React.FC = () => {
         onUpdated={(updated) => {
           handleTeamUpdated(updated);
           setSettingsTeam(null);
+        }}
+        onDeleted={(deletedId) => {
+          setTeams((prev) => prev.filter((t) => t.id !== deletedId));
+          setSettingsTeam(null);
+          const remaining = teams.filter((t) => t.id !== deletedId);
+          if (remaining.length > 0) {
+            loadTeamDetail(remaining[0].id);
+          } else {
+            setSelectedTeam(null);
+          }
         }}
       />
     );

@@ -18,6 +18,9 @@ interface AnimatedSelectProps {
   accentColor?: string;
   className?: string;
   disabled?: boolean;
+  dropdownAlign?: 'left' | 'right';
+  dropdownMinWidth?: string;
+  hideSublabelInTrigger?: boolean;
 }
 
 export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
@@ -29,6 +32,9 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
   accentColor = '#8B5CF6',
   className = '',
   disabled = false,
+  dropdownAlign = 'left',
+  dropdownMinWidth = 'w-full sm:min-w-[270px]',
+  hideSublabelInTrigger = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,8 +120,8 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
                 <span className="text-[#F4F4F5] font-medium truncate">
                   {selectedOption.label}
                 </span>
-                {selectedOption.sublabel && (
-                  <span className="text-zinc-500 text-[11px] font-mono truncate">
+                {selectedOption.sublabel && !hideSublabelInTrigger && (
+                  <span className="text-zinc-500 text-[11px] font-mono truncate hidden sm:inline">
                     ({selectedOption.sublabel})
                   </span>
                 )}
@@ -145,7 +151,11 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
             animate={{ opacity: 1, y: 4, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.96 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute left-0 right-0 top-full z-50 p-2 bg-[#14161C]/95 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-72 flex flex-col"
+            className={`absolute ${
+              dropdownAlign === 'right' ? 'right-0' : 'left-0'
+            } top-full z-50 p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-80 flex flex-col ${
+              dropdownMinWidth || 'w-full sm:min-w-[270px]'
+            }`}
           >
             {/* Search Input Bar */}
             <div className="relative mb-2 flex items-center">
@@ -176,7 +186,7 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
             </div>
 
             {/* Options List */}
-            <div className="overflow-y-auto space-y-0.5 pr-1 scrollbar-thin scrollbar-thumb-zinc-700 max-h-52">
+            <div className="overflow-y-auto space-y-0.5 pr-1 scrollbar-thin scrollbar-thumb-zinc-700 max-h-64">
               {filteredOptions.length === 0 ? (
                 <div className="py-4 text-center text-xs text-[#71717A]">
                   No matching options found
@@ -206,7 +216,7 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
                           : undefined
                       }
                     >
-                      <div className="flex items-center gap-2.5 truncate">
+                      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                         {opt.icon && (
                           <motion.span
                             animate={isBeingSelected ? { scale: [1, 1.2, 1], y: [0, -2, 0] } : {}}
@@ -216,15 +226,11 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
                             {opt.icon}
                           </motion.span>
                         )}
-                        <motion.span
-                          animate={isBeingSelected ? { x: [0, 3, 0] } : {}}
-                          transition={{ duration: 0.1 }}
-                          className="truncate"
-                        >
+                        <span className="font-semibold text-white truncate shrink-0">
                           {opt.label}
-                        </motion.span>
+                        </span>
                         {opt.sublabel && (
-                          <span className="text-[10.5px] font-mono text-zinc-500 truncate">
+                          <span className="text-[10px] font-mono text-zinc-400 truncate ml-1">
                             {opt.sublabel}
                           </span>
                         )}

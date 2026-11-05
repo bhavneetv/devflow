@@ -42,6 +42,26 @@ const createTeamSchema = z.object({
   name: z.string().min(2).max(80),
   description: z.string().max(500).optional(),
   color: z.string().optional().default('#8B5CF6'),
+  memberIds: z.array(z.number()).optional(),
+  members: z
+    .array(
+      z.object({
+        userId: z.number(),
+        role: z
+          .enum([
+            'ADMIN',
+            'DEVELOPER',
+            'FRONTEND_DEVELOPER',
+            'BACKEND_DEVELOPER',
+            'TESTER',
+            'DESIGNER',
+            'PROJECT_MANAGER',
+            'VIEWER',
+          ])
+          .optional(),
+      })
+    )
+    .optional(),
 });
 
 // GET /api/teams — list teams the caller is a member of
@@ -88,6 +108,21 @@ teamsRouter.post('/', async (req: Request, res: Response) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
+    const memberCreates: Array<{ userId: number; role: any }> = [{ userId, role: 'OWNER' }];
+    if (parsed.data.members && parsed.data.members.length > 0) {
+      for (const m of parsed.data.members) {
+        if (m.userId !== userId && !memberCreates.some((mc) => mc.userId === m.userId)) {
+          memberCreates.push({ userId: m.userId, role: m.role || 'DEVELOPER' });
+        }
+      }
+    } else if (parsed.data.memberIds && parsed.data.memberIds.length > 0) {
+      for (const mId of parsed.data.memberIds) {
+        if (mId !== userId && !memberCreates.some((mc) => mc.userId === mId)) {
+          memberCreates.push({ userId: mId, role: 'DEVELOPER' });
+        }
+      }
+    }
+
     const team = await prisma.team.create({
       data: {
         name: parsed.data.name,
@@ -95,7 +130,7 @@ teamsRouter.post('/', async (req: Request, res: Response) => {
         color: parsed.data.color,
         createdById: userId,
         members: {
-          create: { userId, role: 'OWNER' },
+          create: memberCreates,
         },
       },
       include: {

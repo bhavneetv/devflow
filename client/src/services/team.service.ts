@@ -27,7 +27,15 @@ export const teamService = {
     }
   },
 
-  async createTeam(data: { name: string; description?: string; color?: string }): Promise<{ success: boolean; data?: TeamSummary; error?: string }> {
+  async createTeam(data: {
+    name: string;
+    description?: string;
+    color?: string;
+    memberIds?: number[];
+    members?: { userId: number; role?: TeamMemberRole }[];
+    identifier?: string;
+    icon?: string;
+  }): Promise<{ success: boolean; data?: TeamSummary; error?: string }> {
     try {
       const res = await fetch(apiUrl('/teams'), {
         method: 'POST',

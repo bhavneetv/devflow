@@ -15,6 +15,22 @@ const registerSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+// GET /api/auth/register - Informative helper for direct browser hits
+authRouter.get('/register', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    message: 'DevFlow registration API endpoint is active. Submit a POST request with name, email, and password to register.',
+  });
+});
+
+// GET /api/auth/login - Informative helper for direct browser hits
+authRouter.get('/login', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    message: 'DevFlow login API endpoint is active. Submit a POST request with email and password to log in.',
+  });
+});
+
 // Helper to guarantee a collision-free username
 async function generateUniqueUsername(baseHandle: string): Promise<string> {
   let clean = (baseHandle || '')

@@ -5,9 +5,13 @@ import {
   SquarePen,
   ArrowLeft,
   FolderKanban,
+  Building2,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useOrganization } from '../../context/OrganizationContext';
+import { useAccentTheme } from '../../services/accentTheme.service';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { OrgAvatar } from '../organization/OrgAvatar';
 import { cn } from '../../lib/utils';
 
 interface SidebarHeaderProps {
@@ -22,6 +26,8 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
     setIsSearchOpen,
     setIsCreateOpen,
   } = useNavigation();
+  const { currentOrganization } = useOrganization();
+  const { accentColor } = useAccentTheme();
 
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -41,7 +47,7 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
     <div
       ref={containerRef}
       className={cn(
-        'relative pt-3 pb-2 select-none transition-all duration-200 overflow-hidden',
+        'relative pt-3 pb-2 select-none transition-all duration-200 overflow-visible z-20',
         isCollapsed ? 'px-2 flex items-center justify-center' : 'px-3'
       )}
     >
@@ -52,28 +58,39 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
             isCollapsed ? 'justify-center w-full' : 'justify-between gap-1'
           )}
         >
-          {/* Workspace Selector trigger */}
+          {/* Organization / Workspace Selector trigger */}
           <button
             onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
             className={cn(
-              'flex items-center rounded-md hover:bg-sidebar-hover text-sidebar-text-active transition-colors duration-150 group',
+              'flex items-center rounded-md hover:bg-sidebar-hover text-sidebar-text-active transition-colors duration-150 group cursor-pointer',
               isCollapsed ? 'p-1.5 justify-center' : 'gap-2 px-2 py-1.5 -ml-1 max-w-[155px]'
             )}
-            title="DevFlow Workspace"
+            title={currentOrganization ? `${currentOrganization.name} (${currentOrganization.slug})` : 'DevFlow Workspace'}
           >
-            {/* Geometric DevFlow Logo */}
-            <div className="w-5 h-5 rounded flex items-center justify-center text-white flex-shrink-0">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-200">
-                <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                <rect x="3" y="14" width="7" height="7" rx="1.5" />
-              </svg>
-            </div>
+            {/* Organization Avatar or DevFlow Logo */}
+            {currentOrganization ? (
+              <OrgAvatar
+                name={currentOrganization.name}
+                logoUrl={currentOrganization.logoUrl}
+                className="w-5 h-5"
+                iconSize={11}
+                roundedClassName="rounded"
+              />
+            ) : (
+              <div className="w-5 h-5 rounded flex items-center justify-center text-white flex-shrink-0">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-200">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              </div>
+            )}
+
             {!isCollapsed && (
               <>
                 <span className="font-semibold text-[13.5px] tracking-tight truncate text-zinc-100">
-                  DevFlow
+                  {currentOrganization?.name || 'DevFlow'}
                 </span>
                 <ChevronDown
                   size={13}

@@ -32,6 +32,7 @@ import { AnimatedSelect, SelectOption } from '../settings/AnimatedSelect';
 import { teamService } from '../../services/team.service';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useOrganization } from '../../context/OrganizationContext';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { apiUrl } from '../../config/api';
 
@@ -99,6 +100,7 @@ function suggestIdentifier(teamName: string): string {
 export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCreated }) => {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
+  const { currentOrganization } = useOrganization();
   const { accentColor } = useAccentTheme();
 
   // Modal Step State: 1 = Team Identity, 2 = Add Members
@@ -461,6 +463,8 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onCre
         memberIds: addedMemberIds,
         identifier: cleanId,
         icon: avatarType === 'icon' ? avatarId : 'initials',
+        organizationId: currentOrganization?.id,
+        organizationSlug: currentOrganization?.slug,
       });
 
       if (res.success && res.data) {

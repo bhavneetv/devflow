@@ -8,6 +8,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useOrganization } from '../../context/OrganizationContext';
 import {
   mainWorkspaceNavItems,
   bottomWorkspaceNavItems,
@@ -15,6 +16,15 @@ import {
 } from '../../config/navigation';
 import { NavigationItem } from './NavigationItem';
 import { NavigationGroup } from './NavigationGroup';
+import {
+  Inbox,
+  LayoutDashboard,
+  CheckSquare,
+  Activity as ActivityIcon,
+  HelpCircle,
+  UserCheck,
+  Users as UsersIcon,
+} from 'lucide-react';
 
 export const SidebarNavigation: React.FC = () => {
   const {
@@ -25,6 +35,7 @@ export const SidebarNavigation: React.FC = () => {
     removeFavorite,
     isCollapsed,
   } = useNavigation();
+  const { currentOrganization } = useOrganization();
 
   // Helper to map icon types for favorites
   const getFavoriteIcon = (type: string) => {
@@ -41,14 +52,81 @@ export const SidebarNavigation: React.FC = () => {
     }
   };
 
+  const orgSlug = currentOrganization?.slug;
+
+  const dynamicMainItems = orgSlug
+    ? [
+        {
+          id: 'inbox',
+          title: 'Inbox',
+          path: '/inbox',
+          icon: Inbox,
+          badge: 7,
+          badgeVariant: 'subtle' as const,
+        },
+        {
+          id: 'overview',
+          title: 'Overview',
+          path: `/organizations/${orgSlug}/overview`,
+          icon: LayoutDashboard,
+        },
+        {
+          id: 'projects',
+          title: 'Projects',
+          path: `/organizations/${orgSlug}/projects`,
+          icon: FolderKanban,
+        },
+        {
+          id: 'my-tasks',
+          title: 'My Tasks',
+          path: '/my-tasks',
+          icon: CheckSquare,
+        },
+        {
+          id: 'teams',
+          title: 'Teams',
+          path: `/organizations/${orgSlug}/teams`,
+          icon: Layers,
+        },
+        {
+          id: 'members',
+          title: 'Members',
+          path: `/organizations/${orgSlug}/members`,
+          icon: UsersIcon,
+        },
+        {
+          id: 'activity',
+          title: 'Activity',
+          path: `/organizations/${orgSlug}/activity`,
+          icon: ActivityIcon,
+        },
+      ]
+    : mainWorkspaceNavItems;
+
+  const dynamicBottomItems = orgSlug
+    ? [
+        {
+          id: 'settings',
+          title: 'Settings',
+          path: `/organizations/${orgSlug}/settings`,
+          icon: Settings,
+        },
+        {
+          id: 'help',
+          title: 'Help & Support',
+          path: '/help',
+          icon: HelpCircle,
+        },
+      ]
+    : bottomWorkspaceNavItems;
+
   return (
     <div className="flex-1 overflow-y-auto px-2 space-y-2 py-1.5 text-sidebar-text">
       {mode === 'workspace' ? (
-        /* Workspace Mode: Exactly the 8 requested items in order + Favorites */
+        /* Workspace Mode: Organization items in order + Favorites */
         <>
-          {/* Items 1 to 6 */}
           <div className="space-y-0.5">
-            {mainWorkspaceNavItems.map((item) => (
+            {dynamicMainItems.map((item) => (
               <NavigationItem
                 key={item.id}
                 title={item.title}
@@ -81,9 +159,9 @@ export const SidebarNavigation: React.FC = () => {
             </NavigationGroup>
           )}
 
-          {/* Items 7 and 8 (Settings, Help & Support) */}
+          {/* Bottom Settings & Help */}
           <div className="pt-2 border-t border-sidebar-border/60 space-y-0.5">
-            {bottomWorkspaceNavItems.map((item) => (
+            {dynamicBottomItems.map((item) => (
               <NavigationItem
                 key={item.id}
                 title={item.title}

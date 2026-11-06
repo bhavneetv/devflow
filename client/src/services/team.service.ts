@@ -18,9 +18,15 @@ async function handleResponse<T>(res: Response): Promise<{ success: boolean; dat
 export const teamService = {
   // ─── Teams ────────────────────────────────────────────────────────────────
 
-  async listTeams(): Promise<{ success: boolean; data?: TeamSummary[]; error?: string }> {
+  async listTeams(params?: { organizationSlug?: string; organizationId?: number }): Promise<{ success: boolean; data?: TeamSummary[]; error?: string }> {
     try {
-      const res = await fetch(apiUrl('/teams'), { headers: getAuthHeaders() });
+      let endpoint = '/teams';
+      if (params?.organizationSlug) {
+        endpoint = `/teams?organizationSlug=${encodeURIComponent(params.organizationSlug)}`;
+      } else if (params?.organizationId) {
+        endpoint = `/teams?organizationId=${params.organizationId}`;
+      }
+      const res = await fetch(apiUrl(endpoint), { headers: getAuthHeaders() });
       return handleResponse(res);
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to fetch teams' };
@@ -35,6 +41,8 @@ export const teamService = {
     members?: { userId: number; role?: TeamMemberRole }[];
     identifier?: string;
     icon?: string;
+    organizationId?: number;
+    organizationSlug?: string;
   }): Promise<{ success: boolean; data?: TeamSummary; error?: string }> {
     try {
       const res = await fetch(apiUrl('/teams'), {

@@ -16,6 +16,13 @@ enum Role {
   VIEWER
 }
 
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
 enum ProjectStatus {
   PLANNING
   IN_PROGRESS
@@ -58,51 +65,132 @@ enum InvitationStatus {
 }
 
 model User {
-  id                  Int              @id @default(autoincrement())
-  email               String           @unique
-  name                String
-  username            String?          @unique
-  role                Role             @default(MEMBER)
-  avatarType          String?          @default("initials")
-  avatarUrl           String?          @db.Text
-  avatarId            String?
-  avatarColor         String?          @default("#8B5CF6")
-  dateOfBirth         String?
-  gender              String?
-  country             String?
-  phoneNumber         String?
-  jobTitle            String?
-  company             String?
-  bio                 String?          @db.Text
-  isPublicProfile     Boolean          @default(true)
-  onboardingCompleted Boolean          @default(false)
-  accentColor         String?          @default("#8B5CF6")
-  githubUrl           String?
-  linkedinUrl         String?
-  websiteUrl          String?
-  projects            Project[]        @relation("ProjectOwner")
-  assignedTasks       Task[]           @relation("TaskAssignee")
-  createdTeams        Team[]           @relation("TeamCreator")
-  teamMemberships     TeamMember[]     @relation("TeamMemberships")
-  sentInvitations     TeamInvitation[] @relation("SentInvitations")
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  id                      Int                      @id @default(autoincrement())
+  email                   String                   @unique
+  name                    String
+  username                String?                  @unique
+  role                    Role                     @default(MEMBER)
+  avatarType              String?                  @default("initials")
+  avatarUrl               String?                  @db.Text
+  avatarId                String?
+  avatarColor             String?                  @default("#8B5CF6")
+  dateOfBirth             String?
+  gender                  String?
+  country                 String?
+  phoneNumber             String?
+  jobTitle                String?
+  company                 String?
+  bio                     String?                  @db.Text
+  isPublicProfile         Boolean                  @default(true)
+  onboardingCompleted     Boolean                  @default(false)
+  accentColor             String?                  @default("#8B5CF6")
+  githubUrl               String?
+  linkedinUrl             String?
+  websiteUrl              String?
+  projects                Project[]                @relation("ProjectOwner")
+  assignedTasks           Task[]                   @relation("TaskAssignee")
+  createdTeams            Team[]                   @relation("TeamCreator")
+  teamMemberships         TeamMember[]             @relation("TeamMemberships")
+  sentInvitations         TeamInvitation[]         @relation("SentInvitations")
+  createdOrganizations    Organization[]           @relation("OrganizationCreator")
+  organizationMemberships OrganizationMember[]     @relation("OrganizationMemberships")
+  orgSentInvitations      OrganizationInvitation[] @relation("OrgSentInvitations")
+  orgActivities           OrganizationActivity[]   @relation("OrgActivityActor")
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
 
   @@map("users")
 }
 
+model Organization {
+  id          Int                      @id @default(autoincrement())
+  name        String
+  slug        String                   @unique
+  description String?                  @db.Text
+  logoUrl     String?                  @db.Text
+  createdById Int
+  createdBy   User                     @relation("OrganizationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  members     OrganizationMember[]
+  invitations OrganizationInvitation[]
+  activities  OrganizationActivity[]
+  teams       Team[]
+  projects    Project[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  @@index([slug])
+  @@index([createdById])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             Int              @id @default(autoincrement())
+  organizationId Int
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         Int
+  user           User             @relation("OrganizationMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  role           OrganizationRole @default(MEMBER)
+  joinedAt       DateTime         @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model OrganizationInvitation {
+  id              Int              @id @default(autoincrement())
+  organizationId  Int
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedById     Int
+  invitedBy       User             @relation("OrgSentInvitations", fields: [invitedById], references: [id], onDelete: Cascade)
+  invitedEmail    String
+  assignedRole    OrganizationRole @default(MEMBER)
+  invitationToken String           @unique
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  createdAt       DateTime         @default(now())
+  acceptedAt      DateTime?
+
+  @@index([organizationId])
+  @@index([invitedEmail])
+  @@index([invitationToken])
+  @@map("organization_invitations")
+}
+
+model OrganizationActivity {
+  id             Int          @id @default(autoincrement())
+  organizationId Int
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorId        Int?
+  actor          User?        @relation("OrgActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action         String
+  resourceType   String
+  resourceId     Int?
+  details        String?      @db.Text
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("organization_activities")
+}
+
 model Project {
-  id          Int           @id @default(autoincrement())
-  title       String
-  description String?       @db.Text
-  status      ProjectStatus @default(IN_PROGRESS)
-  ownerId     Int
-  owner       User          @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  tasks       Task[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             Int           @id @default(autoincrement())
+  title          String
+  description    String?       @db.Text
+  status         ProjectStatus @default(IN_PROGRESS)
+  ownerId        Int
+  owner          User          @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  organizationId Int?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  tasks          Task[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([ownerId])
+  @@index([organizationId])
   @@map("projects")
 }
 
@@ -126,17 +214,20 @@ model Task {
 }
 
 model Team {
-  id          Int              @id @default(autoincrement())
-  name        String
-  description String?          @db.Text
-  color       String           @default("#8B5CF6")
-  createdById Int
-  createdBy   User             @relation("TeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  members     TeamMember[]
-  invitations TeamInvitation[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id             Int              @id @default(autoincrement())
+  name           String
+  description    String?          @db.Text
+  color          String           @default("#8B5CF6")
+  createdById    Int
+  createdBy      User             @relation("TeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  organizationId Int?
+  organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  members        TeamMember[]
+  invitations    TeamInvitation[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
+  @@index([organizationId])
   @@map("teams")
 }
 

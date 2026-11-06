@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import {
   Users, UserPlus, Search, Clock, CheckCircle2, Crown,
-  MoreHorizontal, Shield, Trash2, RefreshCw, X, ChevronDown,
+  MoreHorizontal, Shield, Trash2, RefreshCw, X, ChevronDown, ChevronRight,
   Copy, Check, AlertCircle, Loader2, Mail, Building2, Plus,
   Filter, UserMinus, Settings, LayoutGrid, List, ArrowLeft, ArrowRight,
   Star, Edit3, Key, Terminal, Code, Sparkles, Globe, UserCheck, RotateCcw,
-  FolderKanban, PieChart, TrendingUp, CheckSquare, Activity, Info, Palette, Smile
+  FolderKanban, PieChart, TrendingUp, CheckSquare, Activity, Info, Palette, Smile,
+  Layers
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import { useToast } from '../context/ToastContext';
 import { teamService } from '../services/team.service';
 import { authService } from '../services/auth.service';
@@ -2545,7 +2547,7 @@ function getTeamRecentChanges(team: Team): Array<{ id: string; title: string; ti
     if (m.joinedAt) {
       events.push({
         id: `member-${m.id}`,
-        title: `${m.user.name} joined as ${DISPLAY_ROLE_LABELS[m.role] || m.role}`,
+        title: `${m.user?.name || (m as any).name || 'Member'} joined as ${DISPLAY_ROLE_LABELS[m.role] || m.role}`,
         time: formatDateTime(m.joinedAt),
         timestamp: new Date(m.joinedAt).getTime(),
       });
@@ -3260,14 +3262,528 @@ const TeamDetailsBox: React.FC<{
   );
 };
 
+// ─── Teams Index Recent Details Box (Right Side Panel for Index Page) ────────
+
+const TeamIndexRecentDetailsBox: React.FC<{
+  teams: Team[];
+  focusedTeamId: number | null;
+  onSelectTeam: (teamId: number) => void;
+  onOpenCreateTeam: () => void;
+  teamsBasePath: string;
+}> = ({ teams, focusedTeamId, onSelectTeam, onOpenCreateTeam, teamsBasePath }) => {
+  const navigate = useNavigate();
+  const { accentColor } = useAccentTheme();
+  const [activeTab, setActiveTab] = useState<'projects' | 'teams'>('projects');
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  // Determine active team: either focusedTeamId or first team in list
+  const activeTeam = useMemo(() => {
+    if (focusedTeamId) {
+      const found = teams.find((t) => t.id === focusedTeamId);
+      if (found) return found;
+    }
+    return teams[0] || null;
+  }, [teams, focusedTeamId]);
+
+  const activeMetadata = useMemo(() => {
+    if (!activeTeam) return { key: '', icon: 'initials', cleanDesc: '' };
+    return parseTeamMetadata(activeTeam.description, activeTeam.name);
+  }, [activeTeam]);
+
+  // Fetch real projects from /api/projects
+  useEffect(() => {
+    let isMounted = true;
+    const fetchProjects = async () => {
+      setLoadingProjects(true);
+      try {
+        const token = authService.getToken();
+        const res = await fetch(apiUrl('/projects'), {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        const data = await res.json();
+        if (isMounted && data.success && Array.isArray(data.data) && data.data.length > 0) {
+          setProjects(data.data);
+        } else if (isMounted) {
+          setProjects(getDefaultTeamProjects(activeTeam?.name || 'Workspace'));
+        }
+      } catch {
+        if (isMounted) {
+          setProjects(getDefaultTeamProjects(activeTeam?.name || 'Workspace'));
+        }
+      } finally {
+        if (isMounted) setLoadingProjects(false);
+      }
+    };
+    fetchProjects();
+    return () => { isMounted = false; };
+  }, [activeTeam?.id, activeTeam?.name]);
+
+  // Pie / Donut Chart calculations
+  const statusCounts = useMemo(() => {
+    const counts = { IN_PROGRESS: 0, COMPLETED: 0, PLANNING: 0, ARCHIVED: 0 };
+    projects.forEach((p) => {
+      const s = (p.status || 'IN_PROGRESS') as keyof typeof counts;
+      if (counts[s] !== undefined) counts[s]++;
+      else counts.IN_PROGRESS++;
+    });
+    return counts;
+  }, [projects]);
+
+  const totalProjects = Math.max(projects.length, 1);
+  const circumference = 2 * Math.PI * 38; // r = 38 => ~238.76
+
+  const statusConfigs = [
+    { status: 'IN_PROGRESS', label: 'In Progress', count: statusCounts.IN_PROGRESS, color: accentColor },
+    { status: 'COMPLETED', label: 'Completed', count: statusCounts.COMPLETED, color: '#10B981' },
+    { status: 'PLANNING', label: 'Planning', count: statusCounts.PLANNING, color: '#F59E0B' },
+    { status: 'ARCHIVED', label: 'Archived', count: statusCounts.ARCHIVED, color: '#6B7280' },
+  ];
+
+  let currentOffset = 0;
+  const donutSegments = statusConfigs
+    .filter((cfg) => cfg.count > 0)
+    .map((cfg) => {
+      const slicePct = cfg.count / totalProjects;
+      const sliceLength = slicePct * circumference;
+      const seg = {
+        ...cfg,
+        pct: Math.round(slicePct * 100),
+        length: sliceLength,
+        offset: currentOffset,
+      };
+      currentOffset += sliceLength;
+      return seg;
+    });
+
+  // Extract all tasks across projects for tasks section
+  const allTasks = useMemo(() => {
+    const list: any[] = [];
+    projects.forEach((p) => {
+      (p.tasks || []).forEach((t: any) => {
+        list.push({ ...t, projectTitle: p.title });
+      });
+    });
+    return list;
+  }, [projects]);
+
+  // Lead and activity for active team
+  const leadMember = activeTeam?.members?.find((m: any) => m.role === 'OWNER') || activeTeam?.members?.[0];
+  const leadName = leadMember?.user?.name || (leadMember as any)?.name || activeTeam?.createdBy?.name || 'Team Lead';
+  const leadAvatar = leadMember?.user?.avatarUrl || activeTeam?.createdBy?.avatarUrl;
+  const recentChanges = useMemo(() => {
+    return activeTeam ? getTeamRecentChanges(activeTeam) : [];
+  }, [activeTeam]);
+
+  // Sorted recent teams (latest updated or created)
+  const recentTeamsList = useMemo(() => {
+    return [...teams].slice(0, 5);
+  }, [teams]);
+
+  return (
+    <div className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 shadow-xl space-y-4 text-left">
+      {/* Box Header: Title + Team Indicator + Quick Create */}
+      <div className="flex items-center justify-between pb-3.5 border-b border-[#27272A]/80">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            className="w-3 h-3 rounded-full shrink-0 shadow-sm"
+            style={{ backgroundColor: activeTeam?.color || accentColor }}
+          />
+          <div className="min-w-0">
+            <h3 className="font-bold text-sm text-white truncate tracking-tight">Recent Team Details</h3>
+            <p className="text-[10px] text-zinc-500 font-mono truncate">
+              {activeTeam ? activeTeam.name : `${teams.length} teams`}
+            </p>
+          </div>
+        </div>
+
+        {/* Quick icon actions */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={onOpenCreateTeam}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+            title="Create new team"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* 2 Tabs: 1st is Projects & Tasks, 2nd is Recent Teams (Smooth Animated Pill Switcher) */}
+      <div className="relative flex items-center p-1 rounded-xl bg-[#111216] border border-[#27272A]/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]">
+        <button
+          type="button"
+          onClick={() => setActiveTab('projects')}
+          className="relative flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer select-none"
+        >
+          {activeTab === 'projects' && (
+            <motion.div
+              layoutId="teamIndexRecentDetailsTabPill"
+              className="absolute inset-0 rounded-lg shadow-md"
+              style={{
+                backgroundColor: accentColor,
+                boxShadow: `0 2px 12px ${accentColor}40`,
+              }}
+              transition={{ type: 'spring', bounce: 0.18, duration: 0.32 }}
+            />
+          )}
+          <span
+            className={`relative z-10 flex items-center gap-1.5 transition-colors duration-150 ${
+              activeTab === 'projects' ? 'text-black font-bold' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <FolderKanban size={13} />
+            <span>Projects & Tasks</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('teams')}
+          className="relative flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer select-none"
+        >
+          {activeTab === 'teams' && (
+            <motion.div
+              layoutId="teamIndexRecentDetailsTabPill"
+              className="absolute inset-0 rounded-lg shadow-md"
+              style={{
+                backgroundColor: accentColor,
+                boxShadow: `0 2px 12px ${accentColor}40`,
+              }}
+              transition={{ type: 'spring', bounce: 0.18, duration: 0.32 }}
+            />
+          )}
+          <span
+            className={`relative z-10 flex items-center gap-1.5 transition-colors duration-150 ${
+              activeTab === 'teams' ? 'text-black font-bold' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Users size={13} />
+            <span>Recent Teams</span>
+          </span>
+        </button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {/* ── Tab 1: PROJECTS & TASKS (Pie Chart & Tasks below) ────────────────── */}
+        {activeTab === 'projects' ? (
+          <motion.div
+            key="index-tab-projects"
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.16 }}
+            className="space-y-4"
+          >
+            {/* Total Projects Pie / Donut Chart */}
+            <div className="p-3.5 rounded-xl bg-[#111216] border border-[#27272A]/70 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">
+                  Project Status
+                </span>
+                <span className="text-[11px] font-mono text-[#A78BFA]">
+                  {projects.length} Total
+                </span>
+              </div>
+
+              {/* Donut Chart and Legend */}
+              <div className="flex items-center justify-between gap-3 py-1">
+                {/* SVG Donut */}
+                <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="38"
+                      fill="transparent"
+                      stroke="#1C1D24"
+                      strokeWidth="10"
+                    />
+                    {donutSegments.map((seg, idx) => (
+                      <circle
+                        key={idx}
+                        cx="50"
+                        cy="50"
+                        r="38"
+                        fill="transparent"
+                        stroke={seg.color}
+                        strokeWidth="10"
+                        strokeDasharray={`${seg.length} ${circumference - seg.length}`}
+                        strokeDashoffset={-seg.offset}
+                        strokeLinecap="round"
+                        className="transition-all duration-500"
+                      />
+                    ))}
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-lg font-black text-white">{projects.length}</span>
+                    <span className="text-[9px] font-mono uppercase text-zinc-400 tracking-wider">Projects</span>
+                  </div>
+                </div>
+
+                {/* Status Legend */}
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  {statusConfigs.map((item) => {
+                    const pct = Math.round((item.count / totalProjects) * 100);
+                    return (
+                      <div key={item.status} className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                          <span className="text-zinc-300 truncate">{item.label}</span>
+                        </div>
+                        <span className="text-zinc-400 font-mono shrink-0 ml-1">
+                          {item.count} <span className="text-zinc-600 text-[10px]">({pct}%)</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Tasks Section below chart */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">
+                  Tasks ({allTasks.length})
+                </p>
+                <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                  <span className="text-emerald-400">{allTasks.filter((t) => t.status === 'DONE').length} done</span>
+                  <span className="text-zinc-600">·</span>
+                  <span style={{ color: accentColor }}>{allTasks.filter((t) => t.status === 'IN_PROGRESS').length} in prog</span>
+                </div>
+              </div>
+
+              {/* Tasks List */}
+              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-800">
+                {allTasks.length === 0 ? (
+                  <p className="text-xs text-zinc-500 italic py-2">No tasks created yet</p>
+                ) : (
+                  allTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="p-2 rounded-xl bg-[#111216] border border-[#27272A]/70 hover:border-zinc-600 transition-colors space-y-1 text-left"
+                    >
+                      <div className="flex items-start justify-between gap-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {task.status === 'DONE' ? (
+                            <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                          ) : task.status === 'IN_PROGRESS' ? (
+                            <Clock size={13} className="shrink-0" style={{ color: accentColor }} />
+                          ) : task.status === 'IN_REVIEW' ? (
+                            <AlertCircle size={13} className="text-amber-400 shrink-0" />
+                          ) : (
+                            <CheckSquare size={13} className="text-zinc-500 shrink-0" />
+                          )}
+                          <p className="text-xs font-medium text-white truncate">{task.title}</p>
+                        </div>
+                        <span
+                          className="px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold uppercase shrink-0 border"
+                          style={{
+                            backgroundColor:
+                              task.status === 'DONE'
+                                ? '#10B98115'
+                                : task.status === 'IN_PROGRESS'
+                                ? `${accentColor}25`
+                                : '#F59E0B15',
+                            borderColor:
+                              task.status === 'DONE'
+                                ? '#10B98135'
+                                : task.status === 'IN_PROGRESS'
+                                ? `${accentColor}40`
+                                : '#F59E0B35',
+                            color:
+                              task.status === 'DONE'
+                                ? '#34D399'
+                                : task.status === 'IN_PROGRESS'
+                                ? accentColor
+                                : '#FBBF24',
+                          }}
+                        >
+                          {task.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono pl-5">
+                        <span className="truncate">{task.projectTitle}</span>
+                        {task.priority && (
+                          <span
+                            className={`capitalize text-[9.5px] ${
+                              task.priority === 'HIGH' || task.priority === 'URGENT'
+                                ? 'text-red-400'
+                                : 'text-zinc-400'
+                            }`}
+                          >
+                            {task.priority.toLowerCase()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          /* ── Tab 2: RECENT TEAMS TAB (List of Recent Teams + Focused Details & Activity) ── */
+          <motion.div
+            key="index-tab-teams"
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.16 }}
+            className="space-y-4"
+          >
+            {/* Section 1: Recent Teams Switcher List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">
+                  Recent Teams ({recentTeamsList.length})
+                </p>
+                <span className="text-[10px] text-zinc-500 font-mono">Click to focus</span>
+              </div>
+
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-800">
+                {recentTeamsList.map((t) => {
+                  const tMeta = parseTeamMetadata(t.description, t.name);
+                  const isSelected = activeTeam?.id === t.id;
+                  const mCount = t._count?.members || (t.members?.length ?? 1);
+
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => onSelectTeam(t.id)}
+                      className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                        isSelected
+                          ? 'bg-[#181924] border-zinc-500/80 shadow-sm'
+                          : 'bg-[#111216] border-[#27272A]/70 hover:border-zinc-600 hover:bg-[#14151C]'
+                      }`}
+                      style={isSelected ? { borderColor: `${t.color || accentColor}60` } : {}}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {renderTeamAvatar(t, 'w-7 h-7', 12)}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-white truncate max-w-[120px] sm:max-w-[140px]">
+                              {t.name}
+                            </span>
+                            {tMeta.key && (
+                              <span
+                                className="px-1 py-0.2 rounded font-mono text-[9px] font-semibold border"
+                                style={{
+                                  backgroundColor: `${t.color || '#8B5CF6'}18`,
+                                  borderColor: `${t.color || '#8B5CF6'}40`,
+                                  color: t.color || '#8B5CF6',
+                                }}
+                              >
+                                {tMeta.key}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-zinc-500 font-mono">
+                            {mCount} {mCount === 1 ? 'member' : 'members'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {renderMemberAvatarStack(t.members, 3)}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`${teamsBasePath}/${t.id}`);
+                          }}
+                          className="p-1 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                          title="Open team workspace"
+                        >
+                          <ArrowRight size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section 2: Focused Team Details */}
+            {activeTeam && (
+              <div className="pt-3 border-t border-[#27272A]/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">
+                    Team Overview
+                  </p>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-medium text-emerald-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>ACTIVE</span>
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-zinc-400">Lead:</span>
+                    <div className="flex items-center gap-2 truncate max-w-[200px]">
+                      <Avatar name={leadName} avatarUrl={leadAvatar} userId={leadMember?.userId} size={20} />
+                      <span className="text-white font-medium truncate">{leadName}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-zinc-400">Created:</span>
+                    <span className="text-zinc-300 font-mono text-[11px]">{formatDateTime(activeTeam.createdAt)}</span>
+                  </div>
+
+                  {activeMetadata.cleanDesc && (
+                    <div className="pt-1">
+                      <p className="text-xs text-zinc-400 leading-relaxed bg-[#111216] p-2.5 rounded-xl border border-[#27272A]/60">
+                        {activeMetadata.cleanDesc}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 3: Last Changes Line Graph */}
+                <div className="space-y-2 pt-2 border-t border-[#27272A]/70">
+                  <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 font-mono">
+                    Activity Velocity
+                  </p>
+                  <TeamActivityLineGraph changes={recentChanges} accentColor={activeTeam.color || '#8B5CF6'} />
+                </div>
+
+                {/* Button to Open Team Details */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`${teamsBasePath}/${activeTeam.id}`)}
+                    className="w-full h-8 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-[#27272A] text-zinc-300 hover:text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>View {activeTeam.name}</span>
+                    <ArrowRight size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 // ─── Main TeamView ─────────────────────────────────────────────────────────────
 
 export const TeamView: React.FC = () => {
-  const { teamId } = useParams<{ teamId: string }>();
+  const { organizationSlug, teamId } = useParams<{ organizationSlug?: string; teamId?: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
   const { accentColor } = useAccentTheme();
+  const { currentOrganization } = useOrganization();
+
+  const activeOrgSlug = organizationSlug || currentOrganization?.slug;
+  const teamsBasePath = activeOrgSlug ? `/organizations/${activeOrgSlug}/teams` : '/teams';
 
   const [teams, setTeams] = useState<any[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -3278,6 +3794,7 @@ export const TeamView: React.FC = () => {
   // Teams Index View state
   const [teamsSearchQuery, setTeamsSearchQuery] = useState('');
   const [teamsViewMode, setTeamsViewMode] = useState<'grid' | 'list'>('grid');
+  const [focusedIndexTeamId, setFocusedIndexTeamId] = useState<number | null>(null);
 
   // Favorites state persisted in localStorage
   const [favoriteTeamIds, setFavoriteTeamIds] = useState<number[]>(() => {
@@ -3362,14 +3879,14 @@ export const TeamView: React.FC = () => {
 
   // Load all teams on mount or refresh
   const loadTeamsList = useCallback(async () => {
-    const res = await teamService.listTeams();
+    const res = await teamService.listTeams(activeOrgSlug ? { organizationSlug: activeOrgSlug } : undefined);
     setLoading(false);
     if (res.success && res.data) {
       setTeams(res.data);
     } else {
       setLoadError(res.error || 'Failed to load teams');
     }
-  }, []);
+  }, [activeOrgSlug]);
 
   useEffect(() => {
     loadTeamsList();
@@ -3600,7 +4117,7 @@ export const TeamView: React.FC = () => {
 
       if (memberToRemove.userId === user?.id) {
         loadTeamsList();
-        navigate('/teams');
+        navigate(teamsBasePath);
       } else {
         setSelectedTeam((prev) => prev
           ? { ...prev, members: prev.members.filter((m) => m.userId !== memberToRemove.userId) }
@@ -3637,7 +4154,7 @@ export const TeamView: React.FC = () => {
   const handleTeamCreated = (team: any) => {
     setTeams((prev) => [team, ...prev]);
     setShowCreateTeamModal(false);
-    navigate(`/teams/${team.id}`);
+    navigate(`${teamsBasePath}/${team.id}`);
   };
 
   const handleTeamUpdated = (updatedTeam: any) => {
@@ -3775,7 +4292,7 @@ export const TeamView: React.FC = () => {
   }
 
   return (
-    <div className={`w-full ${teamId ? 'pr-4 sm:pr-8 lg:pr-10' : 'max-w-7xl pr-4 sm:pr-8 mr-auto'} pl-4 sm:pl-8 lg:pl-10 pt-4 sm:pt-6 pb-16 space-y-6`}>
+    <div className={`w-full ${teamId ? 'pr-4 sm:pr-8 lg:pr-10' : 'max-w-[1600px] pr-4 sm:pr-8 mr-auto'} pl-4 sm:pl-8 lg:pl-10 pt-4 sm:pt-6 pb-16 space-y-6`}>
       {/* ── Modals ── */}
       <AnimatePresence>
         {showInviteModal && selectedTeam && (
@@ -3817,6 +4334,22 @@ export const TeamView: React.FC = () => {
          ═══════════════════════════════════════════════════════════════════════ */}
       {!teamId ? (
         <div className="space-y-6">
+          {/* Breadcrumb if inside Organization context */}
+          {activeOrgSlug && (
+            <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <span>Organizations</span>
+              <ChevronRight size={13} className="text-zinc-600" />
+              <Link
+                to={`/organizations/${activeOrgSlug}/overview`}
+                className="text-zinc-300 hover:text-white transition-colors"
+              >
+                {currentOrganization?.name || activeOrgSlug}
+              </Link>
+              <ChevronRight size={13} className="text-zinc-600" />
+              <span className="text-zinc-400 font-medium">Teams</span>
+            </div>
+          )}
+
           {/* Page Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#27272A]/70">
             <div>
@@ -3840,115 +4373,246 @@ export const TeamView: React.FC = () => {
             </div>
           </div>
 
-          {/* Controls Bar: Search Input + Count & View Switcher */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
-              <input
-                type="text"
-                value={teamsSearchQuery}
-                onChange={(e) => setTeamsSearchQuery(e.target.value)}
-                placeholder="Search teams by name, key, description..."
-                className="w-full h-10 pl-9 pr-8 rounded-xl bg-[#111216] border border-[#27272A] text-xs sm:text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400/30 transition-colors"
-              />
-              {teamsSearchQuery && (
-                <button
-                  onClick={() => setTeamsSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white p-1 cursor-pointer"
-                  title="Clear search"
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </div>
+          {/* Main 2-Column Directory Layout: Teams Directory on Left + Recent Details on Right */}
+          <div className="flex flex-col lg:flex-row items-start gap-6 w-full">
+            {/* Left Column: Search & Controls + Cards/List Directory */}
+            <div className="flex-1 w-full lg:min-w-0 space-y-4">
+              {/* Controls Bar: Search Input + Count & View Switcher */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* Search Input */}
+                <div className="relative flex-1 max-w-md">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={teamsSearchQuery}
+                    onChange={(e) => setTeamsSearchQuery(e.target.value)}
+                    placeholder="Search teams by name, key, description..."
+                    className="w-full h-10 pl-9 pr-8 rounded-xl bg-[#111216] border border-[#27272A] text-xs sm:text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400/30 transition-colors"
+                  />
+                  {teamsSearchQuery && (
+                    <button
+                      onClick={() => setTeamsSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white p-1 cursor-pointer"
+                      title="Clear search"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
 
-            {/* View Switcher: Card / List */}
-            <div className="flex items-center gap-3 self-end sm:self-auto">
-              <span className="text-xs font-mono text-zinc-400">
-                {filteredTeams.length} {filteredTeams.length === 1 ? 'team' : 'teams'}
-              </span>
+                {/* View Switcher: Card / List */}
+                <div className="flex items-center gap-3 self-end sm:self-auto">
+                  <span className="text-xs font-mono text-zinc-400">
+                    {filteredTeams.length} {filteredTeams.length === 1 ? 'team' : 'teams'}
+                  </span>
 
-              <div className="p-1 rounded-xl bg-[#111216] border border-[#27272A] flex items-center gap-1 shadow-inner">
-                <button
-                  type="button"
-                  onClick={() => setTeamsViewMode('grid')}
-                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                    teamsViewMode === 'grid'
-                      ? 'text-black shadow-sm font-bold'
-                      : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-                  }`}
-                  style={teamsViewMode === 'grid' ? { backgroundColor: accentColor } : {}}
-                  title="Grid / Card view"
-                >
-                  <LayoutGrid size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTeamsViewMode('list')}
-                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                    teamsViewMode === 'list'
-                      ? 'text-black shadow-sm font-bold'
-                      : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-                  }`}
-                  style={teamsViewMode === 'list' ? { backgroundColor: accentColor } : {}}
-                  title="List view"
-                >
-                  <List size={15} />
-                </button>
+                  <div className="p-1 rounded-xl bg-[#111216] border border-[#27272A] flex items-center gap-1 shadow-inner">
+                    <button
+                      type="button"
+                      onClick={() => setTeamsViewMode('grid')}
+                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                        teamsViewMode === 'grid'
+                          ? 'text-black shadow-sm font-bold'
+                          : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
+                      }`}
+                      style={teamsViewMode === 'grid' ? { backgroundColor: accentColor } : {}}
+                      title="Grid / Card view"
+                    >
+                      <LayoutGrid size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTeamsViewMode('list')}
+                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                        teamsViewMode === 'list'
+                          ? 'text-black shadow-sm font-bold'
+                          : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
+                      }`}
+                      style={teamsViewMode === 'list' ? { backgroundColor: accentColor } : {}}
+                      title="List view"
+                    >
+                      <List size={15} />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Empty Search Results */}
-          {filteredTeams.length === 0 ? (
-            <div className="py-16 text-center">
-              <EmptyState
-                icon={<Search size={22} className="text-zinc-500" />}
-                title={`No teams found matching "${teamsSearchQuery}"`}
-                description="Try checking for typos or searching by another keyword."
-                action={
-                  <button
-                    onClick={() => setTeamsSearchQuery('')}
-                    className="text-xs text-[#A78BFA] hover:underline cursor-pointer"
-                  >
-                    Clear search filter
-                  </button>
-                }
-              />
-            </div>
-          ) : teamsViewMode === 'grid' ? (
-            /* ─── GRID / CARD VIEW (with Favorite and Settings button) ─── */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-              {filteredTeams.map((team) => {
-                const { key, cleanDesc } = parseTeamMetadata(team.description, team.name);
-                const membersCount = team._count?.members || 1;
-                const invitesCount = team._count?.invitations || 0;
-                const isFavorite = favoriteTeamIds.includes(team.id);
+              {/* Empty Search Results / Empty State */}
+              {teams.length === 0 ? (
+                <div className="py-16 text-center">
+                  <EmptyState
+                    icon={<Users size={28} className="text-zinc-500" />}
+                    title="No teams yet"
+                    description="Create your first team to organize members, assign roles, and collaborate on projects."
+                    action={
+                      <button
+                        onClick={() => setShowCreateTeamModal(true)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-black cursor-pointer shadow-md hover:brightness-110 active:scale-[0.98] transition-all"
+                        style={{ backgroundColor: accentColor }}
+                      >
+                        <Plus size={14} />
+                        <span>Create first team</span>
+                      </button>
+                    }
+                  />
+                </div>
+              ) : filteredTeams.length === 0 ? (
+                <div className="py-16 text-center">
+                  <EmptyState
+                    icon={<Search size={22} className="text-zinc-500" />}
+                    title={`No teams found matching "${teamsSearchQuery}"`}
+                    description="Try checking for typos or searching by another keyword."
+                    action={
+                      <button
+                        onClick={() => setTeamsSearchQuery('')}
+                        className="text-xs text-[#A78BFA] hover:underline cursor-pointer"
+                      >
+                        Clear search filter
+                      </button>
+                    }
+                  />
+                </div>
+              ) : teamsViewMode === 'grid' ? (
+                /* ─── GRID / CARD VIEW (with Favorite and Settings button) ─── */
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pt-1">
+                  {filteredTeams.map((team) => {
+                    const { key, cleanDesc } = parseTeamMetadata(team.description, team.name);
+                    const membersCount = team._count?.members || (team.members?.length ?? 1);
+                    const invitesCount = team._count?.invitations || 0;
+                    const isFavorite = favoriteTeamIds.includes(team.id);
 
-                return (
-                  <motion.div
-                    key={team.id}
-                    whileHover={{ y: -3, transition: { duration: 0.18 } }}
-                    onClick={() => navigate(`/teams/${team.id}`)}
-                    className="rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] p-5 hover:border-zinc-500/70 hover:bg-[#12131A] transition-all duration-200 cursor-pointer group flex flex-col justify-between shadow-sm relative overflow-hidden"
-                  >
-                    {/* Ambient Hover Glow */}
-                    <div
-                      className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-2xl pointer-events-none opacity-0 group-hover:opacity-15 transition-opacity duration-300"
-                      style={{ backgroundColor: team.color || '#8B5CF6' }}
-                    />
+                    return (
+                      <motion.div
+                        key={team.id}
+                        whileHover={{ y: -3, transition: { duration: 0.18 } }}
+                        onMouseEnter={() => setFocusedIndexTeamId(team.id)}
+                        onClick={() => navigate(`${teamsBasePath}/${team.id}`)}
+                        className="rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] p-5 hover:border-zinc-500/70 hover:bg-[#12131A] transition-all duration-200 cursor-pointer group flex flex-col justify-between shadow-sm relative overflow-hidden"
+                      >
+                        {/* Ambient Hover Glow */}
+                        <div
+                          className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-2xl pointer-events-none opacity-0 group-hover:opacity-15 transition-opacity duration-300"
+                          style={{ backgroundColor: team.color || '#8B5CF6' }}
+                        />
 
-                    <div className="space-y-3.5 relative z-10">
-                      {/* Top Row: Avatar + Key + Role + Favorite & Settings Buttons */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-3 min-w-0">
-                          {renderTeamAvatar(team, 'w-11 h-11', 18)}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                        <div className="space-y-3.5 relative z-10">
+                          {/* Top Row: Avatar + Key + Role + Favorite & Settings Buttons */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-3 min-w-0">
+                              {renderTeamAvatar(team, 'w-11 h-11', 18)}
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  {key && (
+                                    <span
+                                      className="px-1.5 py-0.5 rounded font-mono text-[10.5px] font-semibold border"
+                                      style={{
+                                        backgroundColor: `${team.color || '#8B5CF6'}18`,
+                                        borderColor: `${team.color || '#8B5CF6'}40`,
+                                        color: team.color || '#8B5CF6',
+                                      }}
+                                    >
+                                      {key}
+                                    </span>
+                                  )}
+                                  <RoleBadge role={team.myRole || 'OWNER'} small />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Fav button & Setting button */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFavoriteTeam(team.id);
+                                }}
+                                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                  isFavorite
+                                    ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 shadow-sm'
+                                    : 'text-zinc-500 hover:text-amber-400 hover:bg-white/[0.06]'
+                                }`}
+                                title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                              >
+                                <Star size={15} className={isFavorite ? 'fill-amber-400' : ''} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSettingsTeam(team);
+                                }}
+                                className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer"
+                                title="Team settings"
+                              >
+                                <Settings size={15} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Team Name & Description */}
+                          <div>
+                            <h3 className="font-bold text-base text-white group-hover:text-[#A78BFA] transition-colors truncate">
+                              {team.name}
+                            </h3>
+                            <p className="text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed min-h-[32px]">
+                              {cleanDesc || 'Collaborative team workspace on DevFlow'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Bottom Row: Members count & View team */}
+                        <div className="pt-3.5 mt-3.5 border-t border-[#27272A]/70 flex items-center justify-between text-xs text-zinc-400 relative z-10">
+                          <div className="flex items-center gap-2">
+                            {renderMemberAvatarStack(team.members, 3)}
+                            <span>
+                              {membersCount} {membersCount === 1 ? 'member' : 'members'}
+                            </span>
+                            {invitesCount > 0 && (
+                              <span className="text-amber-400/90 text-[11px] font-mono">
+                                · {invitesCount} pending
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 text-[11.5px] font-medium text-zinc-400 group-hover:text-white transition-colors">
+                            <span>View team</span>
+                            <ArrowRight size={13} className="transition-transform duration-200 group-hover:translate-x-1" />
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* ─── LIST VIEW (with Favorite and Settings button) ─── */
+                <div className="flex flex-col gap-2 pt-1">
+                  {filteredTeams.map((team) => {
+                    const { key, cleanDesc } = parseTeamMetadata(team.description, team.name);
+                    const membersCount = team._count?.members || 1;
+                    const invitesCount = team._count?.invitations || 0;
+                    const isFavorite = favoriteTeamIds.includes(team.id);
+
+                    return (
+                      <motion.div
+                        key={team.id}
+                        whileHover={{ x: 2, transition: { duration: 0.15 } }}
+                        onMouseEnter={() => setFocusedIndexTeamId(team.id)}
+                        onClick={() => navigate(`${teamsBasePath}/${team.id}`)}
+                        className="rounded-xl bg-[#0E0F14]/90 border border-[#27272A] px-4 py-3 sm:px-5 sm:py-3.5 hover:border-zinc-500/70 hover:bg-[#12131A] transition-all duration-150 cursor-pointer group flex items-center justify-between gap-4 shadow-sm"
+                      >
+                        {/* Left Side: Avatar + Name + Key + Description */}
+                        <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                          {renderTeamAvatar(team, 'w-9 h-9', 16)}
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-white group-hover:text-[#A78BFA] transition-colors truncate">
+                                {team.name}
+                              </span>
                               {key && (
                                 <span
-                                  className="px-1.5 py-0.5 rounded font-mono text-[10.5px] font-semibold border"
+                                  className="px-1.5 py-0.2 rounded font-mono text-[10px] font-semibold border"
                                   style={{
                                     backgroundColor: `${team.color || '#8B5CF6'}18`,
                                     borderColor: `${team.color || '#8B5CF6'}40`,
@@ -3958,13 +4622,31 @@ export const TeamView: React.FC = () => {
                                   {key}
                                 </span>
                               )}
-                              <RoleBadge role={team.myRole || 'OWNER'} small />
                             </div>
+                            {cleanDesc && (
+                              <p className="text-xs text-zinc-400 truncate max-w-lg mt-0.5">
+                                {cleanDesc}
+                              </p>
+                            )}
                           </div>
                         </div>
 
-                        {/* Fav button & Setting button */}
-                        <div className="flex items-center gap-1 shrink-0">
+                        {/* Right Side: Members Count + Role Badge + Fav + Settings + Arrow */}
+                        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                          <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400">
+                            {renderMemberAvatarStack(team.members, 4)}
+                            <span>
+                              {membersCount} {membersCount === 1 ? 'member' : 'members'}
+                            </span>
+                            {invitesCount > 0 && (
+                              <span className="text-amber-400/90 text-[11px] font-mono">
+                                ({invitesCount})
+                              </span>
+                            )}
+                          </div>
+
+                          <RoleBadge role={team.myRole || 'OWNER'} small />
+
                           <button
                             type="button"
                             onClick={(e) => {
@@ -3978,8 +4660,9 @@ export const TeamView: React.FC = () => {
                             }`}
                             title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                           >
-                            <Star size={15} className={isFavorite ? 'fill-amber-400' : ''} />
+                            <Star size={14} className={isFavorite ? 'fill-amber-400' : ''} />
                           </button>
+
                           <button
                             type="button"
                             onClick={(e) => {
@@ -3989,144 +4672,31 @@ export const TeamView: React.FC = () => {
                             className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer"
                             title="Team settings"
                           >
-                            <Settings size={15} />
+                            <Settings size={14} />
                           </button>
+
+                          <div className="p-1 rounded-lg text-zinc-500 group-hover:text-white transition-colors">
+                            <ArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-1" />
+                          </div>
                         </div>
-                      </div>
-
-                      {/* Team Name & Description */}
-                      <div>
-                        <h3 className="font-bold text-base text-white group-hover:text-[#A78BFA] transition-colors truncate">
-                          {team.name}
-                        </h3>
-                        <p className="text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed min-h-[32px]">
-                          {cleanDesc || 'Collaborative team workspace on DevFlow'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Bottom Row: Members count & View team */}
-                    <div className="pt-3.5 mt-3.5 border-t border-[#27272A]/70 flex items-center justify-between text-xs text-zinc-400 relative z-10">
-                      <div className="flex items-center gap-2">
-                        {renderMemberAvatarStack(team.members, 3)}
-                        <span>
-                          {membersCount} {membersCount === 1 ? 'member' : 'members'}
-                        </span>
-                        {invitesCount > 0 && (
-                          <span className="text-amber-400/90 text-[11px] font-mono">
-                            · {invitesCount} pending
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1 text-[11.5px] font-medium text-zinc-400 group-hover:text-white transition-colors">
-                        <span>View team</span>
-                        <ArrowRight size={13} className="transition-transform duration-200 group-hover:translate-x-1" />
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          ) : (
-            /* ─── LIST VIEW (with Favorite and Settings button) ─── */
-            <div className="flex flex-col gap-2 pt-1">
-              {filteredTeams.map((team) => {
-                const { key, cleanDesc } = parseTeamMetadata(team.description, team.name);
-                const membersCount = team._count?.members || 1;
-                const invitesCount = team._count?.invitations || 0;
-                const isFavorite = favoriteTeamIds.includes(team.id);
 
-                return (
-                  <motion.div
-                    key={team.id}
-                    whileHover={{ x: 2, transition: { duration: 0.15 } }}
-                    onClick={() => navigate(`/teams/${team.id}`)}
-                    className="rounded-xl bg-[#0E0F14]/90 border border-[#27272A] px-4 py-3 sm:px-5 sm:py-3.5 hover:border-zinc-500/70 hover:bg-[#12131A] transition-all duration-150 cursor-pointer group flex items-center justify-between gap-4 shadow-sm"
-                  >
-                    {/* Left Side: Avatar + Name + Key + Description */}
-                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                      {renderTeamAvatar(team, 'w-9 h-9', 16)}
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-sm text-white group-hover:text-[#A78BFA] transition-colors truncate">
-                            {team.name}
-                          </span>
-                          {key && (
-                            <span
-                              className="px-1.5 py-0.2 rounded font-mono text-[10px] font-semibold border"
-                              style={{
-                                backgroundColor: `${team.color || '#8B5CF6'}18`,
-                                borderColor: `${team.color || '#8B5CF6'}40`,
-                                color: team.color || '#8B5CF6',
-                              }}
-                            >
-                              {key}
-                            </span>
-                          )}
-                        </div>
-                        {cleanDesc && (
-                          <p className="text-xs text-zinc-400 truncate max-w-lg mt-0.5">
-                            {cleanDesc}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right Side: Members Count + Role Badge + Fav + Settings + Arrow */}
-                    <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                      <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400">
-                        {renderMemberAvatarStack(team.members, 4)}
-                        <span>
-                          {membersCount} {membersCount === 1 ? 'member' : 'members'}
-                        </span>
-                        {invitesCount > 0 && (
-                          <span className="text-amber-400/90 text-[11px] font-mono">
-                            ({invitesCount})
-                          </span>
-                        )}
-                      </div>
-
-                      <RoleBadge role={team.myRole || 'OWNER'} small />
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleFavoriteTeam(team.id);
-                        }}
-                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                          isFavorite
-                            ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 shadow-sm'
-                            : 'text-zinc-500 hover:text-amber-400 hover:bg-white/[0.06]'
-                        }`}
-                        title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                      >
-                        <Star size={14} className={isFavorite ? 'fill-amber-400' : ''} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSettingsTeam(team);
-                        }}
-                        className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer"
-                        title="Team settings"
-                      >
-                        <Settings size={14} />
-                      </button>
-
-                      <div className="p-1 rounded-lg text-zinc-500 group-hover:text-white transition-colors">
-                        <ArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-1" />
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
+            {/* Right Column: Recent Team Details Box (Sticky) */}
+            <div className="w-full lg:w-[320px] xl:w-[360px] shrink-0 lg:sticky lg:top-6">
+              <TeamIndexRecentDetailsBox
+                teams={teams}
+                focusedTeamId={focusedIndexTeamId}
+                onSelectTeam={(tId) => setFocusedIndexTeamId(tId)}
+                onOpenCreateTeam={() => setShowCreateTeamModal(true)}
+                teamsBasePath={teamsBasePath}
+              />
             </div>
-          )}
+          </div>
         </div>
       ) : (
         /* ═══════════════════════════════════════════════════════════════════════
@@ -4136,7 +4706,7 @@ export const TeamView: React.FC = () => {
           {/* Top Breadcrumb Back button */}
           <div>
             <button
-              onClick={() => navigate('/teams')}
+              onClick={() => navigate(teamsBasePath)}
               className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer group"
             >
               <ArrowLeft size={13} className="transition-transform duration-150 group-hover:-translate-x-1" />
@@ -4231,7 +4801,7 @@ export const TeamView: React.FC = () => {
               {teams.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => navigate(`/teams/${t.id}`)}
+                  onClick={() => navigate(`${teamsBasePath}/${t.id}`)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap transition-all cursor-pointer ${
                     selectedTeam?.id === t.id
                       ? 'bg-[#1C1C1F] text-white border border-[#3F3F46]'

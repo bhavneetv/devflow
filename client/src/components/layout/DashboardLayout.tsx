@@ -6,6 +6,9 @@ import { GlobalSearch } from './GlobalSearch';
 import { CreateModal } from './CreateModal';
 import { AccountSettingsSidebar } from '../settings/AccountSettingsSidebar';
 import { useNavigation } from '../../context/NavigationContext';
+import { useOrganization } from '../../context/OrganizationContext';
+import { CreateOrganizationModal } from '../organization/CreateOrganizationModal';
+import { JoinOrganizationModal } from '../organization/JoinOrganizationModal';
 
 interface DashboardLayoutProps {
   children?: React.ReactNode;
@@ -15,6 +18,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const location = useLocation();
   const isSettingsRoute = location.pathname.startsWith('/settings');
   const { isMobileOpen, setIsMobileOpen } = useNavigation();
+  const { isCreateModalOpen, setIsCreateModalOpen, isJoinModalOpen, setIsJoinModalOpen } = useOrganization();
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-[var(--app-bg)] text-[var(--sidebar-text-active)] font-sans antialiased transition-colors duration-200">
@@ -59,6 +63,18 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
 
       {/* Quick Issue Creator Modal */}
       <CreateModal />
+
+      {/* Create Organization Modal */}
+      <CreateOrganizationModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+      />
+
+      {/* Join Organization Modal */}
+      <JoinOrganizationModal
+        isOpen={isJoinModalOpen}
+        onClose={() => setIsJoinModalOpen(false)}
+      />
     </div>
   );
 };

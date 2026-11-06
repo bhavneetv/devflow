@@ -9,12 +9,27 @@ const createProjectSchema = z.object({
   description: z.string().optional(),
   status: z.enum(['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ARCHIVED']).optional().default('IN_PROGRESS'),
   ownerId: z.number().int().positive('Valid ownerId is required'),
+  organizationId: z.number().int().positive().optional(),
+  organizationSlug: z.string().optional(),
 });
 
-// GET /api/projects - List all projects
-projectsRouter.get('/', async (_req: Request, res: Response) => {
+// GET /api/projects - List all projects (with optional organization filter)
+projectsRouter.get('/', async (req: Request, res: Response) => {
   try {
+    let orgFilterId: number | undefined;
+    if (req.query.organizationId) {
+      const parsedId = parseInt(req.query.organizationId as string, 10);
+      if (!isNaN(parsedId)) orgFilterId = parsedId;
+    } else if (req.query.organizationSlug) {
+      const org = await prisma.organization.findUnique({
+        where: { slug: (req.query.organizationSlug as string).toLowerCase() },
+        select: { id: true },
+      });
+      if (org) orgFilterId = org.id;
+    }
+
     const projects = await prisma.project.findMany({
+      where: orgFilterId !== undefined ? { organizationId: orgFilterId } : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
         owner: {
@@ -101,14 +116,46 @@ projectsRouter.post('/', async (req: Request, res: Response) => {
       });
     }
 
+    let finalOrgId: number | null = parsed.data.organizationId || null;
+    if (!finalOrgId && parsed.data.organizationSlug) {
+      const org = await prisma.organization.findUnique({
+        where: { slug: parsed.data.organizationSlug.toLowerCase() },
+        select: { id: true },
+      });
+      if (org) finalOrgId = org.id;
+    }
+
     const project = await prisma.project.create({
-      data: parsed.data,
+      data: {
+        title: parsed.data.title,
+        description: parsed.data.description,
+        status: parsed.data.status,
+        ownerId: parsed.data.ownerId,
+        organizationId: finalOrgId,
+      },
       include: {
         owner: {
           select: { id: true, name: true, email: true, avatarUrl: true },
         },
       },
     });
+
+    if (finalOrgId) {
+      try {
+        await prisma.organizationActivity.create({
+          data: {
+            organizationId: finalOrgId,
+            actorId: parsed.data.ownerId,
+            action: 'CREATED_PROJECT',
+            resourceType: 'PROJECT',
+            resourceId: project.id,
+            details: JSON.stringify({ title: project.title, status: project.status }),
+          },
+        });
+      } catch (err) {
+        console.error('Failed to record org activity for project creation:', err);
+      }
+    }
 
     res.status(201).json({ success: true, data: project });
   } catch (error: any) {

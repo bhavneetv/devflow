@@ -43,6 +43,8 @@ const createTeamSchema = z.object({
   name: z.string().min(2).max(80),
   description: z.string().max(500).optional(),
   color: z.string().optional().default('#8B5CF6'),
+  organizationId: z.number().int().positive().optional(),
+  organizationSlug: z.string().optional(),
   memberIds: z.array(z.number()).optional(),
   members: z
     .array(
@@ -65,19 +67,97 @@ const createTeamSchema = z.object({
     .optional(),
 });
 
-// GET /api/teams — list teams the caller is a member of
+// GET /api/teams — list teams the caller is a member of (optional organization filter)
 teamsRouter.get('/', async (req: Request, res: Response) => {
   const userId = getUserIdFromToken(req);
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
+  let orgFilterId: number | undefined;
+  if (req.query.organizationId) {
+    const parsedOrgId = parseInt(req.query.organizationId as string, 10);
+    if (!isNaN(parsedOrgId)) orgFilterId = parsedOrgId;
+  } else if (req.query.organizationSlug) {
+    const org = await prisma.organization.findUnique({
+      where: { slug: (req.query.organizationSlug as string).toLowerCase() },
+      select: { id: true },
+    });
+    if (org) orgFilterId = org.id;
+  }
+
   try {
+    // If scoped to an organization, return all teams in the organization if caller belongs to that organization
+    if (orgFilterId !== undefined) {
+      const orgMember = await prisma.organizationMember.findUnique({
+        where: { organizationId_userId: { organizationId: orgFilterId, userId } },
+      });
+
+      if (orgMember) {
+        const orgTeams = await prisma.team.findMany({
+          where: { organizationId: orgFilterId },
+          include: {
+            _count: { select: { members: true, invitations: { where: { status: 'PENDING' } } } },
+            createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            members: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    avatarUrl: true,
+                    avatarColor: true,
+                    avatarType: true,
+                    avatarId: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        const teams = orgTeams.map((team) => {
+          const myMembership = team.members.find((m) => m.userId === userId);
+          return {
+            ...team,
+            myRole: myMembership
+              ? myMembership.role
+              : orgMember.role === 'OWNER' || orgMember.role === 'ADMIN'
+              ? 'ADMIN'
+              : 'VIEWER',
+            isMember: Boolean(myMembership),
+          };
+        });
+
+        return res.json({ success: true, data: teams });
+      }
+    }
+
     const memberships = await prisma.teamMember.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(orgFilterId !== undefined && { team: { organizationId: orgFilterId } }),
+      },
       include: {
         team: {
           include: {
             _count: { select: { members: true, invitations: { where: { status: 'PENDING' } } } },
             createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            members: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    avatarUrl: true,
+                    avatarColor: true,
+                    avatarType: true,
+                    avatarId: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -87,6 +167,7 @@ teamsRouter.get('/', async (req: Request, res: Response) => {
     const teams = memberships.map((m) => ({
       ...m.team,
       myRole: m.role,
+      isMember: true,
     }));
 
     res.json({ success: true, data: teams });
@@ -109,6 +190,15 @@ teamsRouter.post('/', async (req: Request, res: Response) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
+    let finalOrgId: number | null = parsed.data.organizationId || null;
+    if (!finalOrgId && parsed.data.organizationSlug) {
+      const org = await prisma.organization.findUnique({
+        where: { slug: parsed.data.organizationSlug.toLowerCase() },
+        select: { id: true },
+      });
+      if (org) finalOrgId = org.id;
+    }
+
     const memberCreates: Array<{ userId: number; role: any }> = [{ userId, role: 'OWNER' }];
     if (parsed.data.members && parsed.data.members.length > 0) {
       for (const m of parsed.data.members) {
@@ -130,6 +220,7 @@ teamsRouter.post('/', async (req: Request, res: Response) => {
         description: parsed.data.description,
         color: parsed.data.color,
         createdById: userId,
+        organizationId: finalOrgId,
         members: {
           create: memberCreates,
         },
@@ -139,6 +230,23 @@ teamsRouter.post('/', async (req: Request, res: Response) => {
         createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
       },
     });
+
+    if (finalOrgId) {
+      try {
+        await prisma.organizationActivity.create({
+          data: {
+            organizationId: finalOrgId,
+            actorId: userId,
+            action: 'CREATED_TEAM',
+            resourceType: 'TEAM',
+            resourceId: team.id,
+            details: JSON.stringify({ teamName: team.name, color: team.color }),
+          },
+        });
+      } catch (err) {
+        console.error('Failed to record org activity for team creation:', err);
+      }
+    }
 
     res.status(201).json({ success: true, data: { ...team, myRole: 'OWNER' } });
   } catch (error: any) {

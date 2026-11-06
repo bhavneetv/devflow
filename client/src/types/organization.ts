@@ -83,17 +83,29 @@ export interface OrganizationOverviewData {
     totalTeams: number;
     totalProjects: number;
     openIssues: number;
+    completedIssues?: number;
+    totalTasks?: number;
   };
   summary?: {
     totalMembers: number;
     totalTeams: number;
     totalProjects: number;
     openIssues: number;
+    completedIssues?: number;
+    totalTasks?: number;
   };
   teams: any[];
   projects: any[];
   recentActivity: OrganizationActivity[];
   recentActivities?: OrganizationActivity[];
+  members?: any[];
+  allTasks?: any[];
+  projectStatusCounts?: {
+    IN_PROGRESS: number;
+    COMPLETED: number;
+    PLANNING: number;
+    ARCHIVED: number;
+  };
 }
 
 export interface CreateOrganizationInput {

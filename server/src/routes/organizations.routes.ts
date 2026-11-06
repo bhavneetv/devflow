@@ -350,8 +350,34 @@ organizationsRouter.get('/:slugOrId/overview', async (req: Request, res: Respons
   }
 
   try {
-    const [membersCount, teams, projects, openTasksCount, recentActivities] = await Promise.all([
+    const [
+      membersCount,
+      members,
+      teams,
+      projects,
+      openTasksCount,
+      completedTasksCount,
+      recentActivities,
+      allTasks,
+    ] = await Promise.all([
       prisma.organizationMember.count({ where: { organizationId: org.id } }),
+      prisma.organizationMember.findMany({
+        where: { organizationId: org.id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+              avatarColor: true,
+              avatarId: true,
+              avatarType: true,
+            },
+          },
+        },
+        take: 10,
+      }),
       prisma.team.findMany({
         where: { organizationId: org.id },
         include: {
@@ -371,12 +397,18 @@ organizationsRouter.get('/:slugOrId/overview', async (req: Request, res: Respons
           _count: { select: { tasks: true } },
         },
         orderBy: { updatedAt: 'desc' },
-        take: 10,
+        take: 12,
       }),
       prisma.task.count({
         where: {
           project: { organizationId: org.id },
           status: { in: ['TODO', 'IN_PROGRESS', 'IN_REVIEW'] },
+        },
+      }),
+      prisma.task.count({
+        where: {
+          project: { organizationId: org.id },
+          status: 'DONE',
         },
       }),
       prisma.organizationActivity.findMany({
@@ -385,9 +417,30 @@ organizationsRouter.get('/:slugOrId/overview', async (req: Request, res: Respons
           actor: { select: { id: true, name: true, email: true, avatarUrl: true, avatarColor: true } },
         },
         orderBy: { createdAt: 'desc' },
-        take: 12,
+        take: 16,
+      }),
+      prisma.task.findMany({
+        where: { project: { organizationId: org.id } },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+          updatedAt: true,
+          projectId: true,
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 50,
       }),
     ]);
+
+    const projectStatusCounts = {
+      IN_PROGRESS: projects.filter((p) => p.status === 'IN_PROGRESS').length,
+      COMPLETED: projects.filter((p) => p.status === 'COMPLETED').length,
+      PLANNING: projects.filter((p) => p.status === 'PLANNING').length,
+      ARCHIVED: projects.filter((p) => p.status === 'ARCHIVED').length,
+    };
 
     return res.json({
       success: true,
@@ -396,15 +449,28 @@ organizationsRouter.get('/:slugOrId/overview', async (req: Request, res: Respons
           ...org,
           currentUserRole: membership.role,
         },
+        currentRole: membership.role,
         summary: {
           totalMembers: membersCount,
           totalTeams: teams.length,
           totalProjects: projects.length,
           openIssues: openTasksCount,
+          completedIssues: completedTasksCount,
+          totalTasks: openTasksCount + completedTasksCount,
         },
+        stats: {
+          totalMembers: membersCount,
+          totalTeams: teams.length,
+          totalProjects: projects.length,
+          openIssues: openTasksCount,
+          completedIssues: completedTasksCount,
+        },
+        projectStatusCounts,
+        members,
         teams,
         projects,
         recentActivities,
+        allTasks,
       },
     });
   } catch (err: any) {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { getUserIdFromToken } from '../lib/auth.js';
+import { sendTeamInvitationEmail, sendInvitationDecisionEmail } from '../lib/email.service.js';
 
 export const teamsRouter = Router();
 
@@ -220,6 +221,29 @@ teamsRouter.patch('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// DELETE /api/teams/:id — delete team (owner only)
+teamsRouter.delete('/:id', async (req: Request, res: Response) => {
+  const userId = getUserIdFromToken(req);
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  const teamId = parseId(req.params.id);
+  if (isNaN(teamId)) return res.status(400).json({ success: false, error: 'Invalid team ID' });
+
+  const membership = await getCallerMembership(teamId, userId);
+  if (!membership || membership.role !== 'OWNER') {
+    return res.status(403).json({ success: false, error: 'Only the team owner can delete this team' });
+  }
+
+  try {
+    await prisma.team.delete({
+      where: { id: teamId },
+    });
+    res.json({ success: true, message: 'Team deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ─── Members ────────────────────────────────────────────────────────────────
 
 const updateRoleSchema = z.object({
@@ -372,6 +396,18 @@ teamsRouter.post('/:id/invite', async (req: Request, res: Response) => {
       },
     });
 
+    // Send invitation email asynchronously
+    const origin = req.get('origin') || process.env.CORS_ORIGIN || 'http://localhost:5173';
+    const inviteLink = `${origin}/invite/${token}`;
+    sendTeamInvitationEmail({
+      toEmail: email.toLowerCase(),
+      teamName: invitation.team.name,
+      inviterName: invitation.invitedBy.name,
+      assignedRole: role,
+      inviteLink,
+      message: parsed.data.message,
+    }).catch((err) => console.warn('Background sendTeamInvitationEmail error:', err));
+
     res.status(201).json({
       success: true,
       data: invitation,
@@ -410,8 +446,19 @@ teamsRouter.post('/:id/invitations/:invId/resend', async (req: Request, res: Res
       data: { invitationToken: newToken, expiresAt, createdAt: new Date() },
       include: {
         invitedBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        team: { select: { id: true, name: true, color: true } },
       },
     });
+
+    const origin = req.get('origin') || process.env.CORS_ORIGIN || 'http://localhost:5173';
+    const inviteLink = `${origin}/invite/${newToken}`;
+    sendTeamInvitationEmail({
+      toEmail: updated.invitedEmail,
+      teamName: updated.team.name,
+      inviterName: updated.invitedBy.name,
+      assignedRole: updated.assignedRole,
+      inviteLink,
+    }).catch((err) => console.warn('Background resend invite email error:', err));
 
     res.json({ success: true, data: updated, inviteLink: `/invite/${newToken}` });
   } catch (error: any) {
@@ -500,7 +547,10 @@ teamsRouter.post('/invitations/:token/accept', async (req: Request, res: Respons
     const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
     const invitation = await prisma.teamInvitation.findUnique({
       where: { invitationToken: token },
-      include: { team: true },
+      include: {
+        team: true,
+        invitedBy: { select: { id: true, name: true, email: true } },
+      },
     });
 
     if (!invitation) return res.status(404).json({ success: false, error: 'Invalid invitation' });
@@ -542,6 +592,17 @@ teamsRouter.post('/invitations/:token/accept', async (req: Request, res: Respons
       }),
     ]);
 
+    // Send notification email to the inviter
+    if (invitation.invitedBy?.email) {
+      sendInvitationDecisionEmail({
+        toEmail: invitation.invitedBy.email,
+        userName: user.name || user.email,
+        teamName: invitation.team.name,
+        decision: 'ACCEPTED',
+        role: invitation.assignedRole,
+      }).catch((err) => console.warn('Background sendInvitationDecisionEmail error:', err));
+    }
+
     res.json({ success: true, message: 'You have joined the team!', teamId: invitation.teamId });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -556,7 +617,13 @@ teamsRouter.post('/invitations/:token/decline', async (req: Request, res: Respon
   try {
     const rawToken = req.params.token;
     const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
-    const invitation = await prisma.teamInvitation.findUnique({ where: { invitationToken: token } });
+    const invitation = await prisma.teamInvitation.findUnique({
+      where: { invitationToken: token },
+      include: {
+        team: true,
+        invitedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
 
     if (!invitation || invitation.status !== 'PENDING') {
       return res.status(404).json({ success: false, error: 'Invitation not found or already processed' });
@@ -568,6 +635,16 @@ teamsRouter.post('/invitations/:token/decline', async (req: Request, res: Respon
     }
 
     await prisma.teamInvitation.update({ where: { id: invitation.id }, data: { status: 'DECLINED' } });
+
+    // Send notification email to the inviter
+    if (invitation.invitedBy?.email) {
+      sendInvitationDecisionEmail({
+        toEmail: invitation.invitedBy.email,
+        userName: user.name || user.email,
+        teamName: invitation.team.name,
+        decision: 'DECLINED',
+      }).catch((err) => console.warn('Background sendInvitationDecisionEmail error:', err));
+    }
 
     res.json({ success: true, message: 'Invitation declined' });
   } catch (error: any) {

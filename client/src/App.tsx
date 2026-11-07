@@ -140,6 +140,7 @@ export const App: React.FC = () => {
                             <Route path="/organizations/:organizationSlug/teams/:teamId/*" element={<TeamView />} />
                             <Route path="/organizations/:organizationSlug/projects" element={<OrganizationProjectsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings" element={<ProjectSettingsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/organizations/:organizationSlug/activity" element={<OrganizationActivityView />} />
                             <Route path="/organizations/:organizationSlug/settings" element={<OrganizationSettingsView />} />
                             <Route path="/organizations/:organizationSlug" element={<Navigate to="overview" replace />} />
@@ -178,6 +179,7 @@ export const App: React.FC = () => {
 
                             {/* Project Context Mode Routes */}
                             <Route path="/projects/:id/settings" element={<ProjectSettingsView />} />
+                            <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id" element={<ProjectDetailView />} />
                             <Route path="/projects/:id/*" element={<ProjectDetailView />} />
 

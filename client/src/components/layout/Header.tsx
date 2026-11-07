@@ -19,7 +19,9 @@ import { UserAvatar } from '../common/UserAvatar';
 
 export const Header: React.FC = () => {
   const location = useLocation();
-  const isSettingsRoute = location.pathname.startsWith('/settings');
+  const isSettingsRoute =
+    location.pathname.startsWith('/settings') ||
+    (location.pathname.includes('/projects/') && location.pathname.includes('/settings'));
   const {
     isCollapsed,
     toggleSidebar,

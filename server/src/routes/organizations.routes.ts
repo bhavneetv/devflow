@@ -3,6 +3,8 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { getUserIdFromToken } from '../lib/auth.js';
+import { sendOrganizationInvitationEmail, sendInvitationDecisionEmail } from '../lib/email.service.js';
+import { createNotification } from './notifications.routes.js';
 
 export const organizationsRouter = Router();
 
@@ -885,6 +887,9 @@ organizationsRouter.post('/:slugOrId/invitations', async (req: Request, res: Res
         invitationToken: token,
         expiresAt,
       },
+      include: {
+        invitedBy: { select: { id: true, name: true, email: true } },
+      },
     });
 
     await recordOrgActivity({
@@ -896,9 +901,74 @@ organizationsRouter.post('/:slugOrId/invitations', async (req: Request, res: Res
       details: { email: normalizedEmail, role },
     });
 
-    return res.status(201).json({ success: true, data: invitation });
+    const origin = req.get('origin') || process.env.CORS_ORIGIN || 'http://localhost:5173';
+    const inviteLink = `${origin}/organizations/join/${token}`;
+
+    // 1. Dispatch Email
+    sendOrganizationInvitationEmail({
+      toEmail: normalizedEmail,
+      organizationName: org.name,
+      inviterName: callerMembership.user.name || callerMembership.user.email,
+      assignedRole: role,
+      inviteLink,
+      message: (req.body as any).message,
+    }).catch((err) => console.warn('Background sendOrganizationInvitationEmail error:', err));
+
+    // 2. If the user already has an account, immediately create in-app notification
+    if (existingUser) {
+      await createNotification({
+        recipientId: existingUser.id,
+        type: 'ORGANIZATION_INVITATION',
+        title: `Invitation to join ${org.name}`,
+        message: `${callerMembership.user.name || 'An admin'} invited you to join ${org.name} as a ${role}.`,
+        data: {
+          token,
+          invitationId: invitation.id,
+          organizationId: org.id,
+          organizationName: org.name,
+          organizationSlug: org.slug,
+          role,
+          inviterName: callerMembership.user.name || callerMembership.user.email,
+        },
+        relatedInvitationId: invitation.id,
+        relatedOrganizationId: org.id,
+      });
+    }
+
+    return res.status(201).json({ success: true, data: invitation, inviteLink });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message || 'Failed to send invitation' });
+  }
+});
+
+// GET /api/organizations/join/:token — Preview organization invitation details
+organizationsRouter.get('/join/:token', async (req: Request, res: Response) => {
+  const token = getParam(req.params.token);
+  try {
+    const invitation = await prisma.organizationInvitation.findUnique({
+      where: { invitationToken: token },
+      include: {
+        organization: { select: { id: true, name: true, slug: true, description: true, logoUrl: true } },
+        invitedBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      },
+    });
+
+    if (!invitation) {
+      return res.status(404).json({ success: false, error: 'Invitation not found' });
+    }
+
+    if (invitation.status !== 'PENDING') {
+      return res.status(410).json({ success: false, error: `This invitation has already been ${invitation.status.toLowerCase()}`, status: invitation.status });
+    }
+
+    if (new Date() > invitation.expiresAt) {
+      await prisma.organizationInvitation.update({ where: { id: invitation.id }, data: { status: 'EXPIRED' } });
+      return res.status(410).json({ success: false, error: 'This invitation has expired', status: 'EXPIRED' });
+    }
+
+    return res.json({ success: true, data: invitation });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -937,7 +1007,10 @@ organizationsRouter.post('/join/:token', async (req: Request, res: Response) => 
   const token = getParam(req.params.token);
   const invitation = await prisma.organizationInvitation.findUnique({
     where: { invitationToken: token },
-    include: { organization: true },
+    include: {
+      organization: true,
+      invitedBy: { select: { id: true, name: true, email: true } },
+    },
   });
 
   if (!invitation || invitation.status !== 'PENDING') {
@@ -947,6 +1020,17 @@ organizationsRouter.post('/join/:token', async (req: Request, res: Response) => 
   if (new Date() > invitation.expiresAt) {
     await prisma.organizationInvitation.update({ where: { id: invitation.id }, data: { status: 'EXPIRED' } });
     return res.status(410).json({ success: false, error: 'This invitation has expired' });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+
+  // Strictly verify email match
+  if (user.email.toLowerCase() !== invitation.invitedEmail.toLowerCase()) {
+    return res.status(403).json({
+      success: false,
+      error: `This invitation was sent to ${invitation.invitedEmail}. Please log in with that account.`,
+    });
   }
 
   try {
@@ -964,6 +1048,14 @@ organizationsRouter.post('/join/:token', async (req: Request, res: Response) => 
         where: { id: invitation.id },
         data: { status: 'ACCEPTED', acceptedAt: new Date() },
       }),
+      prisma.notification.updateMany({
+        where: {
+          recipientId: userId,
+          type: 'ORGANIZATION_INVITATION',
+          relatedInvitationId: invitation.id,
+        },
+        data: { isRead: true },
+      }),
     ]);
 
     await recordOrgActivity({
@@ -975,6 +1067,17 @@ organizationsRouter.post('/join/:token', async (req: Request, res: Response) => 
       details: { role: invitation.assignedRole },
     });
 
+    if (invitation.invitedBy?.email) {
+      sendInvitationDecisionEmail({
+        toEmail: invitation.invitedBy.email,
+        userName: user.name || user.email,
+        targetName: invitation.organization.name,
+        type: 'ORGANIZATION',
+        decision: 'ACCEPTED',
+        role: invitation.assignedRole,
+      }).catch((e) => console.warn('Background decision email error:', e));
+    }
+
     return res.json({
       success: true,
       data: {
@@ -985,6 +1088,61 @@ organizationsRouter.post('/join/:token', async (req: Request, res: Response) => 
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message || 'Failed to join organization' });
+  }
+});
+
+// POST /api/organizations/join/:token/decline — Decline organization invitation
+organizationsRouter.post('/join/:token/decline', async (req: Request, res: Response) => {
+  const userId = getUserIdFromToken(req);
+  if (!userId) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+  const token = getParam(req.params.token);
+  const invitation = await prisma.organizationInvitation.findUnique({
+    where: { invitationToken: token },
+    include: {
+      organization: true,
+      invitedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  if (!invitation || invitation.status !== 'PENDING') {
+    return res.status(404).json({ success: false, error: 'Invitation not found or already processed' });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.email.toLowerCase() !== invitation.invitedEmail.toLowerCase()) {
+    return res.status(403).json({ success: false, error: 'Email mismatch' });
+  }
+
+  try {
+    await prisma.$transaction([
+      prisma.organizationInvitation.update({
+        where: { id: invitation.id },
+        data: { status: 'DECLINED' },
+      }),
+      prisma.notification.updateMany({
+        where: {
+          recipientId: userId,
+          type: 'ORGANIZATION_INVITATION',
+          relatedInvitationId: invitation.id,
+        },
+        data: { isRead: true },
+      }),
+    ]);
+
+    if (invitation.invitedBy?.email) {
+      sendInvitationDecisionEmail({
+        toEmail: invitation.invitedBy.email,
+        userName: user.name || user.email,
+        targetName: invitation.organization.name,
+        type: 'ORGANIZATION',
+        decision: 'DECLINED',
+      }).catch((e) => console.warn('Background decision email error:', e));
+    }
+
+    return res.json({ success: true, message: 'Invitation declined' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

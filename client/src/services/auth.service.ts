@@ -28,6 +28,30 @@ const TOKEN_KEY = 'devflow_auth_token';
 const USER_KEY = 'devflow_auth_user';
 const ONBOARDING_COMPLETED_KEY = 'devflow_onboarding_completed';
 
+// Helper to safely parse JSON responses and avoid "Unexpected end of JSON input" errors
+async function safeParseResponse(res: Response, defaultError: string): Promise<any> {
+  const text = await res.text().catch(() => '');
+  if (!text || !text.trim()) {
+    if (!res.ok) {
+      if (res.status === 502 || res.status === 504 || res.status === 503) {
+        throw new Error('Backend server is not responding (502 Bad Gateway). Please verify the server is running on port 5000.');
+      }
+      throw new Error(`Server returned error status ${res.status}.`);
+    }
+    throw new Error('Empty response received from server.');
+  }
+
+  try {
+    const json = JSON.parse(text);
+    return json;
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Server error (${res.status}): ${text.slice(0, 120)}`);
+    }
+    throw new Error(defaultError);
+  }
+}
+
 export const authService = {
   getToken(): string | null {
     return localStorage.getItem(TOKEN_KEY);
@@ -72,7 +96,7 @@ export const authService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+      const data = await safeParseResponse(res, 'Invalid response from authentication server.');
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
         const isCompleted = data.user.onboardingCompleted ?? !data.isNewUser;
@@ -97,7 +121,7 @@ export const authService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password }),
       });
-      const data = await res.json();
+      const data = await safeParseResponse(res, 'Invalid response from registration server.');
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
         // Newly registered users need to go through onboarding
@@ -119,7 +143,7 @@ export const authService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider }),
       });
-      const data = await res.json();
+      const data = await safeParseResponse(res, `Invalid response from ${provider} sign-in.`);
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
         const isCompleted = data.user.onboardingCompleted ?? !data.isNewUser;
@@ -143,7 +167,7 @@ export const authService = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      const data = await res.json();
+      const data = await safeParseResponse(res, 'Invalid response from demo user endpoint.');
       if (data.success && data.token && data.user) {
         this.setSession(data.token, data.user);
         this.setOnboardingCompleted(false);
@@ -168,7 +192,7 @@ export const authService = {
         },
         body: JSON.stringify(data),
       });
-      const resData = await res.json();
+      const resData = await safeParseResponse(res, 'Invalid response from onboarding server.');
       if (resData.success && resData.user) {
         this.setOnboardingCompleted(true);
         const currentUser = this.getUser();
@@ -234,8 +258,8 @@ export const authService = {
       const res = await fetch(apiUrl('/auth/me'), {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      if (data.success && data.user) {
+      const data = await safeParseResponse(res, '');
+      if (data && data.success && data.user) {
         return data.user;
       }
       return null;

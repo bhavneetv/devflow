@@ -8,7 +8,7 @@ import {
   Filter, UserMinus, Settings, LayoutGrid, List, ArrowLeft, ArrowRight,
   Star, Edit3, Key, Terminal, Code, Sparkles, Globe, UserCheck, RotateCcw,
   FolderKanban, PieChart, TrendingUp, CheckSquare, Activity, Info, Palette, Smile,
-  Layers
+  Layers, ShieldCheck, MessageSquare, Upload
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
@@ -17,6 +17,9 @@ import { teamService } from '../services/team.service';
 import { authService } from '../services/auth.service';
 import { accountSettingsService } from '../services/accountSettings.service';
 import { CreateTeamModal } from '../components/team/CreateTeamModal';
+import { TeamChat } from '../components/team/TeamChat';
+import { TeamPermissionsModal } from '../components/team/TeamPermissionsModal';
+import { ProfileAvatarEditor } from '../components/settings/ProfileAvatarEditor';
 import { AVATAR_ICON_COMPONENTS } from '../components/onboarding/StepProfile';
 import { AnimatedSelect, SelectOption } from '../components/settings/AnimatedSelect';
 import { SettingsSectionNav, SettingsCategory } from '../components/settings/SettingsSectionNav';
@@ -754,7 +757,8 @@ const EditMemberModal: React.FC<{
     role: TeamMemberRole,
     avatarColor: string,
     avatarId: string,
-    avatarType: 'initials' | 'icon'
+    avatarType: 'initials' | 'icon' | 'upload',
+    avatarUrl?: string | null
   ) => void;
 }> = ({ member, isSelf, onClose, onSaveRole, onSaveDetails }) => {
   const { accentColor } = useAccentTheme();
@@ -767,9 +771,17 @@ const EditMemberModal: React.FC<{
   const [avatarId, setAvatarId] = useState<string>(
     (member.user as any)?.avatarId || customSaved?.iconId || (isSelf ? (user as any)?.avatarId : null) || 'smile'
   );
-  const [avatarType, setAvatarType] = useState<'initials' | 'icon'>(
-    ((member.user as any)?.avatarType || customSaved?.type || (isSelf ? (user as any)?.avatarType : null)) === 'icon' ? 'icon' : 'initials'
+  const [avatarType, setAvatarType] = useState<'initials' | 'icon' | 'upload'>(
+    (member.user as any)?.avatarUrl || (isSelf && (user as any)?.avatarUrl)
+      ? 'upload'
+      : ((member.user as any)?.avatarType || customSaved?.type || (isSelf ? (user as any)?.avatarType : null)) === 'icon'
+      ? 'icon'
+      : 'initials'
   );
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+    (member.user as any)?.avatarUrl || (isSelf ? (user as any)?.avatarUrl : null) || null
+  );
+  const [showPhotoEditor, setShowPhotoEditor] = useState(false);
   const [showMoreModal, setShowMoreModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -789,7 +801,8 @@ const EditMemberModal: React.FC<{
           selectedRole,
           avatarColor,
           avatarId,
-          avatarType
+          avatarType,
+          avatarUrl
         );
       } else {
         onSaveRole(selectedRole);
@@ -816,9 +829,11 @@ const EditMemberModal: React.FC<{
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-md transition-all shrink-0 ring-2 ring-white/10 overflow-hidden"
-              style={{ backgroundColor: avatarColor }}
+              style={{ backgroundColor: avatarType === 'upload' ? 'transparent' : avatarColor }}
             >
-              {avatarType === 'icon' && avatarId && AVATAR_ICON_COMPONENTS[avatarId] ? (
+              {avatarType === 'upload' && avatarUrl ? (
+                <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+              ) : avatarType === 'icon' && avatarId && AVATAR_ICON_COMPONENTS[avatarId] ? (
                 React.createElement(AVATAR_ICON_COMPONENTS[avatarId], { size: 20, strokeWidth: 2.2 })
               ) : (
                 <span className="text-sm font-semibold">{getInitials(member.user.name)}</span>
@@ -854,6 +869,36 @@ const EditMemberModal: React.FC<{
               placeholder="Select role..."
               accentColor={accentColor}
             />
+          </div>
+
+          {/* Profile Picture Upload Section */}
+          <div className="space-y-2 pt-2 border-t border-[#27272A]/70">
+            <div className="flex items-center justify-between">
+              <label className="text-[12px] font-medium text-zinc-300 flex items-center gap-1.5">
+                <Upload size={13} style={{ color: accentColor }} />
+                <span>Profile Picture</span>
+              </label>
+              {avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAvatarUrl(null);
+                    setAvatarType('initials');
+                  }}
+                  className="text-[10.5px] text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
+                >
+                  Remove picture
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPhotoEditor(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-dashed border-zinc-700 hover:border-purple-500/60 bg-zinc-900/60 hover:bg-zinc-800/60 text-xs font-medium text-zinc-300 hover:text-purple-300 transition-all cursor-pointer"
+            >
+              <Upload size={13} />
+              <span>{avatarUrl ? 'Change Profile Picture' : 'Upload Profile Picture'}</span>
+            </button>
           </div>
 
           {/* 2. Color Palette */}
@@ -1073,6 +1118,18 @@ const EditMemberModal: React.FC<{
               <span>Save Changes</span>
             </button>
           </div>
+          {/* Profile Picture Upload Modal */}
+          {showPhotoEditor && (
+            <ProfileAvatarEditor
+              isOpen={showPhotoEditor}
+              onClose={() => setShowPhotoEditor(false)}
+              currentAvatar={avatarUrl || ''}
+              onSaveAvatar={(newAvatarUrl) => {
+                setAvatarUrl(newAvatarUrl);
+                setAvatarType('upload');
+              }}
+            />
+          )}
         </div>
       </motion.div>
     </div>
@@ -3956,8 +4013,45 @@ export const TeamView: React.FC = () => {
     });
   }, [currentRemovedMembers, searchQuery, roleFilter]);
 
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [activeDetailTab, setActiveDetailTab] = useState<'members' | 'chat'>('members');
+
   const myRole = selectedTeam?.myRole ?? 'VIEWER';
-  const canManageTeam = ['OWNER', 'ADMIN'].includes(myRole);
+  const isOwner = myRole === 'OWNER';
+  const myPerms = selectedTeam?.myPermissions;
+
+  const canInviteMembers =
+    isOwner ||
+    Boolean(myPerms?.manageTeamMembers) ||
+    Boolean(myPerms?.manageInvitations) ||
+    (myRole === 'ADMIN' && myPerms?.manageTeamMembers !== false);
+
+  const canRemoveMembers =
+    isOwner ||
+    Boolean(myPerms?.removeTeamMembers) ||
+    (myRole === 'ADMIN' && myPerms?.removeTeamMembers !== false);
+
+  const canManageRoles =
+    isOwner ||
+    Boolean(myPerms?.manageMemberRoles) ||
+    (myRole === 'ADMIN' && myPerms?.manageMemberRoles !== false);
+
+  const canManageDetails =
+    isOwner ||
+    Boolean(myPerms?.manageTeamDetails) ||
+    (myRole === 'ADMIN' && myPerms?.manageTeamDetails !== false);
+
+  const canManageSettings =
+    isOwner ||
+    Boolean(myPerms?.manageTeamSettings) ||
+    (myRole === 'ADMIN' && myPerms?.manageTeamSettings !== false);
+
+  const canManageInvitations =
+    isOwner ||
+    Boolean(myPerms?.manageInvitations) ||
+    (myRole === 'ADMIN' && myPerms?.manageInvitations !== false);
+
+  const canManageTeam = canInviteMembers || canManageRoles || canRemoveMembers;
 
   const selectedTeamMetadata = useMemo(() => {
     if (!selectedTeam) return { key: '', icon: 'initials', cleanDesc: '' };
@@ -4014,7 +4108,8 @@ export const TeamView: React.FC = () => {
     newRole: TeamMemberRole,
     avatarColor: string,
     avatarId: string,
-    avatarType: 'initials' | 'icon'
+    avatarType: 'initials' | 'icon' | 'upload',
+    avatarUrl?: string | null
   ) => {
     // 1. If role changed, sync with backend if possible
     if (selectedTeam) {
@@ -4023,7 +4118,7 @@ export const TeamView: React.FC = () => {
         try {
           const res = await teamService.changeMemberRole(selectedTeam.id, userId, newRole);
           if (!res.success) {
-            console.warn('Backend role update notice:', res.error);
+            toast.error('Role update failed', res.error);
           }
         } catch (e) {
           console.error(e);
@@ -4034,7 +4129,7 @@ export const TeamView: React.FC = () => {
     // 2. Persist custom avatar to map and localStorage
     const updatedMap = {
       ...memberAvatarsMap,
-      [String(userId)]: { color: avatarColor, iconId: avatarId, type: avatarType },
+      [String(userId)]: { color: avatarColor, iconId: avatarId, type: avatarType === 'upload' ? 'initials' : avatarType },
     };
     setMemberAvatarsMap(updatedMap);
     try {
@@ -4052,16 +4147,22 @@ export const TeamView: React.FC = () => {
           avatarColor,
           avatarId,
           avatarType,
+          avatarUrl: avatarUrl !== undefined ? avatarUrl : authUser.avatarUrl,
         });
       }
       try {
-        await accountSettingsService.updateProfile({ avatarColor, avatarId, avatarType });
+        await accountSettingsService.updateProfile({
+          avatarColor,
+          avatarId,
+          avatarType,
+          avatarUrl: avatarUrl ? avatarUrl : undefined,
+        });
       } catch (e) {
         console.error('Failed to sync profile update:', e);
       }
     }
 
-    // 4. Update selectedTeam state in-memory so UI immediately reflects role & avatar
+    // 4. Update selectedTeam state in-memory so UI immediately reflects role & avatar everywhere
     if (selectedTeam) {
       setSelectedTeam((prev) => {
         if (!prev) return prev;
@@ -4077,6 +4178,7 @@ export const TeamView: React.FC = () => {
                     avatarColor,
                     avatarId,
                     avatarType,
+                    avatarUrl: avatarUrl !== undefined ? avatarUrl : m.user.avatarUrl,
                   },
                 }
               : m
@@ -4325,6 +4427,13 @@ export const TeamView: React.FC = () => {
             onConfirm={handleRemoveMember}
             onCancel={() => setMemberToRemove(null)}
             loading={removeLoading}
+          />
+        )}
+        {showPermissionsModal && selectedTeam && (
+          <TeamPermissionsModal
+            isOpen={showPermissionsModal}
+            onClose={() => setShowPermissionsModal(false)}
+            team={selectedTeam}
           />
         )}
       </AnimatePresence>
@@ -4745,14 +4854,28 @@ export const TeamView: React.FC = () => {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => setSettingsTeam(selectedTeam)}
-                className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#27272A] text-zinc-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
-                title="Team settings"
-              >
-                <Settings size={14} className="text-zinc-400" />
-              </button>
+              {(isOwner || canManageDetails || canManageSettings) && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsTeam(selectedTeam)}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#27272A] text-zinc-300 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+                  title="Team settings"
+                >
+                  <Settings size={14} className="text-zinc-400" />
+                </button>
+              )}
+
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={() => setShowPermissionsModal(true)}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 text-[12px] font-semibold transition-all cursor-pointer shadow-sm"
+                  title="Configure team roles and permissions (RBAC)"
+                >
+                  <ShieldCheck size={14} className="text-purple-400" />
+                  <span>Permissions</span>
+                </button>
+              )}
 
               {myRole !== 'OWNER' && (
                 <button
@@ -4766,7 +4889,7 @@ export const TeamView: React.FC = () => {
                 </button>
               )}
 
-              {canManageTeam && (
+              {canInviteMembers && (
                 <button
                   onClick={() => setShowInviteModal(true)}
                   className="flex items-center gap-1.5 h-8 px-3 rounded-lg hover:brightness-110 text-[#0A0B10] text-[12px] font-semibold transition-all shadow-sm cursor-pointer"
@@ -4799,6 +4922,41 @@ export const TeamView: React.FC = () => {
             </div>
           )}
 
+          {/* ── Detail Navigation Tabs: Members & Overview vs Team Chat ── */}
+          <div className="flex items-center gap-2 border-b border-[#27272A] pb-px">
+            <button
+              type="button"
+              onClick={() => setActiveDetailTab('members')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer ${
+                activeDetailTab === 'members'
+                  ? 'text-white border-purple-500 bg-purple-500/10'
+                  : 'text-zinc-400 hover:text-zinc-200 border-transparent hover:bg-white/[0.03]'
+              }`}
+            >
+              <Users size={14} className={activeDetailTab === 'members' ? 'text-purple-400' : 'text-zinc-500'} />
+              <span>Team Members & Overview</span>
+              {selectedTeam && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 text-zinc-300">
+                  {selectedTeam.members.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveDetailTab('chat')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer ${
+                activeDetailTab === 'chat'
+                  ? 'text-white border-purple-500 bg-purple-500/10'
+                  : 'text-zinc-400 hover:text-zinc-200 border-transparent hover:bg-white/[0.03]'
+              }`}
+            >
+              <MessageSquare size={14} className={activeDetailTab === 'chat' ? 'text-purple-400' : 'text-zinc-500'} />
+              <span>Team Chat</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            </button>
+          </div>
+
           {teamLoading ? (
             <div className="bg-[#0E0E10] border border-[#27272A] rounded-xl overflow-hidden">
               {[...Array(4)].map((_, i) => <SkeletonRow key={i} />)}
@@ -4818,6 +4976,9 @@ export const TeamView: React.FC = () => {
               }
             />
           ) : selectedTeam ? (
+            activeDetailTab === 'chat' ? (
+              <TeamChat team={selectedTeam} currentUserId={user?.id} />
+            ) : (
             <div className="flex flex-col lg:flex-row items-start gap-6 w-full">
               {/* Left Column: Members & Search (covers 65-70% of screen) */}
               <div className="w-full lg:w-[68%] xl:w-[72%] min-w-0 space-y-4">
@@ -5045,6 +5206,7 @@ export const TeamView: React.FC = () => {
               />
             </div>
           </div>
+            )
         ) : null}
         </div>
       )}

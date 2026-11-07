@@ -17,8 +17,36 @@ export interface TeamUser {
   id: number;
   name: string;
   email: string;
+  username?: string | null;
   avatarUrl?: string | null;
+  avatarColor?: string | null;
+  avatarType?: string | null;
+  avatarId?: string | null;
   createdAt?: string;
+}
+
+export interface TeamMemberPermissions {
+  manageTeamMembers: boolean;
+  removeTeamMembers: boolean;
+  manageMemberRoles: boolean;
+  manageTeamDetails: boolean;
+  manageTeamSettings: boolean;
+  manageInvitations: boolean;
+}
+
+export interface TeamMemberPermissionItem {
+  memberId: number;
+  userId: number;
+  name: string;
+  email: string;
+  role: TeamMemberRole;
+  avatarUrl?: string | null;
+  avatarColor?: string | null;
+  avatarType?: string | null;
+  avatarId?: string | null;
+  permissions: TeamMemberPermissions;
+  isOwner: boolean;
+  isCustomized: boolean;
 }
 
 export interface TeamMember {
@@ -28,6 +56,32 @@ export interface TeamMember {
   user: TeamUser;
   role: TeamMemberRole;
   joinedAt: string;
+  permissions?: TeamMemberPermissions | TeamMemberPermissions[] | null;
+}
+
+export interface TeamConversation {
+  id: number;
+  teamId: number;
+  type: 'GROUP' | 'DIRECT';
+  name: string;
+  participantIds?: string | null;
+  otherUser?: TeamUser | null;
+  lastMessage?: TeamMessage | null;
+  unreadCount: number;
+  updatedAt: string;
+}
+
+export interface TeamMessage {
+  id: number;
+  teamId: number;
+  conversationId: number;
+  senderId: number;
+  content: string;
+  mentions?: string | null;
+  readBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sender: TeamUser;
 }
 
 export interface TeamInvitation {
@@ -58,6 +112,7 @@ export interface Team {
     invitations: number;
   };
   myRole: TeamMemberRole;
+  myPermissions?: TeamMemberPermissions;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +129,7 @@ export interface TeamSummary {
     invitations: number;
   };
   myRole: TeamMemberRole;
+  myPermissions?: TeamMemberPermissions;
   createdAt: string;
   updatedAt: string;
 }

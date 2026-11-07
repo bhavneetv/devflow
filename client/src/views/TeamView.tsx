@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Users, UserPlus, Search, Clock, CheckCircle2, Crown,
-  MoreHorizontal, Shield, Trash2, RefreshCw, X, ChevronDown, ChevronRight,
+  MoreHorizontal, Shield, Trash2, RefreshCw, X, ChevronDown,
   Copy, Check, AlertCircle, Loader2, Mail, Building2, Plus,
   Filter, UserMinus, Settings, LayoutGrid, List, ArrowLeft, ArrowRight,
   Star, Edit3, Key, Terminal, Code, Sparkles, Globe, UserCheck, RotateCcw,
@@ -4334,22 +4334,6 @@ export const TeamView: React.FC = () => {
          ═══════════════════════════════════════════════════════════════════════ */}
       {!teamId ? (
         <div className="space-y-6">
-          {/* Breadcrumb if inside Organization context */}
-          {activeOrgSlug && (
-            <div className="flex items-center gap-2 text-xs text-zinc-400">
-              <span>Organizations</span>
-              <ChevronRight size={13} className="text-zinc-600" />
-              <Link
-                to={`/organizations/${activeOrgSlug}/overview`}
-                className="text-zinc-300 hover:text-white transition-colors"
-              >
-                {currentOrganization?.name || activeOrgSlug}
-              </Link>
-              <ChevronRight size={13} className="text-zinc-600" />
-              <span className="text-zinc-400 font-medium">Teams</span>
-            </div>
-          )}
-
           {/* Page Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#27272A]/70">
             <div>

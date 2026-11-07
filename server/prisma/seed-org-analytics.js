@@ -191,6 +191,16 @@ async function seed() {
     { title: 'Add export audit logs to CSV/JSON feature', status: 'TODO', priority: 'LOW', projectIdx: 5, daysAgo: 0 },
     { title: 'Create interactive sprint burndown widget', status: 'IN_PROGRESS', priority: 'HIGH', projectIdx: 0, daysAgo: 0 },
     { title: 'Implement keyboard shortcuts (Cmd+K) quick actions', status: 'TODO', priority: 'MEDIUM', projectIdx: 0, daysAgo: 0 },
+    { title: 'Automated database backups with daily S3 glacier replication', status: 'DONE', priority: 'HIGH', projectIdx: 2, daysAgo: 8 },
+    { title: 'Setup Redis cache layer for organization permissions query', status: 'DONE', priority: 'MEDIUM', projectIdx: 2, daysAgo: 9 },
+    { title: 'Design Figma UI kit with typography scale & 4px spacing grid', status: 'DONE', priority: 'HIGH', projectIdx: 1, daysAgo: 10 },
+    { title: 'Configure GitHub Actions CI workflow with ESLint & Prettier', status: 'DONE', priority: 'MEDIUM', projectIdx: 2, daysAgo: 11 },
+    { title: 'Benchmark API gateway latency under 10k requests/min', status: 'IN_PROGRESS', priority: 'HIGH', projectIdx: 0, daysAgo: 0 },
+    { title: 'Implement dark/light theme persistence in local storage', status: 'DONE', priority: 'LOW', projectIdx: 1, daysAgo: 12 },
+    { title: 'Multi-organization workspace switcher with instant preview', status: 'DONE', priority: 'URGENT', projectIdx: 0, daysAgo: 5 },
+    { title: 'GraphQL schema federation for microservices orchestration', status: 'IN_REVIEW', priority: 'HIGH', projectIdx: 0, daysAgo: 0 },
+    { title: 'Setup Prometheus & Grafana alerts for server memory spike', status: 'TODO', priority: 'MEDIUM', projectIdx: 2, daysAgo: 0 },
+    { title: 'Add audit log retention policy with automatic 90-day archive', status: 'IN_PROGRESS', priority: 'MEDIUM', projectIdx: 5, daysAgo: 0 },
   ];
 
   for (const t of sampleTasks) {

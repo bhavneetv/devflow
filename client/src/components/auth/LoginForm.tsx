@@ -52,7 +52,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   // Quick fill demo credentials
   const handleQuickDemo = () => {
     setEmail('admin@gmail.com');
-    setPassword('123123');
+    setPassword('');
     setErrors({});
   };
 

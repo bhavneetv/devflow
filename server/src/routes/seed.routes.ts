@@ -21,7 +21,7 @@ export async function runDatabaseSeed() {
   await prisma.organization.deleteMany().catch(() => {});
   await prisma.user.deleteMany().catch(() => {});
 
-  // 1. Primary Admin User: admin@gmail.com (Password: 123123)
+  // 1. Primary Admin User: admi
   const admin = await prisma.user.create({
     data: {
       name: 'Admin',

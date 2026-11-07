@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
   FolderKanban,
@@ -166,11 +167,12 @@ const Ring: React.FC<{ pct: number; color: string; size?: number; stroke?: numbe
 }) => {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
+  const dash = (clamp(pct, 0, 100) / 100) * c;
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1F2027" strokeWidth={stroke} />
-        <circle
+        <motion.circle
           cx={size / 2}
           cy={size / 2}
           r={r}
@@ -178,14 +180,270 @@ const Ring: React.FC<{ pct: number; color: string; size?: number; stroke?: numbe
           stroke={color}
           strokeWidth={stroke}
           strokeLinecap="round"
-          strokeDasharray={`${(clamp(pct, 0, 100) / 100) * c} ${c}`}
-          className="transition-all duration-500"
+          strokeDasharray={`${dash} ${c}`}
+          initial={{ strokeDashoffset: c }}
+          animate={{ strokeDashoffset: 0 }}
+          transition={{ duration: 0.9, ease: 'easeOut' }}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">{children}</div>
     </div>
   );
 };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Skeleton Loading Screen (Replaces standard spinner with high-fidelity layout)
+// ═════════════════════════════════════════════════════════════════════════════
+
+const OverviewSkeleton: React.FC<{ accentColor: string }> = ({ accentColor }) => {
+  return (
+    <div className="w-full px-4 sm:px-8 lg:px-10 pt-4 sm:pt-6 pb-16 space-y-5 animate-pulse text-left">
+      {/* Header Skeleton */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-[#27272A]/70">
+        <div className="flex items-center gap-3.5 min-w-0 flex-1">
+          <div className="w-12 h-12 rounded-xl bg-zinc-800/80 shrink-0" />
+          <div className="min-w-0 space-y-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-44 h-7 rounded-lg bg-zinc-800/80" />
+              <div className="w-20 h-5 rounded-md bg-zinc-800/60" />
+              <div className="w-16 h-5 rounded-md bg-zinc-800/60" />
+            </div>
+            <div className="w-64 h-4 rounded bg-zinc-800/50" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="w-24 h-7 rounded-full bg-zinc-800/60 mr-1 hidden sm:block" />
+          <div className="w-8 h-8 rounded-lg bg-zinc-800/80" />
+          <div className="w-20 h-8 rounded-lg bg-zinc-800/80" />
+          <div className="w-28 h-8 rounded-lg bg-zinc-800/80" />
+        </div>
+      </div>
+
+      {/* Upper Grid (12 cols): Left (8 cols: KPIs + Throughput) + Right (4 cols: Org Detail Box + Portfolio Health) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Left Column (8 cols) */}
+        <div className="lg:col-span-8 space-y-5">
+          {/* 4 KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] p-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1.5">
+                    <div className="w-16 h-3 rounded bg-zinc-800/70" />
+                    <div className="w-12 h-7 rounded bg-zinc-800/90" />
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-zinc-800/70" />
+                </div>
+                <div className="w-full h-2 rounded-full bg-zinc-800/50" />
+                <div className="w-28 h-3 rounded bg-zinc-800/40" />
+              </div>
+            ))}
+          </div>
+
+          {/* Throughput Chart Panel Skeleton */}
+          <div className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#27272A]/70">
+              <div className="space-y-1">
+                <div className="w-32 h-4 rounded bg-zinc-800/80" />
+                <div className="w-56 h-3 rounded bg-zinc-800/50" />
+              </div>
+              <div className="w-28 h-7 rounded-lg bg-zinc-800/60" />
+            </div>
+            {/* Stat Counters */}
+            <div className="flex gap-8">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="space-y-1">
+                  <div className="w-14 h-3 rounded bg-zinc-800/60" />
+                  <div className="w-10 h-6 rounded bg-zinc-800/80" />
+                </div>
+              ))}
+            </div>
+            {/* Graph Bar Skeleton */}
+            <div className="h-44 w-full flex items-end justify-between gap-2 pt-6 px-4">
+              {[40, 65, 30, 85, 50, 70, 90, 45, 60, 75, 55, 80, 68, 95].map((h, i) => (
+                <div key={i} className="flex-1 flex items-end gap-1 h-full">
+                  <div className="flex-1 rounded-sm bg-zinc-800/70" style={{ height: `${h * 0.7}%` }} />
+                  <div className="flex-1 rounded-sm bg-zinc-800/40" style={{ height: `${h}%` }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column (4 cols): Org Detail Box + Portfolio Health Skeleton */}
+        <div className="lg:col-span-4 space-y-5">
+          {/* Org Detail Box Skeleton */}
+          <div className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 space-y-4 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-zinc-800/80 shrink-0" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <div className="w-28 h-4 rounded bg-zinc-800/80" />
+                  <div className="w-10 h-4 rounded bg-zinc-800/60" />
+                </div>
+                <div className="w-20 h-3 rounded bg-zinc-800/50" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-14 rounded-xl bg-zinc-800/50" />
+              ))}
+            </div>
+
+            <div className="space-y-2.5 pt-3 border-t border-[#27272A]/70">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex justify-between items-center">
+                  <div className="w-20 h-3 rounded bg-zinc-800/60" />
+                  <div className="w-24 h-3 rounded bg-zinc-800/70" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Portfolio Health Skeleton */}
+          <div className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 space-y-4">
+            <div className="w-32 h-4 rounded bg-zinc-800/80" />
+            <div className="flex items-center gap-4">
+              <div className="w-[120px] h-[120px] rounded-full border-8 border-zinc-800/70 shrink-0" />
+              <div className="flex-1 space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="w-full h-3 rounded bg-zinc-800/60" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Middle: Gantt Project Timeline Skeleton */}
+      <div className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 space-y-4">
+        <div className="flex justify-between items-center pb-3 border-b border-[#27272A]/70">
+          <div className="space-y-1">
+            <div className="w-36 h-4 rounded bg-zinc-800/80" />
+            <div className="w-60 h-3 rounded bg-zinc-800/50" />
+          </div>
+          <div className="w-24 h-7 rounded-lg bg-zinc-800/60" />
+        </div>
+        <div className="space-y-3 pt-2">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4 h-10 border-b border-[#1C1D23] last:border-b-0">
+              <div className="w-[200px] h-4 rounded bg-zinc-800/70 shrink-0" />
+              <div className="flex-1 h-6 rounded-md bg-zinc-800/40 relative">
+                <div
+                  className="h-full rounded-md bg-zinc-800/70"
+                  style={{ width: `${35 + i * 18}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom Grid: Deliverables & Audit Log Skeletons */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="lg:col-span-8 rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 space-y-3">
+          <div className="w-40 h-4 rounded bg-zinc-800/80 mb-4" />
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-10 rounded-lg bg-zinc-800/40" />
+          ))}
+        </div>
+        <div className="lg:col-span-4 rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 space-y-3">
+          <div className="w-28 h-4 rounded bg-zinc-800/80 mb-4" />
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-12 rounded-lg bg-zinc-800/40" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Organization Detail Box (Upper Right Card)
+// ═════════════════════════════════════════════════════════════════════════════
+
+const OrgDetailBox: React.FC<{
+  activeOrg: any;
+  targetSlug?: string;
+  metadata: any;
+  accentColor: string;
+}> = ({ activeOrg, targetSlug, metadata, accentColor }) => (
+  <section className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 shadow-xl space-y-4">
+    <div className="flex items-center gap-3">
+      <OrgAvatar
+        name={activeOrg?.name || 'DevFlow'}
+        logoUrl={activeOrg?.logoUrl}
+        className="w-11 h-11 shrink-0 shadow-md"
+        iconSize={22}
+        roundedClassName="rounded-xl"
+        fontSize={16}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-semibold text-sm text-white truncate">{activeOrg?.name || 'DevFlow Inc'}</h3>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+            Pro
+          </span>
+        </div>
+        <p className="text-[11px] text-zinc-500 truncate font-mono mt-0.5">/{activeOrg?.slug || 'devflow'}</p>
+      </div>
+    </div>
+
+    {/* Quick action buttons */}
+    <div className="grid grid-cols-4 gap-1.5">
+      {[
+        { to: 'members', icon: <Users size={14} />, label: 'Members', hover: 'group-hover:text-blue-400' },
+        { to: 'teams', icon: <Layers size={14} />, label: 'Squads', hover: 'group-hover:text-violet-400' },
+        { to: 'projects', icon: <FolderKanban size={14} />, label: 'Projects', hover: 'group-hover:text-emerald-400' },
+        { to: 'settings', icon: <Settings size={14} />, label: 'Settings', hover: 'group-hover:text-amber-400' },
+      ].map((q) => (
+        <Link
+          key={q.to}
+          to={`/organizations/${targetSlug}/${q.to}`}
+          className="group flex flex-col items-center gap-1 py-2.5 rounded-xl bg-[#111216] border border-[#27272A] hover:border-zinc-600 hover:bg-white/[0.03] transition-all"
+        >
+          <span className={`text-zinc-400 transition-colors ${q.hover}`}>{q.icon}</span>
+          <span className="text-[10px] text-zinc-300 font-medium">{q.label}</span>
+        </Link>
+      ))}
+    </div>
+
+    {/* Metadata list */}
+    <dl className="space-y-2 text-xs pt-3 border-t border-[#27272A]/70">
+      <div className="flex items-center justify-between gap-3">
+        <dt className="flex items-center gap-1.5 text-zinc-500"><Building2 size={12} /> Industry</dt>
+        <dd className="text-zinc-200 truncate font-medium">{metadata.industry}</dd>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <dt className="flex items-center gap-1.5 text-zinc-500"><Globe size={12} /> Website</dt>
+        <dd className="truncate">
+          {metadata.website ? (
+            <a href={metadata.website} target="_blank" rel="noreferrer" className="text-purple-400 hover:underline inline-flex items-center gap-1 font-mono text-[11px]">
+              {metadata.website.replace(/^https?:\/\//, '')}
+              <ExternalLink size={10} />
+            </a>
+          ) : (
+            <span className="text-zinc-500 italic">Not set</span>
+          )}
+        </dd>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <dt className="flex items-center gap-1.5 text-zinc-500"><Calendar size={12} /> Founded</dt>
+        <dd className="text-zinc-300 font-mono text-[11px]">
+          {activeOrg?.createdAt ? new Date(activeOrg.createdAt).toLocaleDateString() : '—'}
+        </dd>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <dt className="flex items-center gap-1.5 text-zinc-500"><Server size={12} /> System</dt>
+        <dd className="text-emerald-400 font-mono text-[11px] flex items-center gap-1.5 font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          Operational
+        </dd>
+      </div>
+    </dl>
+  </section>
+);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Main view
@@ -696,15 +954,7 @@ export const OrganizationOverviewView: React.FC = () => {
   // Loading / error states
   // ═══════════════════════════════════════════════════════════════════════════
   if (isLoading && !data) {
-    return (
-      <div className="min-h-[500px] flex flex-col items-center justify-center p-8 space-y-4">
-        <div
-          className="w-9 h-9 rounded-full border-2 border-t-transparent animate-spin"
-          style={{ borderColor: `${accentColor} transparent ${accentColor} ${accentColor}` }}
-        />
-        <p className="text-xs text-zinc-400 font-medium">Loading organization workspace & analytics...</p>
-      </div>
-    );
+    return <OverviewSkeleton accentColor={accentColor} />;
   }
 
   if (error && !data) {
@@ -824,358 +1074,407 @@ export const OrganizationOverviewView: React.FC = () => {
         </div>
       </div>
 
-      {/* ═══ KPI STRIP ════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* Members */}
-        <Link
-          to={`/organizations/${targetSlug}/members`}
-          className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-blue-500/40 p-4 transition-colors"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">Members</div>
-              <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">{totalMembers}</div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-              <Users size={17} />
-            </div>
+      {/* ═══ UPPER DASHBOARD GRID: LEFT (KPIs + THROUGHPUT) | RIGHT (ORG DETAIL BOX + PORTFOLIO HEALTH) ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Left Column (8 cols): KPI Strip + Throughput Chart */}
+        <div className="lg:col-span-8 space-y-5">
+          {/* KPI Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {/* Members */}
+            <Link
+              to={`/organizations/${targetSlug}/members`}
+              className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-blue-500/40 p-4 transition-colors"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">Members</div>
+                  <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">{totalMembers}</div>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                  <Users size={17} />
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800">
+                  {(['OWNER', 'ADMIN', 'MEMBER'] as const).map((r, i) => (
+                    <motion.div
+                      key={r}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(roleSplit[r] / Math.max(members.length, 1)) * 100}%` }}
+                      transition={{ duration: 0.6, delay: i * 0.1, ease: 'easeOut' }}
+                      style={{
+                        backgroundColor: ['#60A5FA', '#3B82F6', '#1D4ED8'][i],
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                  <span>{roleSplit.OWNER} owner</span>
+                  <span>{roleSplit.ADMIN} admin</span>
+                  <span>{roleSplit.MEMBER} member</span>
+                </div>
+              </div>
+            </Link>
+
+            {/* Squads */}
+            <Link
+              to={`/organizations/${targetSlug}/teams`}
+              className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-purple-500/40 p-4 transition-colors"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">Squads</div>
+                  <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">{totalTeams}</div>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                  <Layers size={17} />
+                </div>
+              </div>
+              <div className="mt-3 flex items-end gap-1 h-6">
+                {teamPerformance.slice(0, 8).map((t, idx) => (
+                  <motion.div
+                    key={t.id}
+                    className="flex-1 rounded-sm"
+                    initial={{ height: 0 }}
+                    animate={{ height: `${Math.max(15, t.velocityScore)}%` }}
+                    transition={{ duration: 0.5, delay: idx * 0.04, ease: 'easeOut' }}
+                    style={{ backgroundColor: t.color, opacity: 0.85 }}
+                    title={`${t.name}: ${t.velocityScore}%`}
+                  />
+                ))}
+              </div>
+              <div className="text-[10px] font-mono text-zinc-500 mt-1.5">avg velocity {avgVelocity}%</div>
+            </Link>
+
+            {/* Projects */}
+            <Link
+              to={`/organizations/${targetSlug}/projects`}
+              className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-emerald-500/40 p-4 transition-colors"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">Projects</div>
+                  <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">{totalProjects}</div>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <FolderKanban size={17} />
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800">
+                  {projectStatus.rows.map((r, i) => (
+                    <motion.div
+                      key={r.key}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${r.pct}%` }}
+                      transition={{ duration: 0.6, delay: i * 0.08, ease: 'easeOut' }}
+                      style={{ backgroundColor: r.color }}
+                      title={`${r.label}: ${r.count}`}
+                    />
+                  ))}
+                </div>
+                <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                  <span>{projectStatus.counts.IN_PROGRESS || 0} active</span>
+                  <span>{projectStatus.counts.COMPLETED || 0} shipped</span>
+                  <span>{projectStatus.counts.PLANNING || 0} planned</span>
+                </div>
+              </div>
+            </Link>
+
+            {/* Completion */}
+            <Link
+              to="/my-tasks"
+              className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-amber-500/40 p-4 transition-colors flex items-center gap-4"
+            >
+              <Ring pct={completionRate} color="#F59E0B" size={68} stroke={7}>
+                <span className="text-sm font-bold font-mono text-white">{completionRate}%</span>
+              </Ring>
+              <div className="min-w-0">
+                <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+                  <CheckSquare size={12} className="text-amber-400" /> Completion
+                </div>
+                <div className="text-[13px] text-white font-semibold mt-1">
+                  {completedIssuesCount} <span className="text-zinc-500 font-normal">of {totalTasksCount} issues</span>
+                </div>
+                <div className="text-[10.5px] font-mono text-zinc-500 mt-0.5">{openIssuesCount} still in flight</div>
+              </div>
+            </Link>
           </div>
-          <div className="mt-3 space-y-1.5">
-            <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800">
-              {(['OWNER', 'ADMIN', 'MEMBER'] as const).map((r, i) => (
-                <div
-                  key={r}
-                  style={{
-                    width: `${(roleSplit[r] / Math.max(members.length, 1)) * 100}%`,
-                    backgroundColor: ['#60A5FA', '#3B82F6', '#1D4ED8'][i],
-                  }}
+
+          {/* Throughput Panel */}
+          <Panel
+            className="w-full"
+            icon={<BarChart3 size={16} className="text-emerald-400" />}
+            title="Throughput"
+            subtitle="Issues created vs completed, with 3-period completion trend"
+            right={
+              <div className="flex items-center gap-2">
+                {throughput.usingSample && <SampleBadge />}
+                <Segmented<TrendRange>
+                  value={trendRange}
+                  onChange={setTrendRange}
+                  options={[
+                    { value: '14d', label: '14D' },
+                    { value: '30d', label: '30D' },
+                    { value: 'quarter', label: 'QTR' },
+                  ]}
                 />
-              ))}
-            </div>
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-              <span>{roleSplit.OWNER} owner</span>
-              <span>{roleSplit.ADMIN} admin</span>
-              <span>{roleSplit.MEMBER} member</span>
-            </div>
-          </div>
-        </Link>
-
-        {/* Teams */}
-        <Link
-          to={`/organizations/${targetSlug}/teams`}
-          className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-purple-500/40 p-4 transition-colors"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">Squads</div>
-              <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">{totalTeams}</div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-              <Layers size={17} />
-            </div>
-          </div>
-          <div className="mt-3 flex items-end gap-1 h-6">
-            {teamPerformance.slice(0, 8).map((t) => (
-              <div
-                key={t.id}
-                className="flex-1 rounded-sm"
-                style={{ height: `${Math.max(15, t.velocityScore)}%`, backgroundColor: t.color, opacity: 0.85 }}
-                title={`${t.name}: ${t.velocityScore}%`}
-              />
-            ))}
-          </div>
-          <div className="text-[10px] font-mono text-zinc-500 mt-1.5">avg velocity {avgVelocity}%</div>
-        </Link>
-
-        {/* Projects */}
-        <Link
-          to={`/organizations/${targetSlug}/projects`}
-          className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-emerald-500/40 p-4 transition-colors"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">Projects</div>
-              <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">{totalProjects}</div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <FolderKanban size={17} />
-            </div>
-          </div>
-          <div className="mt-3 space-y-1.5">
-            <div className="flex h-1.5 rounded-full overflow-hidden bg-zinc-800">
-              {projectStatus.rows.map((r) => (
-                <div key={r.key} style={{ width: `${r.pct}%`, backgroundColor: r.color }} title={`${r.label}: ${r.count}`} />
-              ))}
-            </div>
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-              <span>{projectStatus.counts.IN_PROGRESS || 0} active</span>
-              <span>{projectStatus.counts.COMPLETED || 0} shipped</span>
-              <span>{projectStatus.counts.PLANNING || 0} planned</span>
-            </div>
-          </div>
-        </Link>
-
-        {/* Completion */}
-        <Link
-          to="/my-tasks"
-          className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-amber-500/40 p-4 transition-colors flex items-center gap-4"
-        >
-          <Ring pct={completionRate} color="#F59E0B" size={68} stroke={7}>
-            <span className="text-sm font-bold font-mono text-white">{completionRate}%</span>
-          </Ring>
-          <div className="min-w-0">
-            <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-              <CheckSquare size={12} className="text-amber-400" /> Completion
-            </div>
-            <div className="text-[13px] text-white font-semibold mt-1">
-              {completedIssuesCount} <span className="text-zinc-500 font-normal">of {totalTasksCount} issues</span>
-            </div>
-            <div className="text-[10.5px] font-mono text-zinc-500 mt-0.5">{openIssuesCount} still in flight</div>
-          </div>
-        </Link>
-      </div>
-
-      {/* ═══ ROW: THROUGHPUT + PORTFOLIO HEALTH ═══════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <Panel
-          className="lg:col-span-8"
-          icon={<BarChart3 size={16} className="text-emerald-400" />}
-          title="Throughput"
-          subtitle="Issues created vs completed, with 3-period completion trend"
-          right={
-            <div className="flex items-center gap-2">
-              {throughput.usingSample && <SampleBadge />}
-              <Segmented<TrendRange>
-                value={trendRange}
-                onChange={setTrendRange}
-                options={[
-                  { value: '14d', label: '14D' },
-                  { value: '30d', label: '30D' },
-                  { value: 'quarter', label: 'QTR' },
-                ]}
-              />
-            </div>
-          }
-        >
-          {/* Headline numbers */}
-          <div className="flex flex-wrap items-end gap-x-8 gap-y-2 mb-3">
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Completed</div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold font-mono text-white">{throughput.totalCompleted}</span>
-                <span
-                  className={`inline-flex items-center gap-0.5 text-[11px] font-mono font-semibold ${throughput.delta >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              </div>
+            }
+          >
+            {/* Headline numbers */}
+            <div className="flex flex-wrap items-end gap-x-8 gap-y-2 mb-3">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Completed</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold font-mono text-white">{throughput.totalCompleted}</span>
+                  <span
+                    className={`inline-flex items-center gap-0.5 text-[11px] font-mono font-semibold ${throughput.delta >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                  >
+                    {throughput.delta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                    {throughput.delta >= 0 ? '+' : ''}
+                    {throughput.delta}%
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Created</div>
+                <div className="text-2xl font-bold font-mono text-zinc-300">{throughput.totalCreated}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Net backlog</div>
+                <div
+                  className={`text-2xl font-bold font-mono ${throughput.totalCreated - throughput.totalCompleted > 0 ? 'text-amber-400' : 'text-emerald-400'
                     }`}
                 >
-                  {throughput.delta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                  {throughput.delta >= 0 ? '+' : ''}
-                  {throughput.delta}%
-                </span>
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Created</div>
-              <div className="text-2xl font-bold font-mono text-zinc-300">{throughput.totalCreated}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Net backlog</div>
-              <div
-                className={`text-2xl font-bold font-mono ${throughput.totalCreated - throughput.totalCompleted > 0 ? 'text-amber-400' : 'text-emerald-400'
-                  }`}
-              >
-                {throughput.totalCreated - throughput.totalCompleted > 0 ? '+' : ''}
-                {throughput.totalCreated - throughput.totalCompleted}
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Avg cycle</div>
-              <div className="text-2xl font-bold font-mono text-zinc-300">
-                {avgCycleDays !== null ? `${avgCycleDays.toFixed(1)}d` : '—'}
-              </div>
-            </div>
-          </div>
-
-          <div className="relative w-full" onMouseLeave={() => setHoveredBucket(null)}>
-            <svg viewBox={`0 0 ${TC.w} ${TC.h}`} className="w-full h-auto overflow-visible">
-              {[0, 0.25, 0.5, 0.75, 1].map((f) => {
-                const y = TC.top + tInnerH * f;
-                return (
-                  <g key={f}>
-                    <line x1={TC.left} x2={TC.w - TC.right} y1={y} y2={y} stroke="#1F2027" strokeWidth="1" />
-                    <text x={TC.left - 8} y={y + 3} fill="#52525B" fontSize="9" fontFamily="monospace" textAnchor="end">
-                      {Math.round(tNiceMax * (1 - f))}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {throughput.points.map((p, i) => {
-                const cx = TC.left + bucketW * i + bucketW / 2;
-                const isHover = hoveredBucket === i;
-                const dim = hoveredBucket !== null && !isHover;
-                return (
-                  <g key={i} onMouseEnter={() => setHoveredBucket(i)} className="cursor-pointer">
-                    {isHover && (
-                      <rect x={TC.left + bucketW * i} y={TC.top} width={bucketW} height={tInnerH} fill="#ffffff" opacity="0.03" />
-                    )}
-                    <rect
-                      x={cx - barW - 1}
-                      y={yScale(p.created)}
-                      width={barW}
-                      height={Math.max(0, TC.top + tInnerH - yScale(p.created))}
-                      rx="2"
-                      fill="#6366F1"
-                      opacity={dim ? 0.25 : 0.55}
-                    />
-                    <rect
-                      x={cx + 1}
-                      y={yScale(p.completed)}
-                      width={barW}
-                      height={Math.max(0, TC.top + tInnerH - yScale(p.completed))}
-                      rx="2"
-                      fill="#10B981"
-                      opacity={dim ? 0.35 : 1}
-                    />
-                    <rect x={TC.left + bucketW * i} y={TC.top} width={bucketW} height={tInnerH} fill="transparent" />
-                    {(i % labelEvery === 0 || i === throughput.points.length - 1) && (
-                      <text x={cx} y={TC.h - 8} fill={isHover ? '#E4E4E7' : '#52525B'} fontSize="9" fontFamily="monospace" textAnchor="middle">
-                        {p.label}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-
-              <path d={trendPath} fill="none" stroke="#FBBF24" strokeWidth="2" strokeLinecap="round" pointerEvents="none" />
-              {hoveredBucket !== null && (
-                <circle
-                  cx={TC.left + bucketW * hoveredBucket + bucketW / 2}
-                  cy={yScale(throughput.points[hoveredBucket].trend)}
-                  r="4"
-                  fill="#FBBF24"
-                  stroke="#0E0F14"
-                  strokeWidth="2"
-                  pointerEvents="none"
-                />
-              )}
-            </svg>
-
-            {hoveredBucket !== null && (
-              <div
-                className="absolute top-0 pointer-events-none p-2.5 rounded-lg bg-[#0A0B0F]/95 border border-[#27272A] shadow-xl text-[11px] space-y-1 min-w-[140px] -translate-x-1/2"
-                style={{
-                  left: `${clamp(((TC.left + bucketW * hoveredBucket + bucketW / 2) / TC.w) * 100, 12, 88)}%`,
-                }}
-              >
-                <div className="font-mono text-[10px] text-zinc-400">{throughput.points[hoveredBucket].rangeLabel}</div>
-                <div className="flex justify-between gap-4">
-                  <span className="flex items-center gap-1.5 text-zinc-300">
-                    <span className="w-2 h-2 rounded-sm bg-emerald-500" />
-                    Completed
-                  </span>
-                  <span className="font-mono font-bold text-white">{throughput.points[hoveredBucket].completed}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="flex items-center gap-1.5 text-zinc-300">
-                    <span className="w-2 h-2 rounded-sm bg-indigo-500" />
-                    Created
-                  </span>
-                  <span className="font-mono font-bold text-white">{throughput.points[hoveredBucket].created}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="flex items-center gap-1.5 text-zinc-300">
-                    <span className="w-2 h-0.5 bg-amber-400" />
-                    Trend
-                  </span>
-                  <span className="font-mono text-zinc-300">{throughput.points[hoveredBucket].trend.toFixed(1)}</span>
+                  {throughput.totalCreated - throughput.totalCompleted > 0 ? '+' : ''}
+                  {throughput.totalCreated - throughput.totalCompleted}
                 </div>
               </div>
-            )}
-          </div>
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Avg cycle</div>
+                <div className="text-2xl font-bold font-mono text-zinc-300">
+                  {avgCycleDays !== null ? `${avgCycleDays.toFixed(1)}d` : '—'}
+                </div>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-4 text-[11px] text-zinc-400 mt-2">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />Completed</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500/60" />Created</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded bg-amber-400" />Completion trend</span>
-          </div>
-        </Panel>
-
-        <Panel
-          className="lg:col-span-4"
-          icon={<PieChart size={16} className="text-violet-400" />}
-          title="Portfolio Health"
-          subtitle="Project status & open-issue priority"
-          right={projectStatus.usingSample ? <SampleBadge /> : undefined}
-        >
-          {/* Concentric status rings */}
-          <div className="flex items-center gap-4">
-            <div className="relative w-[120px] h-[120px] shrink-0">
-              <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-                {projectStatus.rows.map((r, i) => {
-                  const radius = 54 - i * 11;
-                  const c = 2 * Math.PI * radius;
+            <div className="relative w-full" onMouseLeave={() => setHoveredBucket(null)}>
+              <svg viewBox={`0 0 ${TC.w} ${TC.h}`} className="w-full h-auto overflow-visible">
+                {[0, 0.25, 0.5, 0.75, 1].map((f) => {
+                  const y = TC.top + tInnerH * f;
                   return (
-                    <g key={r.key}>
-                      <circle cx="60" cy="60" r={radius} fill="none" stroke="#1A1B21" strokeWidth="7" />
-                      {r.pct > 0 && <circle
-                        cx="60"
-                        cy="60"
-                        r={radius}
-                        fill="none"
-                        stroke={r.color}
-                        strokeWidth="7"
-                        strokeLinecap="round"
-                        strokeDasharray={`${(r.pct / 100) * c} ${c}`}
-                        className="transition-all duration-500"
-                      />}
+                    <g key={f}>
+                      <line x1={TC.left} x2={TC.w - TC.right} y1={y} y2={y} stroke="#1F2027" strokeWidth="1" />
+                      <text x={TC.left - 8} y={y + 3} fill="#52525B" fontSize="9" fontFamily="monospace" textAnchor="end">
+                        {Math.round(tNiceMax * (1 - f))}
+                      </text>
                     </g>
                   );
                 })}
+
+                {throughput.points.map((p, i) => {
+                  const cx = TC.left + bucketW * i + bucketW / 2;
+                  const isHover = hoveredBucket === i;
+                  const dim = hoveredBucket !== null && !isHover;
+                  const createdH = Math.max(0, TC.top + tInnerH - yScale(p.created));
+                  const completedH = Math.max(0, TC.top + tInnerH - yScale(p.completed));
+                  return (
+                    <g key={i} onMouseEnter={() => setHoveredBucket(i)} className="cursor-pointer">
+                      {isHover && (
+                        <rect x={TC.left + bucketW * i} y={TC.top} width={bucketW} height={tInnerH} fill="#ffffff" opacity="0.03" />
+                      )}
+                      <motion.rect
+                        x={cx - barW - 1}
+                        initial={{ y: TC.top + tInnerH, height: 0 }}
+                        animate={{ y: yScale(p.created), height: createdH }}
+                        transition={{ duration: 0.5, delay: i * 0.02, ease: 'easeOut' }}
+                        width={barW}
+                        rx="2"
+                        fill="#6366F1"
+                        opacity={dim ? 0.25 : 0.55}
+                      />
+                      <motion.rect
+                        x={cx + 1}
+                        initial={{ y: TC.top + tInnerH, height: 0 }}
+                        animate={{ y: yScale(p.completed), height: completedH }}
+                        transition={{ duration: 0.5, delay: i * 0.02 + 0.03, ease: 'easeOut' }}
+                        width={barW}
+                        rx="2"
+                        fill="#10B981"
+                        opacity={dim ? 0.35 : 1}
+                      />
+                      <rect x={TC.left + bucketW * i} y={TC.top} width={bucketW} height={tInnerH} fill="transparent" />
+                      {(i % labelEvery === 0 || i === throughput.points.length - 1) && (
+                        <text x={cx} y={TC.h - 8} fill={isHover ? '#E4E4E7' : '#52525B'} fontSize="9" fontFamily="monospace" textAnchor="middle">
+                          {p.label}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+
+                <motion.path
+                  d={trendPath}
+                  fill="none"
+                  stroke="#FBBF24"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  pointerEvents="none"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
+                />
+                {hoveredBucket !== null && (
+                  <circle
+                    cx={TC.left + bucketW * hoveredBucket + bucketW / 2}
+                    cy={yScale(throughput.points[hoveredBucket].trend)}
+                    r="4"
+                    fill="#FBBF24"
+                    stroke="#0E0F14"
+                    strokeWidth="2"
+                    pointerEvents="none"
+                  />
+                )}
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-base font-bold font-mono text-white leading-none">{projectStatus.total}</span>
-                <span className="text-[8.5px] font-mono uppercase text-zinc-500 mt-0.5">projects</span>
+
+              {hoveredBucket !== null && (
+                <div
+                  className="absolute top-0 pointer-events-none p-2.5 rounded-lg bg-[#0A0B0F]/95 border border-[#27272A] shadow-xl text-[11px] space-y-1 min-w-[140px] -translate-x-1/2"
+                  style={{
+                    left: `${clamp(((TC.left + bucketW * hoveredBucket + bucketW / 2) / TC.w) * 100, 12, 88)}%`,
+                  }}
+                >
+                  <div className="font-mono text-[10px] text-zinc-400">{throughput.points[hoveredBucket].rangeLabel}</div>
+                  <div className="flex justify-between gap-4">
+                    <span className="flex items-center gap-1.5 text-zinc-300">
+                      <span className="w-2 h-2 rounded-sm bg-emerald-500" />
+                      Completed
+                    </span>
+                    <span className="font-mono font-bold text-white">{throughput.points[hoveredBucket].completed}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="flex items-center gap-1.5 text-zinc-300">
+                      <span className="w-2 h-2 rounded-sm bg-indigo-500" />
+                      Created
+                    </span>
+                    <span className="font-mono font-bold text-white">{throughput.points[hoveredBucket].created}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="flex items-center gap-1.5 text-zinc-300">
+                      <span className="w-2 h-0.5 bg-amber-400" />
+                      Trend
+                    </span>
+                    <span className="font-mono text-zinc-300">{throughput.points[hoveredBucket].trend.toFixed(1)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-4 text-[11px] text-zinc-400 mt-2">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />Completed</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500/60" />Created</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded bg-amber-400" />Completion trend</span>
+            </div>
+          </Panel>
+        </div>
+
+        {/* Right Column (4 cols): Org Detail Box (Upper Right) + Portfolio Health */}
+        <div className="lg:col-span-4 space-y-5">
+          {/* Organization Detail Box */}
+          <OrgDetailBox
+            activeOrg={activeOrg}
+            targetSlug={targetSlug}
+            metadata={metadata}
+            accentColor={accentColor}
+          />
+
+          {/* Portfolio Health */}
+          <Panel
+            className="w-full"
+            icon={<PieChart size={16} className="text-violet-400" />}
+            title="Portfolio Health"
+            subtitle="Project status & open-issue priority"
+            right={projectStatus.usingSample ? <SampleBadge /> : undefined}
+          >
+            {/* Concentric status rings */}
+            <div className="flex items-center gap-4">
+              <div className="relative w-[120px] h-[120px] shrink-0">
+                <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                  {projectStatus.rows.map((r, i) => {
+                    const radius = 54 - i * 11;
+                    const c = 2 * Math.PI * radius;
+                    return (
+                      <g key={r.key}>
+                        <circle cx="60" cy="60" r={radius} fill="none" stroke="#1A1B21" strokeWidth="7" />
+                        {r.pct > 0 && (
+                          <motion.circle
+                            cx="60"
+                            cy="60"
+                            r={radius}
+                            fill="none"
+                            stroke={r.color}
+                            strokeWidth="7"
+                            strokeLinecap="round"
+                            strokeDasharray={`${(r.pct / 100) * c} ${c}`}
+                            initial={{ strokeDashoffset: c }}
+                            animate={{ strokeDashoffset: 0 }}
+                            transition={{ duration: 0.9, delay: i * 0.12, ease: 'easeOut' }}
+                          />
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-base font-bold font-mono text-white leading-none">{projectStatus.total}</span>
+                  <span className="text-[8.5px] font-mono uppercase text-zinc-500 mt-0.5">projects</span>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0 space-y-2">
+                {projectStatus.rows.map((r) => (
+                  <div key={r.key} className="flex items-center justify-between text-xs gap-2">
+                    <span className="flex items-center gap-2 text-zinc-300 truncate">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                      {r.label}
+                    </span>
+                    <span className="font-mono text-[11px] shrink-0">
+                      <span className="text-white font-semibold">{r.count}</span>
+                      <span className="text-zinc-500"> · {r.pct}%</span>
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="flex-1 min-w-0 space-y-2">
-              {projectStatus.rows.map((r) => (
-                <div key={r.key} className="flex items-center justify-between text-xs gap-2">
-                  <span className="flex items-center gap-2 text-zinc-300 truncate">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
-                    {r.label}
-                  </span>
-                  <span className="font-mono text-[11px] shrink-0">
-                    <span className="text-white font-semibold">{r.count}</span>
-                    <span className="text-zinc-500"> · {r.pct}%</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Priority bars */}
-          <div className="mt-5 pt-4 border-t border-[#27272A]/70 space-y-2.5">
-            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-500">
-              <span className="flex items-center gap-1.5"><Flame size={12} className="text-orange-400" />Open by priority</span>
-              <span>{priorityMix.total} open</span>
-            </div>
-            {PRIORITY_META.map((p) => {
-              const v = priorityMix.src[p.key] || 0;
-              return (
-                <div key={p.key} className="flex items-center gap-3 text-xs">
-                  <span className="w-14 text-zinc-400 shrink-0">{p.label}</span>
-                  <div className="flex-1 h-2 rounded-full bg-[#16171D] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${(v / priorityMix.max) * 100}%`, backgroundColor: p.color }}
-                    />
+            {/* Priority bars */}
+            <div className="mt-5 pt-4 border-t border-[#27272A]/70 space-y-2.5">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+                <span className="flex items-center gap-1.5"><Flame size={12} className="text-orange-400" />Open by priority</span>
+                <span>{priorityMix.total} open</span>
+              </div>
+              {PRIORITY_META.map((p, i) => {
+                const v = priorityMix.src[p.key] || 0;
+                return (
+                  <div key={p.key} className="flex items-center gap-3 text-xs">
+                    <span className="w-14 text-zinc-400 shrink-0">{p.label}</span>
+                    <div className="flex-1 h-2 rounded-full bg-[#16171D] overflow-hidden">
+                      <motion.div
+                        className="h-full rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(v / priorityMix.max) * 100}%` }}
+                        transition={{ duration: 0.6, delay: i * 0.08, ease: 'easeOut' }}
+                        style={{ backgroundColor: p.color }}
+                      />
+                    </div>
+                    <span className="w-6 text-right font-mono text-[11px] text-white">{v}</span>
                   </div>
-                  <span className="w-6 text-right font-mono text-[11px] text-white">{v}</span>
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
+                );
+              })}
+            </div>
+          </Panel>
+        </div>
       </div>
 
       {/* ═══ GANTT TIMELINE ═══════════════════════════════════════════════════ */}
@@ -1301,9 +1600,12 @@ export const OrganizationOverviewView: React.FC = () => {
                             borderBottomRightRadius: rawR > 100 ? 0 : undefined,
                           }}
                         >
-                          <div
-                            className="absolute inset-y-0 left-0 transition-all duration-500"
-                            style={{ width: `${r.progress}%`, backgroundColor: barColor, opacity: 0.85 }}
+                          <motion.div
+                            className="absolute inset-y-0 left-0"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${r.progress}%` }}
+                            transition={{ duration: 0.7, ease: 'easeOut' }}
+                            style={{ backgroundColor: barColor, opacity: 0.85 }}
                           />
                           {width > 9 && (
                             <span className="relative z-10 px-2 text-[10.5px] font-semibold text-white whitespace-nowrap leading-6 drop-shadow">
@@ -1402,9 +1704,12 @@ export const OrganizationOverviewView: React.FC = () => {
                     <span className="font-mono font-bold text-white text-[11px]">{t.velocityScore}%</span>
                   </div>
                   <div className="mt-1.5 h-1.5 rounded-full bg-[#16171D] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${t.velocityScore}%`, backgroundColor: t.color }}
+                    <motion.div
+                      className="h-full rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${t.velocityScore}%` }}
+                      transition={{ duration: 0.6, delay: i * 0.08, ease: 'easeOut' }}
+                      style={{ backgroundColor: t.color }}
                     />
                   </div>
                   <div className="mt-1 text-[10px] font-mono text-zinc-500">
@@ -1570,81 +1875,7 @@ export const OrganizationOverviewView: React.FC = () => {
           </div>
         </Panel>
 
-        <div className="lg:col-span-4 space-y-4 lg:sticky lg:top-6">
-          {/* About */}
-          <section className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 shadow-xl space-y-4">
-            <div className="flex items-center gap-3">
-              <OrgAvatar
-                name={activeOrg?.name || 'DevFlow'}
-                logoUrl={activeOrg?.logoUrl}
-                className="w-10 h-10 shrink-0"
-                iconSize={20}
-                roundedClassName="rounded-xl"
-                fontSize={15}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-semibold text-sm text-white truncate">{activeOrg?.name || 'DevFlow Inc'}</h3>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    Pro
-                  </span>
-                </div>
-                <p className="text-[11px] text-zinc-500 truncate font-mono">/{activeOrg?.slug || 'devflow'}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { to: 'members', icon: <Users size={14} />, label: 'Members', hover: 'group-hover:text-blue-400' },
-                { to: 'teams', icon: <Layers size={14} />, label: 'Teams', hover: 'group-hover:text-violet-400' },
-                { to: 'projects', icon: <FolderKanban size={14} />, label: 'Projects', hover: 'group-hover:text-emerald-400' },
-                { to: 'settings', icon: <Settings size={14} />, label: 'Settings', hover: 'group-hover:text-amber-400' },
-              ].map((q) => (
-                <Link
-                  key={q.to}
-                  to={`/organizations/${targetSlug}/${q.to}`}
-                  className="group flex flex-col items-center gap-1 py-2.5 rounded-xl bg-[#111216] border border-[#27272A] hover:border-zinc-600 transition-colors"
-                >
-                  <span className={`text-zinc-400 transition-colors ${q.hover}`}>{q.icon}</span>
-                  <span className="text-[10px] text-zinc-300">{q.label}</span>
-                </Link>
-              ))}
-            </div>
-
-            <dl className="space-y-2 text-xs pt-3 border-t border-[#27272A]/70">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="flex items-center gap-1.5 text-zinc-500"><Building2 size={12} /> Industry</dt>
-                <dd className="text-zinc-200 truncate">{metadata.industry}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="flex items-center gap-1.5 text-zinc-500"><Globe size={12} /> Website</dt>
-                <dd className="truncate">
-                  {metadata.website ? (
-                    <a href={metadata.website} target="_blank" rel="noreferrer" className="text-purple-400 hover:underline inline-flex items-center gap-1">
-                      {metadata.website.replace(/^https?:\/\//, '')}
-                      <ExternalLink size={10} />
-                    </a>
-                  ) : (
-                    <span className="text-zinc-500 italic">Not set</span>
-                  )}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="flex items-center gap-1.5 text-zinc-500"><Calendar size={12} /> Founded</dt>
-                <dd className="text-zinc-300 font-mono text-[11px]">
-                  {activeOrg?.createdAt ? new Date(activeOrg.createdAt).toLocaleDateString() : '—'}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="flex items-center gap-1.5 text-zinc-500"><Server size={12} /> System</dt>
-                <dd className="text-emerald-400 font-mono text-[11px] flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Operational
-                </dd>
-              </div>
-            </dl>
-          </section>
-
+        <div className="lg:col-span-4 space-y-4">
           {/* Audit log */}
           <section className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 shadow-xl">
             <div className="flex items-center justify-between mb-4">

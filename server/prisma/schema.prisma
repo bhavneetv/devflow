@@ -96,6 +96,7 @@ model User {
   organizationMemberships OrganizationMember[]     @relation("OrganizationMemberships")
   orgSentInvitations      OrganizationInvitation[] @relation("OrgSentInvitations")
   orgActivities           OrganizationActivity[]   @relation("OrgActivityActor")
+  sentMessages            TeamMessage[]            @relation("MessageSender")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -214,36 +215,107 @@ model Task {
 }
 
 model Team {
-  id             Int              @id @default(autoincrement())
+  id             Int                     @id @default(autoincrement())
   name           String
-  description    String?          @db.Text
-  color          String           @default("#8B5CF6")
+  description    String?                 @db.Text
+  color          String                  @default("#8B5CF6")
   createdById    Int
-  createdBy      User             @relation("TeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy      User                    @relation("TeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
   organizationId Int?
-  organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organization   Organization?           @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   members        TeamMember[]
   invitations    TeamInvitation[]
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  permissions    TeamMemberPermission[]
+  conversations  TeamConversation[]
+  messages       TeamMessage[]
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
   @@index([organizationId])
   @@map("teams")
 }
 
 model TeamMember {
-  id       Int            @id @default(autoincrement())
-  teamId   Int
-  team     Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  userId   Int
-  user     User           @relation("TeamMemberships", fields: [userId], references: [id], onDelete: Cascade)
-  role     TeamMemberRole @default(DEVELOPER)
-  joinedAt DateTime       @default(now())
+  id          Int                     @id @default(autoincrement())
+  teamId      Int
+  team        Team                    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User                    @relation("TeamMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  role        TeamMemberRole          @default(DEVELOPER)
+  joinedAt    DateTime                @default(now())
+  permissions TeamMemberPermission[]
 
   @@unique([teamId, userId])
   @@index([teamId])
   @@index([userId])
   @@map("team_members")
+}
+
+model TeamMemberPermission {
+  id                  Int         @id @default(autoincrement())
+  teamId              Int
+  team                Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId              Int
+  teamMember          TeamMember  @relation(fields: [teamId, userId], references: [teamId, userId], onDelete: Cascade)
+  manageTeamMembers   Boolean     @default(false)
+  removeTeamMembers   Boolean     @default(false)
+  manageMemberRoles   Boolean     @default(false)
+  manageTeamDetails   Boolean     @default(false)
+  manageTeamSettings  Boolean     @default(false)
+  manageInvitations   Boolean     @default(false)
+  updatedById         Int?
+  updatedAt           DateTime    @updatedAt
+  createdAt           DateTime    @default(now())
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_member_permissions")
+}
+
+enum ConversationType {
+  GROUP
+  DIRECT
+}
+
+model TeamConversation {
+  id             Int              @id @default(autoincrement())
+  teamId         Int
+  team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  type           ConversationType @default(GROUP)
+  name           String?
+  // For DIRECT chats: participantUserIds stores sorted JSON string like "[1,2]"
+  participantIds String?          @db.Text
+  messages       TeamMessage[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([teamId])
+  @@index([type])
+  @@map("team_conversations")
+}
+
+model TeamMessage {
+  id             Int              @id @default(autoincrement())
+  teamId         Int
+  team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  conversationId Int
+  conversation   TeamConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       Int
+  sender         User             @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  content        String           @db.Text
+  // JSON array of mentioned user IDs like [12, 15]
+  mentions       String?          @db.Text
+  // JSON array of user IDs who have read the message like [1, 2]
+  readBy         String?          @db.Text
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([teamId])
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("team_messages")
 }
 
 model TeamInvitation {

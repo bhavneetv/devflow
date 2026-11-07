@@ -1,6 +1,17 @@
 import { apiUrl } from '../config/api';
 import { authService } from './auth.service';
-import type { Team, TeamSummary, TeamMember, TeamInvitation, TeamMemberRole, InvitationPreview } from '../types/team';
+import type {
+  Team,
+  TeamSummary,
+  TeamMember,
+  TeamInvitation,
+  TeamMemberRole,
+  InvitationPreview,
+  TeamMemberPermissions,
+  TeamMemberPermissionItem,
+  TeamConversation,
+  TeamMessage,
+} from '../types/team';
 
 function getAuthHeaders(): Record<string, string> {
   const token = authService.getToken();
@@ -188,6 +199,112 @@ export const teamService = {
       return handleResponse(res);
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to decline invitation' };
+    }
+  },
+
+  // ─── Permissions (RBAC) ────────────────────────────────────────────────────
+
+  async getPermissions(teamId: number): Promise<{ success: boolean; data?: TeamMemberPermissionItem[]; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/permissions`), {
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to load permissions' };
+    }
+  },
+
+  async updateMemberPermissions(
+    teamId: number,
+    memberId: number,
+    permissions: Partial<TeamMemberPermissions>
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/members/${memberId}/permissions`), {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(permissions),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to update permissions' };
+    }
+  },
+
+  // ─── Team Chat ────────────────────────────────────────────────────────────
+
+  async getConversations(teamId: number): Promise<{ success: boolean; data?: TeamConversation[]; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations`), {
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to fetch conversations' };
+    }
+  },
+
+  async getOrCreateDirectConversation(
+    teamId: number,
+    targetUserId: number
+  ): Promise<{ success: boolean; data?: TeamConversation; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations/direct`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ targetUserId }),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to open direct conversation' };
+    }
+  },
+
+  async getMessages(
+    teamId: number,
+    convId: number
+  ): Promise<{ success: boolean; data?: TeamMessage[]; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations/${convId}/messages`), {
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to fetch messages' };
+    }
+  },
+
+  async sendMessage(
+    teamId: number,
+    convId: number,
+    content: string,
+    mentions?: number[]
+  ): Promise<{ success: boolean; data?: TeamMessage; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations/${convId}/messages`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ content, mentions }),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to send message' };
+    }
+  },
+
+  async markConversationRead(
+    teamId: number,
+    convId: number
+  ): Promise<{ success: boolean; markedCount?: number; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations/${convId}/read`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to mark read' };
     }
   },
 };

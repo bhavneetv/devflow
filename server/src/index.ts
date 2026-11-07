@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import http from 'http';
 import { healthRouter } from './routes/health.routes.js';
 import { usersRouter } from './routes/users.routes.js';
 import { projectsRouter } from './routes/projects.routes.js';
@@ -9,6 +10,7 @@ import { seedRouter } from './routes/seed.routes.js';
 import { authRouter } from './routes/auth.routes.js';
 import { teamsRouter } from './routes/teams.routes.js';
 import { organizationsRouter } from './routes/organizations.routes.js';
+import { initSocketIO } from './lib/socket.js';
 
 dotenv.config();
 
@@ -98,7 +100,10 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+initSocketIO(server, defaultOrigins);
+
+server.listen(PORT, () => {
   console.log(`🚀 Server ready at http://localhost:${PORT}`);
   console.log(`🔍 Health check: http://localhost:${PORT}/api/health`);
 });

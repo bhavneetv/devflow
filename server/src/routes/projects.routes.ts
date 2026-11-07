@@ -6,12 +6,34 @@ export const projectsRouter = Router();
 
 const createProjectSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters'),
-  description: z.string().optional(),
-  status: z.enum(['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ARCHIVED']).optional().default('IN_PROGRESS'),
+  identifier: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  status: z.enum(['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ARCHIVED', 'BACKLOG', 'PENDING']).optional().default('IN_PROGRESS'),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional().default('MEDIUM'),
+  category: z.string().optional().default('General'),
+  avatarColor: z.string().optional().default('#8B5CF6'),
+  avatarIcon: z.string().optional().default('folder'),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
   ownerId: z.number().int().positive('Valid ownerId is required'),
-  organizationId: z.number().int().positive().optional(),
+  leadId: z.number().int().positive().optional().nullable(),
+  teamId: z.number().int().positive().optional().nullable(),
+  memberIds: z.array(z.number().int().positive()).optional(),
+  organizationId: z.number().int().positive().optional().nullable(),
   organizationSlug: z.string().optional(),
 });
+
+const userSelectFields = {
+  id: true,
+  name: true,
+  username: true,
+  email: true,
+  avatarUrl: true,
+  avatarColor: true,
+  avatarType: true,
+  avatarId: true,
+  jobTitle: true,
+};
 
 // GET /api/projects - List all projects (with optional organization filter)
 projectsRouter.get('/', async (req: Request, res: Response) => {
@@ -32,18 +54,21 @@ projectsRouter.get('/', async (req: Request, res: Response) => {
       where: orgFilterId !== undefined ? { organizationId: orgFilterId } : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
-        owner: {
-          select: { id: true, name: true, email: true, avatarUrl: true },
+        owner: { select: userSelectFields },
+        lead: { select: userSelectFields },
+        team: { select: { id: true, name: true, color: true } },
+        members: {
+          include: {
+            user: { select: userSelectFields },
+          },
         },
         tasks: {
           include: {
-            assignee: {
-              select: { id: true, name: true, email: true, avatarUrl: true },
-            },
+            assignee: { select: userSelectFields },
           },
         },
         _count: {
-          select: { tasks: true },
+          select: { tasks: true, members: true },
         },
       },
     });
@@ -69,16 +94,22 @@ projectsRouter.get('/:id', async (req: Request, res: Response) => {
     const project = await prisma.project.findUnique({
       where: { id },
       include: {
-        owner: {
-          select: { id: true, name: true, email: true, avatarUrl: true },
+        owner: { select: userSelectFields },
+        lead: { select: userSelectFields },
+        team: { select: { id: true, name: true, color: true, description: true } },
+        members: {
+          include: {
+            user: { select: userSelectFields },
+          },
         },
         tasks: {
           include: {
-            assignee: {
-              select: { id: true, name: true, email: true, avatarUrl: true },
-            },
+            assignee: { select: userSelectFields },
           },
           orderBy: { createdAt: 'desc' },
+        },
+        _count: {
+          select: { tasks: true, members: true },
         },
       },
     });
@@ -125,17 +156,45 @@ projectsRouter.post('/', async (req: Request, res: Response) => {
       if (org) finalOrgId = org.id;
     }
 
+    // Parse dates if provided
+    const startDate = parsed.data.startDate ? new Date(parsed.data.startDate) : null;
+    const endDate = parsed.data.endDate ? new Date(parsed.data.endDate) : null;
+
     const project = await prisma.project.create({
       data: {
         title: parsed.data.title,
-        description: parsed.data.description,
+        identifier: parsed.data.identifier || null,
+        description: parsed.data.description || null,
         status: parsed.data.status,
+        priority: parsed.data.priority,
+        category: parsed.data.category || 'General',
+        avatarColor: parsed.data.avatarColor || '#8B5CF6',
+        avatarIcon: parsed.data.avatarIcon || 'folder',
+        startDate: startDate && !isNaN(startDate.getTime()) ? startDate : null,
+        endDate: endDate && !isNaN(endDate.getTime()) ? endDate : null,
         ownerId: parsed.data.ownerId,
+        leadId: parsed.data.leadId || null,
+        teamId: parsed.data.teamId || null,
         organizationId: finalOrgId,
+        ...(parsed.data.memberIds && parsed.data.memberIds.length > 0
+          ? {
+              members: {
+                create: parsed.data.memberIds.map((userId) => ({
+                  userId,
+                  role: userId === parsed.data.leadId ? 'LEAD' : 'COLLABORATOR',
+                })),
+              },
+            }
+          : {}),
       },
       include: {
-        owner: {
-          select: { id: true, name: true, email: true, avatarUrl: true },
+        owner: { select: userSelectFields },
+        lead: { select: userSelectFields },
+        team: { select: { id: true, name: true, color: true } },
+        members: {
+          include: {
+            user: { select: userSelectFields },
+          },
         },
       },
     });
@@ -171,17 +230,62 @@ projectsRouter.patch('/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Invalid project ID' });
     }
 
-    const { title, description, status } = req.body;
+    const {
+      title,
+      identifier,
+      description,
+      status,
+      priority,
+      category,
+      avatarColor,
+      avatarIcon,
+      startDate,
+      endDate,
+      leadId,
+      teamId,
+      memberIds,
+    } = req.body;
+
+    // Sync project members if provided
+    if (Array.isArray(memberIds)) {
+      await prisma.projectMember.deleteMany({
+        where: { projectId: id },
+      });
+      if (memberIds.length > 0) {
+        await prisma.projectMember.createMany({
+          data: memberIds.map((userId: number) => ({
+            projectId: id,
+            userId,
+            role: userId === leadId ? 'LEAD' : 'COLLABORATOR',
+          })),
+        });
+      }
+    }
+
     const project = await prisma.project.update({
       where: { id },
       data: {
         ...(title !== undefined && { title }),
+        ...(identifier !== undefined && { identifier }),
         ...(description !== undefined && { description }),
         ...(status !== undefined && { status }),
+        ...(priority !== undefined && { priority }),
+        ...(category !== undefined && { category }),
+        ...(avatarColor !== undefined && { avatarColor }),
+        ...(avatarIcon !== undefined && { avatarIcon }),
+        ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
+        ...(endDate !== undefined && { endDate: endDate ? new Date(endDate) : null }),
+        ...(leadId !== undefined && { leadId }),
+        ...(teamId !== undefined && { teamId }),
       },
       include: {
-        owner: {
-          select: { id: true, name: true, email: true, avatarUrl: true },
+        owner: { select: userSelectFields },
+        lead: { select: userSelectFields },
+        team: { select: { id: true, name: true, color: true } },
+        members: {
+          include: {
+            user: { select: userSelectFields },
+          },
         },
       },
     });

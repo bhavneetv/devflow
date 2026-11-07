@@ -36,6 +36,7 @@ import { organizationService } from '../../services/organization.service';
 import { OrgAvatar } from '../../components/organization/OrgAvatar';
 import type { OrganizationOverviewData, OrganizationActivity } from '../../types/organization';
 import { useNavigation } from '../../context/NavigationContext';
+import { CreateProjectModal } from '../../components/project/CreateProjectModal';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -469,6 +470,7 @@ export const OrganizationOverviewView: React.FC = () => {
   const [hoveredGantt, setHoveredGantt] = useState<string | null>(null);
   const [hoveredHeat, setHoveredHeat] = useState<{ date: Date; count: number } | null>(null);
   const [issueFilter, setIssueFilter] = useState<IssueFilter>('ALL');
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState<boolean>(false);
 
   const targetSlug = organizationSlug || currentOrganization?.slug;
 
@@ -1064,7 +1066,7 @@ export const OrganizationOverviewView: React.FC = () => {
             <span className="hidden sm:inline">Invite</span>
           </Link>
           <button
-            onClick={() => setIsCreateOpen(true)}
+            onClick={() => setIsProjectModalOpen(true)}
             className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[12px] font-semibold text-[#0A0B10] transition-all hover:brightness-110 cursor-pointer"
             style={{ backgroundColor: accentColor, boxShadow: `0 2px 10px ${accentColor}25` }}
           >
@@ -1914,6 +1916,17 @@ export const OrganizationOverviewView: React.FC = () => {
           </section>
         </div>
       </div>
+
+      {/* Create Project Modal */}
+      <CreateProjectModal
+        isOpen={isProjectModalOpen}
+        onClose={() => setIsProjectModalOpen(false)}
+        onCreated={() => {
+          loadOverview();
+        }}
+        organizationSlug={targetSlug}
+        organizationId={activeOrg?.id}
+      />
     </div>
   );
 };

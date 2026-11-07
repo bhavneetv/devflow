@@ -51,8 +51,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   // Quick fill demo credentials
   const handleQuickDemo = () => {
-    setEmail('alice@devflow.io');
-    setPassword('password123');
+    setEmail('admin@gmail.com');
+    setPassword('123123');
     setErrors({});
   };
 
@@ -162,7 +162,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             title="Auto-fill with seeded development user"
           >
             <Sparkles size={11} className="text-[#A78BFA] group-hover:rotate-12 transition-transform" />
-            <span>Demo (alice@devflow.io)</span>
+            <span>Demo (admin@gmail.com)</span>
           </button>
 
           <button

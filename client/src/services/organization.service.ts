@@ -223,6 +223,73 @@ export const organizationService = {
     }
   },
 
+  async createProject(input: {
+    title: string;
+    identifier?: string | null;
+    description?: string | null;
+    status?: string;
+    priority?: string;
+    category?: string;
+    avatarColor?: string;
+    avatarIcon?: string;
+    startDate?: string | null;
+    endDate?: string | null;
+    ownerId: number;
+    leadId?: number | null;
+    teamId?: number | null;
+    memberIds?: number[];
+    organizationId?: number | null;
+    organizationSlug?: string;
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const res = await fetch(apiUrl('/projects'), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(input),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to create project' };
+    }
+  },
+
+  async getProject(id: number | string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${id}`), { headers: getAuthHeaders() });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to fetch project' };
+    }
+  },
+
+  async updateProject(
+    id: number | string,
+    data: any
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${id}`), {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(data),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to update project' };
+    }
+  },
+
+  async deleteProject(id: number | string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${id}`), {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete project' };
+    }
+  },
+
   async listActivity(slugOrId: string | number, filter: string = 'all'): Promise<{ success: boolean; data?: OrganizationActivity[]; error?: string }> {
     try {
       const res = await fetch(apiUrl(`/organizations/${slugOrId}/activity?filter=${encodeURIComponent(filter)}`), { headers: getAuthHeaders() });

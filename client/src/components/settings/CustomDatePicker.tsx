@@ -1,15 +1,28 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown, X } from 'lucide-react';
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  X,
+  Clock,
+  Layers,
+  Sparkles,
+} from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
 
-interface CustomDatePickerProps {
+export interface CustomDatePickerProps {
   value: string; // ISO date 'YYYY-MM-DD' or empty
   onChange: (value: string) => void;
   placeholder?: string;
   minYear?: number;
   maxYear?: number;
   className?: string;
+  presetMode?: 'dob' | 'start' | 'end' | 'general' | 'none';
+  align?: 'left' | 'right';
+  showQuarterTab?: boolean;
+  dropUp?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -24,24 +37,101 @@ const MONTH_SHORT = [
 
 const DAYS_OF_WEEK = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+interface QuarterInfo {
+  id: 'Q1' | 'Q2' | 'Q3' | 'Q4';
+  label: string;
+  monthsRange: string;
+  startMonth: number;
+  startDay: number;
+  endMonth: number;
+  endDay: number;
+}
+
+const QUARTERS: QuarterInfo[] = [
+  {
+    id: 'Q1',
+    label: 'Q1',
+    monthsRange: 'Jan 01 – Mar 31',
+    startMonth: 0,
+    startDay: 1,
+    endMonth: 2,
+    endDay: 31,
+  },
+  {
+    id: 'Q2',
+    label: 'Q2',
+    monthsRange: 'Apr 01 – Jun 30',
+    startMonth: 3,
+    startDay: 1,
+    endMonth: 5,
+    endDay: 30,
+  },
+  {
+    id: 'Q3',
+    label: 'Q3',
+    monthsRange: 'Jul 01 – Sep 30',
+    startMonth: 6,
+    startDay: 1,
+    endMonth: 8,
+    endDay: 30,
+  },
+  {
+    id: 'Q4',
+    label: 'Q4',
+    monthsRange: 'Oct 01 – Dec 31',
+    startMonth: 9,
+    startDay: 1,
+    endMonth: 11,
+    endDay: 31,
+  },
+];
+
+// Helper to format ISO YYYY-MM-DD
+function formatIsoDate(year: number, monthIndex: number, day: number): string {
+  const m = (monthIndex + 1).toString().padStart(2, '0');
+  const d = day.toString().padStart(2, '0');
+  return `${year}-${m}-${d}`;
+}
+
 export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
   value,
   onChange,
-  placeholder = 'Select date of birth...',
-  minYear = 1940,
-  maxYear = new Date().getFullYear(),
+  placeholder = 'Select date...',
+  minYear: customMinYear,
+  maxYear: customMaxYear,
   className = '',
+  presetMode,
+  align = 'left',
+  showQuarterTab = true,
+  dropUp,
 }) => {
   const { accentColor } = useAccentTheme();
   const [isOpen, setIsOpen] = useState(false);
-  const [activePickerView, setActivePickerView] = useState<'days' | 'month' | 'year'>('days');
+  const [activePickerView, setActivePickerView] = useState<'days' | 'month' | 'quarter' | 'year'>('days');
+  const [internalDropUp, setInternalDropUp] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const yearsListRef = useRef<HTMLDivElement>(null);
 
-  // Parse current value or default to young adult year (2000) for Date of Birth ease
-  const parseInitialDate = () => {
-    if (value) {
-      const parts = value.split('-');
+  const isDropUp = dropUp !== undefined ? dropUp : internalDropUp;
+
+  // Determine effective preset mode
+  const effectivePresetMode = useMemo<'dob' | 'start' | 'end' | 'general' | 'none'>(() => {
+    if (presetMode) return presetMode;
+    const lowerP = (placeholder || '').toLowerCase();
+    if (lowerP.includes('birth') || lowerP.includes('dob')) return 'dob';
+    if (lowerP.includes('start') || lowerP.includes('begin')) return 'start';
+    if (lowerP.includes('end') || lowerP.includes('due') || lowerP.includes('deadline')) return 'end';
+    return 'general';
+  }, [presetMode, placeholder]);
+
+  const currentYear = new Date().getFullYear();
+  const minYear = customMinYear !== undefined ? customMinYear : effectivePresetMode === 'dob' ? 1940 : currentYear - 5;
+  const maxYear = customMaxYear !== undefined ? customMaxYear : effectivePresetMode === 'dob' ? currentYear : currentYear + 10;
+
+  // Parse initial date
+  const parseDate = (dateStr: string) => {
+    if (dateStr) {
+      const parts = dateStr.split('-');
       if (parts.length === 3) {
         const y = parseInt(parts[0], 10);
         const m = parseInt(parts[1], 10) - 1;
@@ -51,10 +141,11 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
         }
       }
     }
-    return { year: 2000, month: 0, day: 1 };
+    const defaultYear = effectivePresetMode === 'dob' ? 2000 : currentYear;
+    return { year: defaultYear, month: new Date().getMonth(), day: new Date().getDate() };
   };
 
-  const initial = parseInitialDate();
+  const initial = parseDate(value);
   const [viewYear, setViewYear] = useState<number>(initial.year);
   const [viewMonth, setViewMonth] = useState<number>(initial.month);
 
@@ -97,11 +188,20 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
     }
   }, [activePickerView, viewYear]);
 
-  // Year options descending (latest year first for DOB ease)
-  const years: number[] = [];
-  for (let y = maxYear; y >= minYear; y--) {
-    years.push(y);
-  }
+  // Year options descending if DOB, ascending if project planning
+  const years: number[] = useMemo(() => {
+    const list: number[] = [];
+    if (effectivePresetMode === 'dob') {
+      for (let y = maxYear; y >= minYear; y--) {
+        list.push(y);
+      }
+    } else {
+      for (let y = minYear; y <= maxYear; y++) {
+        list.push(y);
+      }
+    }
+    return list;
+  }, [minYear, maxYear, effectivePresetMode]);
 
   // Format display text
   const formatDisplay = (val: string) => {
@@ -118,30 +218,69 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
     return val;
   };
 
-  const handlePrevMonth = () => {
-    if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear((prev) => Math.max(minYear, prev - 1));
+  const handlePrev = () => {
+    if (activePickerView === 'days') {
+      if (viewMonth === 0) {
+        setViewMonth(11);
+        setViewYear((prev) => Math.max(minYear, prev - 1));
+      } else {
+        setViewMonth((prev) => prev - 1);
+      }
     } else {
-      setViewMonth((prev) => prev - 1);
+      setViewYear((prev) => Math.max(minYear, prev - 1));
     }
   };
 
-  const handleNextMonth = () => {
-    if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear((prev) => Math.min(maxYear, prev + 1));
+  const handleNext = () => {
+    if (activePickerView === 'days') {
+      if (viewMonth === 11) {
+        setViewMonth(0);
+        setViewYear((prev) => Math.min(maxYear, prev + 1));
+      } else {
+        setViewMonth((prev) => prev + 1);
+      }
     } else {
-      setViewMonth((prev) => prev + 1);
+      setViewYear((prev) => Math.min(maxYear, prev + 1));
     }
   };
 
   const handleSelectDay = (day: number) => {
-    const formattedMonth = (viewMonth + 1).toString().padStart(2, '0');
-    const formattedDay = day.toString().padStart(2, '0');
-    const dateStr = `${viewYear}-${formattedMonth}-${formattedDay}`;
+    const dateStr = formatIsoDate(viewYear, viewMonth, day);
     onChange(dateStr);
     setIsOpen(false);
+    setActivePickerView('days');
+  };
+
+  const handleSelectMonth = (monthIdx: number) => {
+    setViewMonth(monthIdx);
+    if (effectivePresetMode === 'end') {
+      // Pick last day of that month
+      const lastDay = new Date(viewYear, monthIdx + 1, 0).getDate();
+      onChange(formatIsoDate(viewYear, monthIdx, lastDay));
+      setIsOpen(false);
+      setActivePickerView('days');
+    } else {
+      // Switch to days view for that month
+      setActivePickerView('days');
+    }
+  };
+
+  const handleSelectQuarter = (q: QuarterInfo) => {
+    if (effectivePresetMode === 'end') {
+      const dateStr = formatIsoDate(viewYear, q.endMonth, q.endDay);
+      setViewMonth(q.endMonth);
+      onChange(dateStr);
+    } else {
+      const dateStr = formatIsoDate(viewYear, q.startMonth, q.startDay);
+      setViewMonth(q.startMonth);
+      onChange(dateStr);
+    }
+    setIsOpen(false);
+    setActivePickerView('days');
+  };
+
+  const handleSelectYear = (year: number) => {
+    setViewYear(year);
     setActivePickerView('days');
   };
 
@@ -150,13 +289,14 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
     onChange('');
   };
 
-  const handlePresetAge = (yearsAgo: number) => {
-    const now = new Date();
-    const targetYear = now.getFullYear() - yearsAgo;
-    const dateStr = `${targetYear}-01-15`;
-    setViewYear(targetYear);
-    setViewMonth(0);
-    onChange(dateStr);
+  // Quick Preset Handlers
+  const handleApplyPreset = (targetDate: Date) => {
+    const y = targetDate.getFullYear();
+    const m = targetDate.getMonth();
+    const d = targetDate.getDate();
+    setViewYear(y);
+    setViewMonth(m);
+    onChange(formatIsoDate(y, m, d));
     setIsOpen(false);
     setActivePickerView('days');
   };
@@ -187,24 +327,50 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
     );
   };
 
+  // Current quarter of view
+  const currentQuarterId = useMemo(() => {
+    if (viewMonth <= 2) return 'Q1';
+    if (viewMonth <= 5) return 'Q2';
+    if (viewMonth <= 8) return 'Q3';
+    return 'Q4';
+  }, [viewMonth]);
+
   return (
     <div ref={containerRef} className={`relative w-full ${className}`}>
-      {/* Input Trigger (Div button to prevent nested button validateDOMNesting warning) */}
+      {/* Input Trigger */}
       <div
         role="button"
         tabIndex={0}
         onClick={() => {
+          if (!isOpen && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            if (spaceBelow < 340 && rect.top > 340) {
+              setInternalDropUp(true);
+            } else {
+              setInternalDropUp(false);
+            }
+          }
           setIsOpen((prev) => !prev);
           setActivePickerView('days');
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
+            if (!isOpen && containerRef.current) {
+              const rect = containerRef.current.getBoundingClientRect();
+              const spaceBelow = window.innerHeight - rect.bottom;
+              if (spaceBelow < 340 && rect.top > 340) {
+                setInternalDropUp(true);
+              } else {
+                setInternalDropUp(false);
+              }
+            }
             setIsOpen((prev) => !prev);
             setActivePickerView('days');
           }
         }}
-        className={`w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 bg-[#111216] border rounded-lg text-xs sm:text-[13px] text-left transition-all outline-none ${
+        className={`w-full flex items-center justify-between gap-2.5 px-3 py-2 bg-[#111216] border rounded-xl text-xs sm:text-[13px] text-left transition-all outline-none ${
           isOpen
             ? 'border-[#27272A] shadow-md ring-1'
             : 'border-[#27272A] hover:border-zinc-600'
@@ -236,9 +402,14 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
               className="p-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
               title="Clear date"
             >
-              <X size={13} />
+              <X size={12} />
             </button>
           )}
+          <ChevronDown
+            size={13}
+            className={`text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            style={isOpen ? { color: accentColor } : undefined}
+          />
         </div>
       </div>
 
@@ -246,82 +417,109 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 4, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            initial={{ opacity: 0, y: isDropUp ? 8 : -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: isDropUp ? -4 : 4, scale: 1 }}
+            exit={{ opacity: 0, y: isDropUp ? 8 : -8, scale: 0.97 }}
             transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute left-0 top-full z-50 p-3.5 bg-[#14161C]/98 backdrop-blur-2xl border border-[#27272A] rounded-xl shadow-2xl w-80 flex flex-col"
+            className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} ${
+              isDropUp ? 'bottom-full mb-2' : 'top-full mt-1.5'
+            } z-[70] p-3 bg-[#14161C]/98 backdrop-blur-2xl border border-[#27272A] rounded-2xl shadow-2xl w-[310px] sm:w-[320px] flex flex-col`}
           >
-            {/* Header: Custom Month & Year Pickers + Navigation Chevrons */}
-            <div className="flex items-center justify-between gap-1.5 mb-3 pb-2.5 border-b border-zinc-800/80">
+            {/* View Mode Switcher Pills: Date | Month | Quarter | Year */}
+            <div className="flex items-center justify-between gap-1 p-1 bg-[#0C0D10] border border-[#27272A] rounded-xl mb-2.5">
               <button
                 type="button"
-                onClick={handlePrevMonth}
-                disabled={activePickerView !== 'days'}
-                className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Previous month"
+                onClick={() => setActivePickerView('days')}
+                className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  activePickerView === 'days'
+                    ? 'bg-zinc-800 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+                style={activePickerView === 'days' ? { color: accentColor } : undefined}
               >
-                <ChevronLeft size={16} />
+                Date
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePickerView('month')}
+                className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  activePickerView === 'month'
+                    ? 'bg-zinc-800 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+                style={activePickerView === 'month' ? { color: accentColor } : undefined}
+              >
+                Month
+              </button>
+              {showQuarterTab && effectivePresetMode !== 'dob' && (
+                <button
+                  type="button"
+                  onClick={() => setActivePickerView('quarter')}
+                  className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                    activePickerView === 'quarter'
+                      ? 'bg-zinc-800 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                  style={activePickerView === 'quarter' ? { color: accentColor } : undefined}
+                >
+                  Quarter
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setActivePickerView('year')}
+                className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  activePickerView === 'year'
+                    ? 'bg-zinc-800 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+                style={activePickerView === 'year' ? { color: accentColor } : undefined}
+              >
+                Year
+              </button>
+            </div>
+
+            {/* Header: Month & Year Label + Chevrons */}
+            <div className="flex items-center justify-between gap-1.5 mb-2.5 pb-2 border-b border-zinc-800/80">
+              <button
+                type="button"
+                onClick={handlePrev}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Previous"
+              >
+                <ChevronLeft size={15} />
               </button>
 
-              <div className="flex items-center gap-1.5 flex-1 justify-center">
-                {/* Custom Month Selector Trigger */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActivePickerView((prev) => (prev === 'month' ? 'days' : 'month'))
-                  }
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    activePickerView === 'month'
-                      ? 'bg-zinc-800 text-white ring-1 ring-zinc-700'
-                      : 'bg-[#0E0F13] text-zinc-300 hover:text-white hover:bg-zinc-800/70 border border-[#27272A]'
-                  }`}
-                  style={activePickerView === 'month' ? { color: accentColor } : undefined}
-                >
-                  <span>{MONTH_NAMES[viewMonth]}</span>
-                  <ChevronDown
-                    size={11}
-                    className={`transition-transform duration-200 ${
-                      activePickerView === 'month' ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-
-                {/* Custom Year Selector Trigger */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActivePickerView((prev) => (prev === 'year' ? 'days' : 'year'))
-                  }
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold font-mono transition-all cursor-pointer ${
-                    activePickerView === 'year'
-                      ? 'bg-zinc-800 text-white ring-1 ring-zinc-700'
-                      : 'bg-[#0E0F13] text-zinc-300 hover:text-white hover:bg-zinc-800/70 border border-[#27272A]'
-                  }`}
-                  style={activePickerView === 'year' ? { color: accentColor } : undefined}
-                >
-                  <span>{viewYear}</span>
-                  <ChevronDown
-                    size={11}
-                    className={`transition-transform duration-200 ${
-                      activePickerView === 'year' ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
+              <div className="flex items-center gap-1.5 justify-center">
+                <span className="text-xs font-bold text-white tracking-wide">
+                  {activePickerView === 'days' ? `${MONTH_NAMES[viewMonth]} ` : ''}
+                  <span className="font-mono text-zinc-300">{viewYear}</span>
+                </span>
+                {activePickerView === 'days' && (
+                  <span
+                    className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold tracking-wider uppercase border"
+                    style={{
+                      backgroundColor: `${accentColor}18`,
+                      borderColor: `${accentColor}35`,
+                      color: accentColor,
+                    }}
+                  >
+                    {currentQuarterId}
+                  </span>
+                )}
               </div>
 
               <button
                 type="button"
-                onClick={handleNextMonth}
-                disabled={activePickerView !== 'days'}
-                className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Next month"
+                onClick={handleNext}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                title="Next"
               >
-                <ChevronRight size={16} />
+                <ChevronRight size={15} />
               </button>
             </div>
 
-            {/* VIEW A: Custom Month Selection Grid (No native OS select) */}
+            {/* VIEW A: Custom Month Selection Grid */}
             {activePickerView === 'month' && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.96 }}
@@ -336,11 +534,8 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                     <button
                       key={mName}
                       type="button"
-                      onClick={() => {
-                        setViewMonth(idx);
-                        setActivePickerView('days');
-                      }}
-                      className={`py-2 px-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                      onClick={() => handleSelectMonth(idx)}
+                      className={`py-2 px-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer text-center ${
                         isCurMonth
                           ? 'text-white font-bold shadow-md'
                           : 'text-zinc-300 hover:bg-white/[0.08] hover:text-white'
@@ -361,7 +556,58 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
               </motion.div>
             )}
 
-            {/* VIEW B: Custom Year Selection Grid (No native OS select, scrollable dark grid) */}
+            {/* VIEW B: Quarter Selection Grid (Q1, Q2, Q3, Q4) */}
+            {activePickerView === 'quarter' && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.15 }}
+                className="grid grid-cols-2 gap-2 py-1"
+              >
+                {QUARTERS.map((q) => {
+                  const isCurrentQtr = currentQuarterId === q.id;
+                  return (
+                    <button
+                      key={q.id}
+                      type="button"
+                      onClick={() => handleSelectQuarter(q)}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isCurrentQtr
+                          ? 'border-transparent shadow-lg text-white'
+                          : 'border-[#27272A] bg-[#0E1015] hover:border-zinc-600 text-zinc-300'
+                      }`}
+                      style={
+                        isCurrentQtr
+                          ? {
+                              backgroundColor: `${accentColor}25`,
+                              borderColor: `${accentColor}70`,
+                            }
+                          : undefined
+                      }
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-bold font-mono tracking-tight text-white">
+                          {q.label} {viewYear}
+                        </span>
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: isCurrentQtr ? accentColor : '#3F3F46' }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-mono text-zinc-400">
+                        {q.monthsRange}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 mt-1 uppercase font-semibold">
+                        {effectivePresetMode === 'end' ? 'Selects End Date' : 'Selects Start Date'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+
+            {/* VIEW C: Custom Year Selection Grid */}
             {activePickerView === 'year' && (
               <motion.div
                 ref={yearsListRef}
@@ -378,10 +624,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                       key={y}
                       data-year={y}
                       type="button"
-                      onClick={() => {
-                        setViewYear(y);
-                        setActivePickerView('days');
-                      }}
+                      onClick={() => handleSelectYear(y)}
                       className={`py-1.5 px-1 rounded-lg text-xs font-mono font-medium transition-all cursor-pointer text-center ${
                         isCurYear
                           ? 'text-white font-bold shadow-md'
@@ -403,7 +646,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
               </motion.div>
             )}
 
-            {/* VIEW C: Calendar Days Grid */}
+            {/* VIEW D: Calendar Days Grid */}
             {activePickerView === 'days' && (
               <>
                 {/* Days of Week Header */}
@@ -457,37 +700,176 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                     );
                   })}
                 </div>
+              </>
+            )}
 
-                {/* Quick Presets for Date of Birth & Clear */}
-                <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center justify-between text-[11px]">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handlePresetAge(18)}
-                      className="px-2 py-0.5 rounded bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                    >
-                      18 yrs
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePresetAge(25)}
-                      className="px-2 py-0.5 rounded bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                    >
-                      25 yrs
-                    </button>
-                  </div>
+            {/* Quick Preset Buttons Bar */}
+            {effectivePresetMode !== 'none' && (
+              <div className="mt-2.5 pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px] gap-1 flex-wrap">
+                <div className="flex items-center gap-1 flex-wrap">
+                  {effectivePresetMode === 'start' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyPreset(new Date())}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          handleApplyPreset(new Date(now.getFullYear(), now.getMonth(), 1));
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Start of Mo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+                          handleApplyPreset(new Date(now.getFullYear(), qStartMonth, 1));
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Start of Qtr
+                      </button>
+                    </>
+                  )}
 
-                  {value && (
-                    <button
-                      type="button"
-                      onClick={() => handleClear()}
-                      className="text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
-                    >
-                      Clear
-                    </button>
+                  {effectivePresetMode === 'end' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 14);
+                          handleApplyPreset(d);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        +2 Wks
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setMonth(d.getMonth() + 1);
+                          handleApplyPreset(d);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Next Month
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setMonth(d.getMonth() + 3);
+                          handleApplyPreset(d);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        3 Months
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const qEndMonth = Math.floor(now.getMonth() / 3) * 3 + 2;
+                          const lastDay = new Date(now.getFullYear(), qEndMonth + 1, 0).getDate();
+                          handleApplyPreset(new Date(now.getFullYear(), qEndMonth, lastDay));
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        End of Qtr
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          handleApplyPreset(new Date(now.getFullYear(), 11, 31));
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        End of Year
+                      </button>
+                    </>
+                  )}
+
+                  {effectivePresetMode === 'dob' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          handleApplyPreset(new Date(now.getFullYear() - 18, 0, 15));
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        18 yrs
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          handleApplyPreset(new Date(now.getFullYear() - 25, 0, 15));
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        25 yrs
+                      </button>
+                    </>
+                  )}
+
+                  {effectivePresetMode === 'general' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyPreset(new Date())}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 7);
+                          handleApplyPreset(d);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        +1 Wk
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setMonth(d.getMonth() + 1);
+                          handleApplyPreset(d);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                      >
+                        +1 Mo
+                      </button>
+                    </>
                   )}
                 </div>
-              </>
+
+                {value && (
+                  <button
+                    type="button"
+                    onClick={() => handleClear()}
+                    className="text-zinc-400 hover:text-red-400 transition-colors cursor-pointer font-medium"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             )}
           </motion.div>
         )}

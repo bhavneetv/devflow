@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   FolderKanban,
   ArrowLeft,
   GitFork,
+  Settings,
 } from 'lucide-react';
 import { useNavigation } from '../context/NavigationContext';
 import { Project, Task } from '../types';
@@ -60,19 +61,27 @@ export const ProjectDetailView: React.FC = () => {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Project Banner Header */}
       <div className="p-5 rounded-xl border border-[#27272A] bg-[#0E0E10] space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-              <FolderKanban size={18} />
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+              <FolderKanban size={20} />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold text-white tracking-tight">{project.title}</h1>
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase bg-blue-500/15 text-blue-400 border border-blue-500/30">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg font-bold text-white tracking-tight truncate">{project.title}</h1>
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
                   {project.status.replace('_', ' ')}
                 </span>
+                {/* Left-aligned Project Settings Button */}
+                <Link
+                  to={`/projects/${project.id}/settings`}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 transition-colors cursor-pointer shadow-sm ml-1 shrink-0"
+                >
+                  <Settings size={12} className="text-zinc-400" />
+                  <span>Project Settings</span>
+                </Link>
               </div>
-              <div className="text-xs text-zinc-400 mt-0.5">
+              <div className="text-xs text-zinc-400 mt-1">
                 Owner: {project.owner?.name || 'Unassigned'} • Created{' '}
                 {new Date(project.createdAt).toLocaleDateString()}
               </div>

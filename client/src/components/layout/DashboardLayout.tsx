@@ -5,6 +5,7 @@ import { Header } from './Header';
 import { GlobalSearch } from './GlobalSearch';
 import { CreateModal } from './CreateModal';
 import { AccountSettingsSidebar } from '../settings/AccountSettingsSidebar';
+import { ProjectSettingsSidebar } from '../settings/ProjectSettingsSidebar';
 import { useNavigation } from '../../context/NavigationContext';
 import { useOrganization } from '../../context/OrganizationContext';
 import { CreateOrganizationModal } from '../organization/CreateOrganizationModal';
@@ -16,17 +17,25 @@ interface DashboardLayoutProps {
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const location = useLocation();
-  const isSettingsRoute = location.pathname.startsWith('/settings');
+  const isAccountSettingsRoute = location.pathname.startsWith('/settings');
+  const projectSettingsMatch = location.pathname.match(
+    /^(?:\/organizations\/([^/]+))?\/projects\/(\d+)\/settings(?:\/([^/]+))?/
+  );
+  const isProjectSettingsRoute = Boolean(projectSettingsMatch);
+  const currentProjectId = projectSettingsMatch ? parseInt(projectSettingsMatch[2], 10) : 1;
+  const currentOrgSlug = projectSettingsMatch ? projectSettingsMatch[1] : undefined;
+
+  const isSettingsActive = isAccountSettingsRoute || isProjectSettingsRoute;
   const { isMobileOpen, setIsMobileOpen } = useNavigation();
   const { isCreateModalOpen, setIsCreateModalOpen, isJoinModalOpen, setIsJoinModalOpen } = useOrganization();
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-[var(--app-bg)] text-[var(--sidebar-text-active)] font-sans antialiased transition-colors duration-200">
       {/* 1. Main Workspace Sidebar (when not in settings) */}
-      {!isSettingsRoute && <Sidebar />}
+      {!isSettingsActive && <Sidebar />}
 
-      {/* 2. Account Settings Sidebar (when in settings) - Reaches all the way to top of screen */}
-      {isSettingsRoute && (
+      {/* 2. Account Settings Sidebar (when in account settings) */}
+      {isAccountSettingsRoute && (
         <>
           {/* Mobile Backdrop */}
           {isMobileOpen && (
@@ -43,6 +52,32 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
             }`}
           >
             <AccountSettingsSidebar onNavigate={() => setIsMobileOpen(false)} />
+          </div>
+        </>
+      )}
+
+      {/* 3. Project Settings Sidebar (when in project settings) */}
+      {isProjectSettingsRoute && (
+        <>
+          {/* Mobile Backdrop */}
+          {isMobileOpen && (
+            <div
+              onClick={() => setIsMobileOpen(false)}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-200"
+            />
+          )}
+
+          {/* Sidebar: Full screen height (Desktop fixed, Mobile drawer) */}
+          <div
+            className={`fixed inset-y-0 left-0 z-50 transform md:transform-none transition-transform duration-300 ease-in-out md:static md:flex h-full flex-shrink-0 ${
+              isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+            }`}
+          >
+            <ProjectSettingsSidebar
+              projectId={currentProjectId}
+              orgSlug={currentOrgSlug}
+              onNavigate={() => setIsMobileOpen(false)}
+            />
           </div>
         </>
       )}

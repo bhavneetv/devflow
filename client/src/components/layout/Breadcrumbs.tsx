@@ -11,6 +11,14 @@ export const Breadcrumbs: React.FC = () => {
 
   // Format breadcrumb segment
   const formatSegment = (str: string) => {
+    if (/^\d+$/.test(str)) {
+      return `#${str}`;
+    }
+    if (str === 'connections') return 'Connected Accounts';
+    if (str === 'labels') return 'Labels & Categories';
+    if (str === 'status') return 'Status & Workflow';
+    if (str === 'security') return 'Security & Access';
+    if (str === 'overview') return 'Overview';
     return str
       .replace(/-/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase());

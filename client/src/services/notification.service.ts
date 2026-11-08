@@ -4,7 +4,7 @@ import { authService } from './auth.service';
 export interface InAppNotification {
   id: number;
   recipientId: number;
-  type: 'ORGANIZATION_INVITATION' | 'TEAM_INVITATION' | 'SYSTEM';
+  type: 'ORGANIZATION_INVITATION' | 'TEAM_INVITATION' | 'ORGANIZATION_JOIN_REQUEST' | 'SYSTEM';
   title: string;
   message: string;
   data?: string | null;

@@ -22,3 +22,24 @@ export function apiUrl(endpoint: string): string {
   }
   return `${API_BASE}${clean}`;
 }
+
+/**
+ * Resolves the Socket.IO server URL.
+ * In production (e.g. deployed on Netlify or Vercel), uses VITE_SOCKET_URL or derives from VITE_API_URL.
+ * In local development, defaults to 'http://localhost:5000'.
+ */
+export function getSocketUrl(): string {
+  const socketEnv = import.meta.env.VITE_SOCKET_URL;
+  if (socketEnv) return socketEnv.replace(/\/+$/, '');
+
+  const apiEnv = import.meta.env.VITE_API_URL;
+  if (apiEnv) {
+    return apiEnv.replace(/\/+$/, '').replace(/\/api\/?$/, '');
+  }
+
+  if (typeof window !== 'undefined' && window.location.origin.includes('localhost')) {
+    return 'http://localhost:5000';
+  }
+
+  return '/';
+}

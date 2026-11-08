@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { io, Socket } from 'socket.io-client';
 import {
   Inbox,
   CheckCircle2,
@@ -32,18 +33,30 @@ import {
   CheckSquare,
   Radio,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  Building2,
+  UserCheck,
+  XCircle,
+  Loader2,
+  Mail
 } from 'lucide-react';
+import { notificationService, InAppNotification } from '../services/notification.service';
+import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
+import { useToast } from '../context/ToastContext';
+import { getSocketUrl } from '../config/api';
 
-export type NotificationCategory = 'ALL' | 'UNREAD' | 'ASSIGNMENT' | 'REVIEW' | 'MENTION' | 'SYSTEM';
+export type NotificationCategory = 'ALL' | 'UNREAD' | 'INVITATIONS' | 'ASSIGNMENT' | 'REVIEW' | 'MENTION' | 'SYSTEM';
 export type NotificationPriority = 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface NotificationItem {
   id: string;
+  rawId?: number;
+  type?: 'ORGANIZATION_INVITATION' | 'TEAM_INVITATION' | 'ORGANIZATION_JOIN_REQUEST' | 'SYSTEM';
   title: string;
   detail: string;
   fullBody?: string;
-  category: 'ASSIGNMENT' | 'REVIEW' | 'MENTION' | 'SYSTEM';
+  category: NotificationCategory;
   priority: NotificationPriority;
   actor: {
     name: string;
@@ -62,6 +75,74 @@ export interface NotificationItem {
     prNumber?: string;
     issueId?: string;
     branch?: string;
+  };
+  isInvite?: boolean;
+  isJoinRequest?: boolean;
+  inviteData?: Record<string, any>;
+}
+
+function formatTimeAgo(dateStr: string | number): string {
+  try {
+    const diffMs = Date.now() - new Date(dateStr).getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  } catch {
+    return 'Recently';
+  }
+}
+
+function mapInAppNotificationToItem(notif: InAppNotification): NotificationItem {
+  let meta: any = notif.parsedData;
+  if (!meta && notif.data) {
+    try {
+      meta = JSON.parse(notif.data);
+    } catch {
+      meta = {};
+    }
+  }
+  meta = meta || {};
+
+  const isOrgInvite = notif.type === 'ORGANIZATION_INVITATION';
+  const isTeamInvite = notif.type === 'TEAM_INVITATION';
+  const isJoinReq = notif.type === 'ORGANIZATION_JOIN_REQUEST';
+  const isInvite = isOrgInvite || isTeamInvite || isJoinReq;
+
+  let category: NotificationCategory = 'SYSTEM';
+  if (isInvite) {
+    category = 'INVITATIONS';
+  }
+
+  const team = meta.organizationName || meta.orgName || meta.teamName || 'DevFlow Workspace';
+  const actorName = meta.inviterName || meta.requesterName || (isJoinReq ? 'Member Request' : 'Workspace Admin');
+  const role = meta.role ? `Role: ${meta.role}` : (isJoinReq ? 'Join Request' : 'Workspace Invitation');
+
+  return {
+    id: `notif-${notif.id}`,
+    rawId: notif.id,
+    type: notif.type,
+    title: notif.title,
+    detail: notif.message,
+    fullBody: notif.message + (meta.message ? `\n\nNote: "${meta.message}"` : ''),
+    category,
+    priority: isJoinReq ? 'URGENT' : isInvite ? 'HIGH' : 'MEDIUM',
+    actor: {
+      name: actorName,
+      avatar: meta.requesterAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+      role,
+    },
+    team,
+    time: formatTimeAgo(notif.createdAt),
+    timestamp: new Date(notif.createdAt).getTime() || Date.now(),
+    unread: !notif.isRead,
+    archived: false,
+    isInvite,
+    isJoinRequest: isJoinReq,
+    inviteData: meta,
   };
 }
 
@@ -233,6 +314,10 @@ const InboxSkeleton: React.FC = () => {
 };
 
 export const InboxView: React.FC = () => {
+  const { user } = useAuth();
+  const { refreshOrganizations } = useOrganization();
+  const { toast } = useToast();
+
   const [items, setItems] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [selectedCategory, setSelectedCategory] = useState<NotificationCategory>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -248,15 +333,74 @@ export const InboxView: React.FC = () => {
   // Selected Notification for Detail Modal
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
 
-  const refreshInbox = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-    }, 600);
-  };
+  // Action states for invitations / join requests
+  const [actioningId, setActioningId] = useState<number | null>(null);
+  const [actionDecision, setActionDecision] = useState<'ACCEPT' | 'DECLINE' | null>(null);
 
-  const markRead = (id: string, e?: React.MouseEvent) => {
+  const socketRef = useRef<Socket | null>(null);
+
+  // Fetch real notifications from backend
+  const refreshInbox = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await notificationService.getNotifications();
+      if (res.success && Array.isArray(res.data)) {
+        const realItems = res.data.map(mapInAppNotificationToItem);
+        const nonDuplicateMock = INITIAL_NOTIFICATIONS.filter(
+          (m) => !realItems.some((r) => r.title === m.title)
+        );
+        setItems(realItems.length > 0 ? [...realItems, ...nonDuplicateMock] : INITIAL_NOTIFICATIONS);
+      }
+    } catch (err) {
+      console.warn('Failed to load notifications:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshInbox();
+  }, [refreshInbox]);
+
+  // Connect to Socket.IO for real-time notifications
+  useEffect(() => {
+    if (!user) return;
+
+    const socketUrl = getSocketUrl();
+
+    const socket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+    });
+    socketRef.current = socket;
+
+    socket.emit('join_user', user.id);
+
+    socket.on('new_notification', (newNotif: InAppNotification) => {
+      let parsed = newNotif;
+      if (typeof newNotif.data === 'string') {
+        try {
+          parsed = { ...newNotif, parsedData: JSON.parse(newNotif.data) };
+        } catch {
+          // ignore
+        }
+      }
+      const mapped = mapInAppNotificationToItem(parsed);
+      setItems((prev) => [mapped, ...prev.filter((p) => p.rawId !== mapped.rawId)]);
+      toast.info('New Notification', newNotif.title || 'New invitation or update received');
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user, toast]);
+
+  const markRead = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    const target = items.find((i) => i.id === id);
+    if (target?.rawId) {
+      notificationService.markAsRead(target.rawId).catch(console.warn);
+    }
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, unread: false } : item))
     );
@@ -277,18 +421,90 @@ export const InboxView: React.FC = () => {
 
   const archiveItem = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    const target = items.find((i) => i.id === id);
+    if (target?.rawId) {
+      notificationService.markAsRead(target.rawId).catch(console.warn);
+    }
     setItems((prev) => prev.filter((item) => item.id !== id));
     if (selectedNotification?.id === id) {
       setSelectedNotification(null);
     }
   };
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
+    try {
+      await notificationService.markAllAsRead();
+    } catch (err) {
+      console.warn(err);
+    }
     setItems((prev) => prev.map((item) => ({ ...item, unread: false })));
   };
 
   const clearAllRead = () => {
     setItems((prev) => prev.filter((item) => item.unread));
+  };
+
+  const handleInvitationAction = async (
+    item: NotificationItem,
+    action: 'ACCEPT' | 'DECLINE',
+    e?: React.MouseEvent
+  ) => {
+    e?.stopPropagation();
+    if (!item.rawId) return;
+
+    setActioningId(item.rawId);
+    setActionDecision(action);
+
+    try {
+      const res = await notificationService.respondToInvitation(item.rawId, action);
+      if (res.success) {
+        toast.success(
+          action === 'ACCEPT'
+            ? (item.isJoinRequest ? 'Request Approved' : 'Invitation Accepted!')
+            : (item.isJoinRequest ? 'Request Declined' : 'Invitation Declined'),
+          res.message || 'Updated successfully'
+        );
+
+        setItems((prev) =>
+          prev.map((it) =>
+            it.rawId === item.rawId
+              ? {
+                  ...it,
+                  unread: false,
+                  detail:
+                    action === 'ACCEPT'
+                      ? `✓ ${item.isJoinRequest ? 'Approved' : 'Accepted'}: ${it.detail}`
+                      : `✕ Declined: ${it.detail}`,
+                }
+              : it
+          )
+        );
+
+        if (selectedNotification?.rawId === item.rawId) {
+          setSelectedNotification((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  unread: false,
+                  detail:
+                    action === 'ACCEPT'
+                      ? `✓ ${prev.isJoinRequest ? 'Approved' : 'Accepted'}: ${prev.detail}`
+                      : `✕ Declined: ${prev.detail}`,
+                }
+              : null
+          );
+        }
+
+        await refreshOrganizations();
+      } else {
+        toast.error('Action Failed', res.error || 'Could not process invitation');
+      }
+    } catch (err: any) {
+      toast.error('Error', err.message || 'Action failed');
+    } finally {
+      setActioningId(null);
+      setActionDecision(null);
+    }
   };
 
   // Distinct Teams
@@ -311,6 +527,7 @@ export const InboxView: React.FC = () => {
       .filter((item) => {
         // Tab Category Filter
         if (selectedCategory === 'UNREAD' && !item.unread) return false;
+        if (selectedCategory === 'INVITATIONS' && item.category !== 'INVITATIONS') return false;
         if (selectedCategory === 'ASSIGNMENT' && item.category !== 'ASSIGNMENT') return false;
         if (selectedCategory === 'REVIEW' && item.category !== 'REVIEW') return false;
         if (selectedCategory === 'MENTION' && item.category !== 'MENTION') return false;
@@ -353,6 +570,7 @@ export const InboxView: React.FC = () => {
     const urgentCount = items.filter((i) => i.priority === 'URGENT' && i.unread).length;
 
     const byCategory = {
+      INVITATIONS: items.filter((i) => i.category === 'INVITATIONS').length,
       ASSIGNMENT: items.filter((i) => i.category === 'ASSIGNMENT').length,
       REVIEW: items.filter((i) => i.category === 'REVIEW').length,
       MENTION: items.filter((i) => i.category === 'MENTION').length,
@@ -378,14 +596,17 @@ export const InboxView: React.FC = () => {
   const tabs: { key: NotificationCategory; label: string; count?: number }[] = [
     { key: 'ALL', label: 'All', count: items.length },
     { key: 'UNREAD', label: 'Unread', count: analytics.unread },
+    { key: 'INVITATIONS', label: 'Invitations', count: analytics.byCategory.INVITATIONS },
     { key: 'ASSIGNMENT', label: 'Assignments', count: analytics.byCategory.ASSIGNMENT },
     { key: 'REVIEW', label: 'Reviews', count: analytics.byCategory.REVIEW },
     { key: 'MENTION', label: 'Mentions', count: analytics.byCategory.MENTION },
     { key: 'SYSTEM', label: 'System', count: analytics.byCategory.SYSTEM }
   ];
 
-  const getCategoryIcon = (category: NotificationItem['category']) => {
+  const getCategoryIcon = (category: NotificationCategory) => {
     switch (category) {
+      case 'INVITATIONS':
+        return <UserCheck size={16} className="text-amber-400" />;
       case 'ASSIGNMENT':
         return <CheckSquare size={16} className="text-emerald-400" />;
       case 'REVIEW':
@@ -394,6 +615,8 @@ export const InboxView: React.FC = () => {
         return <MessageSquare size={16} className="text-sky-400" />;
       case 'SYSTEM':
         return <Radio size={16} className="text-amber-400" />;
+      default:
+        return <Bell size={16} className="text-zinc-400" />;
     }
   };
 
@@ -832,6 +1055,39 @@ export const InboxView: React.FC = () => {
                             </span>
                           )}
                         </div>
+
+                        {/* Action buttons for invitations & join requests */}
+                        {item.isInvite && item.unread && (
+                          <div className="pt-3 border-t border-[#27272A]/70 mt-3 flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={actioningId === item.rawId}
+                              onClick={(e) => handleInvitationAction(item, 'ACCEPT', e)}
+                              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-black bg-emerald-400 hover:bg-emerald-300 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
+                            >
+                              {actioningId === item.rawId && actionDecision === 'ACCEPT' ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <CheckCircle2 size={13} />
+                              )}
+                              <span>{item.isJoinRequest ? 'Approve Request' : 'Accept Invitation'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={actioningId === item.rawId}
+                              onClick={(e) => handleInvitationAction(item, 'DECLINE', e)}
+                              className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              {actioningId === item.rawId && actionDecision === 'DECLINE' ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <XCircle size={13} />
+                              )}
+                              <span>Decline</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Quick Action Buttons */}
@@ -899,6 +1155,32 @@ export const InboxView: React.FC = () => {
                         <span className="text-[11px] text-zinc-500 font-mono">
                           {item.time}
                         </span>
+                        {item.isInvite && item.unread && (
+                          <div className="flex items-center gap-1.5 mr-1">
+                            <button
+                              type="button"
+                              disabled={actioningId === item.rawId}
+                              onClick={(e) => handleInvitationAction(item, 'ACCEPT', e)}
+                              className="px-2 py-0.5 rounded text-[11px] font-semibold text-black bg-emerald-400 hover:bg-emerald-300 transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                            >
+                              {actioningId === item.rawId && actionDecision === 'ACCEPT' ? (
+                                <Loader2 size={10} className="animate-spin" />
+                              ) : (
+                                <Check size={11} />
+                              )}
+                              <span>{item.isJoinRequest ? 'Approve' : 'Accept'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actioningId === item.rawId}
+                              onClick={(e) => handleInvitationAction(item, 'DECLINE', e)}
+                              className="px-2 py-0.5 rounded text-[11px] font-medium text-zinc-300 hover:text-white bg-white/[0.08] hover:bg-white/[0.14] transition-colors flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                            >
+                              <X size={11} />
+                              <span>Decline</span>
+                            </button>
+                          </div>
+                        )}
                         <div className="flex items-center gap-1">
                           {item.unread ? (
                             <button
@@ -986,6 +1268,12 @@ export const InboxView: React.FC = () => {
 
                 <div className="space-y-2.5 pt-1">
                   {[
+                    {
+                      label: 'Invitations & Requests',
+                      count: analytics.byCategory.INVITATIONS,
+                      icon: <UserCheck size={14} className="text-amber-400" />,
+                      color: 'bg-amber-500'
+                    },
                     {
                       label: 'Assignments',
                       count: analytics.byCategory.ASSIGNMENT,
@@ -1156,7 +1444,37 @@ export const InboxView: React.FC = () => {
               {/* Modal Footer */}
               <div className="p-4 bg-[#18181B]/50 border-t border-[#27272A] flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  {selectedNotification.unread ? (
+                  {selectedNotification.isInvite && selectedNotification.unread ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={actioningId === selectedNotification.rawId}
+                        onClick={(e) => handleInvitationAction(selectedNotification, 'ACCEPT', e)}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-black bg-emerald-400 hover:bg-emerald-300 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
+                      >
+                        {actioningId === selectedNotification.rawId && actionDecision === 'ACCEPT' ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <CheckCircle2 size={13} />
+                        )}
+                        <span>{selectedNotification.isJoinRequest ? 'Approve Request' : 'Accept Invitation'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={actioningId === selectedNotification.rawId}
+                        onClick={(e) => handleInvitationAction(selectedNotification, 'DECLINE', e)}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {actioningId === selectedNotification.rawId && actionDecision === 'DECLINE' ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <XCircle size={13} />
+                        )}
+                        <span>Decline</span>
+                      </button>
+                    </>
+                  ) : selectedNotification.unread ? (
                     <button
                       onClick={() => markRead(selectedNotification.id)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-colors flex items-center gap-1.5"

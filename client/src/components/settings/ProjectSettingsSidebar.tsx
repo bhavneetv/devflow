@@ -10,6 +10,8 @@ import {
   Tags,
   Activity,
   FolderKanban,
+  Boxes,
+  PanelLeft,
   LucideIcon,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
@@ -29,24 +31,38 @@ export interface ProjectNavSection {
 export const PROJECT_NAV_ITEMS: ProjectNavSection[] = [
   {
     id: 'overview',
-    label: 'Overview',
+    label: 'General',
     subpath: 'overview',
     icon: Sliders,
     description: 'Project identity, team & timeline',
   },
   {
-    id: 'connections',
-    label: 'Connected Accounts',
-    subpath: 'connections',
-    icon: GitBranch,
-    description: 'GitHub, GitLab & webhooks',
+    id: 'structure',
+    label: 'Project Structure',
+    subpath: 'structure',
+    icon: Boxes,
+    description: 'Modules, submodules & repository structure',
+  },
+  {
+    id: 'sidebar',
+    label: 'Sidebar Order',
+    subpath: 'sidebar',
+    icon: PanelLeft,
+    description: 'Virtual sidebar preview, reorder, hide & pin modules',
   },
   {
     id: 'security',
-    label: 'Security & Access',
+    label: 'Members & Access',
     subpath: 'security',
     icon: ShieldCheck,
-    description: 'Permissions, visibility & danger zone',
+    description: 'Permissions, visibility & access control',
+  },
+  {
+    id: 'connections',
+    label: 'Integrations',
+    subpath: 'connections',
+    icon: GitBranch,
+    description: 'GitHub, GitLab & webhooks',
   },
   {
     id: 'labels',
@@ -214,7 +230,7 @@ export const ProjectSettingsSidebar: React.FC<ProjectSettingsSidebarProps> = ({
                 />
               </span>
               <span className="text-[10px] font-mono text-zinc-500 group-hover:text-zinc-300">
-                {isSectionOpen ? '5 items' : 'hidden'}
+                {isSectionOpen ? `${PROJECT_NAV_ITEMS.length} items` : 'hidden'}
               </span>
             </button>
           )}

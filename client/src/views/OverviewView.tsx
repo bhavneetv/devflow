@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Clock,
   Layers,
+  Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fetchHealth, fetchProjects, fetchTasks, fetchUsers, triggerSeed } from '../api';
@@ -24,7 +25,7 @@ export const OverviewView: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
-  const { selectProject, setIsCreateOpen } = useNavigation();
+  const { openProject, openingProjectId, setIsCreateOpen } = useNavigation();
   const navigate = useNavigate();
 
   const loadData = async () => {
@@ -263,42 +264,57 @@ export const OverviewView: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {projects.map((p) => (
-            <div
-              key={p.id}
-              onClick={() => {
-                selectProject({ id: p.id, title: p.title, status: p.status });
-                navigate(`/projects/${p.id}`);
-              }}
-              className="p-4 rounded-xl border border-[var(--sidebar-border)] bg-[var(--card-bg)] hover:bg-[var(--card-hover)] hover:border-zinc-500 transition-all cursor-pointer space-y-2.5 group"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2 truncate">
-                  <div className="w-6 h-6 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
-                    <FolderKanban size={13} />
+          {projects.map((p) => {
+            const isOpening = openingProjectId === p.id;
+            return (
+              <div
+                key={p.id}
+                onClick={() => {
+                  if (!isOpening) {
+                    openProject({ id: p.id, title: p.title, status: p.status });
+                  }
+                }}
+                className={`p-4 rounded-xl border border-[var(--sidebar-border)] bg-[var(--card-bg)] hover:bg-[var(--card-hover)] hover:border-zinc-500 transition-all cursor-pointer space-y-2.5 group ${
+                  isOpening ? 'opacity-70 pointer-events-none' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 truncate">
+                    <div className="w-6 h-6 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
+                      <FolderKanban size={13} />
+                    </div>
+                    <h3 className="font-semibold text-sm text-[var(--sidebar-text-active)] truncate">
+                      {p.title}
+                    </h3>
                   </div>
-                  <h3 className="font-semibold text-sm text-[var(--sidebar-text-active)] truncate">
-                    {p.title}
-                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-[var(--input-bg)] text-[var(--sidebar-text)] border border-[var(--sidebar-border)]">
+                    {p.status.replace('_', ' ')}
+                  </span>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-[var(--input-bg)] text-[var(--sidebar-text)] border border-[var(--sidebar-border)]">
-                  {p.status.replace('_', ' ')}
-                </span>
-              </div>
 
-              {p.description && (
-                <p className="text-xs text-[var(--sidebar-text-muted)] line-clamp-2">{p.description}</p>
-              )}
+                {p.description && (
+                  <p className="text-xs text-[var(--sidebar-text-muted)] line-clamp-2">{p.description}</p>
+                )}
 
-              <div className="flex items-center justify-between pt-2 border-t border-[var(--sidebar-border)] text-[11px] text-[var(--sidebar-text-muted)]">
-                <span>Owner: {p.owner?.name || 'Unassigned'}</span>
-                <span className="flex items-center gap-1 text-[var(--sidebar-text-muted)] group-hover:text-indigo-400 transition-colors">
-                  <span>Open Project</span>
-                  <ArrowRight size={12} />
-                </span>
+                <div className="flex items-center justify-between pt-2 border-t border-[var(--sidebar-border)] text-[11px] text-[var(--sidebar-text-muted)]">
+                  <span>Owner: {p.owner?.name || 'Unassigned'}</span>
+                  <span className="flex items-center gap-1.5 text-[var(--sidebar-text-muted)] group-hover:text-indigo-400 transition-colors">
+                    {isOpening ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin text-indigo-400" />
+                        <span className="text-indigo-400 font-medium">Opening...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Open Project</span>
+                        <ArrowRight size={12} />
+                      </>
+                    )}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

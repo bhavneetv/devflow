@@ -433,7 +433,7 @@ export const SidebarNavigation: React.FC = () => {
           {activeProject && (
             <>
               {/* Preserved Project Overview at Top */}
-              <div className="space-y-0.5 mb-2.5">
+              <div className="space-y-0.5 mb-1">
                 <NavigationItem
                   title="Overview"
                   path={`/projects/${activeProject.id}`}
@@ -453,13 +453,11 @@ export const SidebarNavigation: React.FC = () => {
                     title={group.title}
                     collapsible={group.collapsible}
                     defaultExpanded={group.defaultExpanded}
-                    className="mb-1.5"
                   >
                     <div
                       className={cn(
                         'space-y-0.5',
-                        !isCollapsed &&
-                          'ml-3 pl-2.5 border-l border-white/[0.08] mt-1.5 mb-1.5'
+                        !isCollapsed && 'pl-2'
                       )}
                     >
                       {group.items.map((item) => (

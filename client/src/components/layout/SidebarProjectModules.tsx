@@ -42,6 +42,10 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
   const moduleInputRef = useRef<HTMLInputElement>(null);
   const subInputRef = useRef<HTMLInputElement>(null);
 
+  // ─── Swipe Left Active State ─────────────────────────────────────────────
+  const [swipingModuleId, setSwipingModuleId] = useState<number | null>(null);
+  const [swipingSubmoduleId, setSwipingSubmoduleId] = useState<number | null>(null);
+
   // Auto-focus input when editing starts
   useEffect(() => {
     if (editingModuleId && moduleInputRef.current) {
@@ -58,7 +62,6 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
   }, [editingSubmoduleId]);
 
   // ─── Drag & Drop State ───────────────────────────────────────────────────
-  // Dragged item payload
   const [draggedItem, setDraggedItem] = useState<{
     type: 'MODULE' | 'SUBMODULE';
     moduleId: number;
@@ -66,7 +69,6 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
     index: number;
   } | null>(null);
 
-  // Drop target indicators
   const [moduleDropTarget, setModuleDropTarget] = useState<{
     moduleId: number;
     position: 'top' | 'bottom' | 'inside';
@@ -155,13 +157,12 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
     }
   };
 
-  // ─── Hide Actions (Swipe Left or Click) ──────────────────────────────────
+  // ─── Hide Actions ────────────────────────────────────────────────────────
   const handleHideModule = async (mod: ProjectModule) => {
-    // Optimistic update: mark isVisible as false
     setProjectModules((prev) =>
       prev.map((m) => (m.id === mod.id ? { ...m, isVisible: false } : m))
     );
-    toast.info('Module hidden', `"${mod.name}" was hidden. You can unhide it in Project Structure.`);
+    toast.info('Module hidden', `"${mod.name}" was hidden. Restore in Project Structure.`);
 
     try {
       const res = await projectModuleService.updateModule(projectId, mod.id, { isVisible: false });
@@ -176,7 +177,6 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
   };
 
   const handleHideSubmodule = async (sub: ProjectSubmodule, moduleId: number) => {
-    // Optimistic update
     setProjectModules((prev) =>
       prev.map((m) => {
         if (m.id !== moduleId) return m;
@@ -188,7 +188,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
         };
       })
     );
-    toast.info('Submodule hidden', `"${sub.name}" was hidden. You can unhide it in Project Structure.`);
+    toast.info('Submodule hidden', `"${sub.name}" was hidden. Restore in Project Structure.`);
 
     try {
       const res = await projectModuleService.updateSubmodule(projectId, sub.id, { isVisible: false });
@@ -227,7 +227,6 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
       const position = e.clientY < mid ? 'top' : 'bottom';
       setModuleDropTarget({ moduleId: mod.id, position });
     } else if (draggedItem.type === 'SUBMODULE') {
-      // Submodule dropped onto module header moves it inside this module
       setModuleDropTarget({ moduleId: mod.id, position: 'inside' });
     }
   };
@@ -272,7 +271,6 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
         refreshProjectModules(projectId);
       }
     } else if (draggedItem.type === 'SUBMODULE') {
-      // Move submodule into this target module
       if (!draggedItem.submoduleId || draggedItem.moduleId === targetMod.id) return;
 
       try {
@@ -345,7 +343,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
     if (item.submoduleId === targetSub.id) return;
 
     if (item.moduleId === targetMod.id) {
-      // Reorder within the same module
+      // Reorder within same module
       const submodules = targetMod.submodules || [];
       const sourceIdx = submodules.findIndex((s) => s.id === item.submoduleId);
       let targetIdx = submodules.findIndex((s) => s.id === targetSub.id);
@@ -399,7 +397,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
   const seenBuiltInKeys = new Set<string>();
 
   return (
-    <div className="space-y-1.5 select-none">
+    <div className="space-y-0.5 select-none">
       {projectModules
         .filter((mod) => mod.isVisible)
         .map((mod, modIdx) => {
@@ -423,10 +421,10 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                 'relative transition-all duration-150',
                 isModuleDragTarget &&
                   moduleDropTarget.position === 'top' &&
-                  'border-t-2 border-indigo-500 pt-1',
+                  'border-t-2 border-indigo-500 pt-0.5',
                 isModuleDragTarget &&
                   moduleDropTarget.position === 'bottom' &&
-                  'border-b-2 border-indigo-500 pb-1',
+                  'border-b-2 border-indigo-500 pb-0.5',
                 isModuleDragTarget &&
                   moduleDropTarget.position === 'inside' &&
                   'ring-1 ring-indigo-500/80 bg-indigo-500/10 rounded-md'
@@ -437,29 +435,36 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
               {/* ─── MODULE HEADER ROW (SWIPE LEFT TO HIDE) ───────────────── */}
               {!isCollapsed ? (
                 <div className="relative overflow-hidden rounded-md group">
-                  {/* Revealed red "Hide" background when dragged left */}
-                  <div
-                    onClick={() => handleHideModule(mod)}
-                    className="absolute inset-y-0 right-0 w-24 bg-rose-950/60 border border-rose-500/40 text-rose-300 flex items-center justify-end pr-2.5 gap-1 rounded-md text-[11px] font-semibold cursor-pointer z-0"
-                  >
-                    <EyeOff size={13} />
-                    <span>Hide</span>
-                  </div>
+                  {/* Revealed red "Hide" background ONLY when actively dragging left */}
+                  {swipingModuleId === mod.id && (
+                    <div className="absolute inset-y-0 right-0 w-20 bg-rose-600/90 text-white flex items-center justify-end pr-2.5 gap-1 rounded-md text-[11px] font-semibold z-0">
+                      <EyeOff size={12} />
+                      <span>Hide</span>
+                    </div>
+                  )}
 
                   {/* Foreground draggable row */}
                   <motion.div
                     drag={!isEditingThisModule ? 'x' : false}
-                    dragConstraints={{ left: -75, right: 0 }}
-                    dragElastic={0.15}
+                    dragConstraints={{ left: -70, right: 0 }}
+                    dragElastic={0.1}
+                    onDrag={(_, info) => {
+                      if (info.offset.x < -10) {
+                        setSwipingModuleId(mod.id);
+                      } else {
+                        setSwipingModuleId(null);
+                      }
+                    }}
                     onDragEnd={(_, info) => {
-                      if (info.offset.x < -45 || info.velocity.x < -200) {
+                      setSwipingModuleId(null);
+                      if (info.offset.x < -40 || info.velocity.x < -200) {
                         handleHideModule(mod);
                       }
                     }}
-                    className="relative z-10 bg-[var(--sidebar-bg)] flex items-center justify-between px-2 py-1 rounded-md hover:bg-white/[0.03] transition-colors"
+                    className="relative z-10 bg-[var(--sidebar-bg)] hover:bg-[var(--sidebar-hover)] flex items-center justify-between px-2 h-[30px] rounded-md transition-colors"
                   >
                     {/* Left: Drag Handle, Collapse chevron, Title or Inline Input */}
-                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <div className="flex items-center gap-1 min-w-0 flex-1">
                       {/* Drag handle for reordering up/down */}
                       <div
                         draggable={!isEditingThisModule}
@@ -468,7 +473,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                         className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing p-0.5 -ml-1 text-zinc-500 hover:text-zinc-300 transition-opacity"
                         title="Drag up or down to reorder module"
                       >
-                        <GripVertical size={12} />
+                        <GripVertical size={11} />
                       </div>
 
                       {/* Collapse/Expand Toggle */}
@@ -500,7 +505,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                                 if (e.key === 'Enter') saveModuleRename(mod);
                                 if (e.key === 'Escape') setEditingModuleId(null);
                               }}
-                              className="w-full bg-[#1A1A1E] text-white text-[11.5px] font-semibold uppercase px-1.5 py-0.5 rounded border border-indigo-500/80 outline-none tracking-wider"
+                              className="w-full bg-[#1A1A1E] text-white text-[11px] font-semibold uppercase px-1.5 py-0.5 rounded border border-indigo-500/80 outline-none tracking-wider"
                             />
                             <button
                               type="button"
@@ -534,7 +539,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                           type="button"
                           onClick={(e) => startEditingModule(mod, e)}
                           title="Rename module"
-                          className="p-1 rounded text-zinc-500 hover:text-white hover:bg-sidebar-hover transition-colors"
+                          className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors"
                         >
                           <Pencil size={11} />
                         </button>
@@ -544,8 +549,8 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                             e.stopPropagation();
                             handleHideModule(mod);
                           }}
-                          title="Hide module (or swipe left)"
-                          className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          title="Hide module"
+                          className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
                         >
                           <EyeOff size={11} />
                         </button>
@@ -555,15 +560,15 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                 </div>
               ) : (
                 /* Minimized Sidebar Module Separator */
-                <div className="py-1 border-t border-sidebar-border/40 first:border-0" />
+                <div className="py-0.5 border-t border-sidebar-border/40 first:border-0" />
               )}
 
-              {/* ─── SUBMODULES LIST ──────────────────────────────────────── */}
+              {/* ─── SUBMODULES LIST (COMPACT, NO EXTRA SPACE) ─────────────── */}
               {isExpanded && (
                 <div
                   className={cn(
                     'space-y-0.5',
-                    !isCollapsed && 'ml-3 pl-2.5 border-l border-white/[0.08] mt-1 mb-2'
+                    !isCollapsed && 'pl-2'
                   )}
                 >
                   <AnimatePresence initial={false}>
@@ -601,7 +606,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                         );
                       }
 
-                      /* Full Expanded Submodule Item with Swipe Left, Drag Reorder & Inline Rename */
+                      /* Full Expanded Submodule Item */
                       return (
                         <div
                           key={`sub-${sub.id}`}
@@ -618,30 +623,36 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                           onDrop={(e) => handleSubDrop(e, mod, sub)}
                         >
                           <div className="relative overflow-hidden rounded-md group">
-                            {/* Revealed red "Hide" background when dragged left */}
-                            <div
-                              onClick={() => handleHideSubmodule(sub, mod.id)}
-                              className="absolute inset-y-0 right-0 w-20 bg-rose-950/60 border border-rose-500/40 text-rose-300 flex items-center justify-end pr-2.5 gap-1 rounded-md text-[11px] font-medium cursor-pointer z-0"
-                            >
-                              <EyeOff size={12} />
-                              <span>Hide</span>
-                            </div>
+                            {/* Revealed red "Hide" background ONLY when actively dragging left */}
+                            {swipingSubmoduleId === sub.id && (
+                              <div className="absolute inset-y-0 right-0 w-20 bg-rose-600/90 text-white flex items-center justify-end pr-2.5 gap-1 rounded-md text-[11px] font-medium z-0">
+                                <EyeOff size={12} />
+                                <span>Hide</span>
+                              </div>
+                            )}
 
                             {/* Foreground draggable & clickable row */}
                             <motion.div
                               drag={!isEditingThisSub ? 'x' : false}
                               dragConstraints={{ left: -70, right: 0 }}
-                              dragElastic={0.15}
+                              dragElastic={0.1}
+                              onDrag={(_, info) => {
+                                if (info.offset.x < -10) {
+                                  setSwipingSubmoduleId(sub.id);
+                                } else {
+                                  setSwipingSubmoduleId(null);
+                                }
+                              }}
                               onDragEnd={(_, info) => {
+                                setSwipingSubmoduleId(null);
                                 if (info.offset.x < -40 || info.velocity.x < -200) {
                                   handleHideSubmodule(sub, mod.id);
                                 }
                               }}
                               className={cn(
-                                'relative z-10 bg-[var(--sidebar-bg)] flex items-center justify-between h-[32px] px-2 rounded-md transition-colors duration-150',
-                                isActive
-                                  ? 'bg-sidebar-active text-sidebar-text-active font-medium'
-                                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-sidebar-hover'
+                                'relative z-10 bg-[var(--sidebar-bg)] hover:bg-[var(--sidebar-hover)] flex items-center justify-between h-[32px] px-2 rounded-md transition-colors duration-150',
+                                isActive &&
+                                  'bg-sidebar-active text-sidebar-text-active font-medium'
                               )}
                             >
                               {/* Left: Drag Handle, Icon, and Label or Inline Input */}
@@ -715,7 +726,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                                     type="button"
                                     onClick={(e) => startEditingSubmodule(sub, e)}
                                     title="Rename submodule"
-                                    className="p-1 rounded text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-colors"
+                                    className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors"
                                   >
                                     <Pencil size={11} />
                                   </button>
@@ -725,8 +736,8 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                                       e.stopPropagation();
                                       handleHideSubmodule(sub, mod.id);
                                     }}
-                                    title="Hide submodule (or swipe left)"
-                                    className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                    title="Hide submodule"
+                                    className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
                                   >
                                     <EyeOff size={11} />
                                   </button>
@@ -741,7 +752,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
 
                   {/* Empty Submodules Indicator - ONLY shown when NOT collapsed */}
                   {!isCollapsed && visibleSubmodules.length === 0 && (
-                    <div className="px-2 py-1 text-[11px] text-zinc-500 italic">
+                    <div className="px-2 py-0.5 text-[11px] text-zinc-500 italic">
                       No visible submodules
                     </div>
                   )}
@@ -753,4 +764,3 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
     </div>
   );
 };
-

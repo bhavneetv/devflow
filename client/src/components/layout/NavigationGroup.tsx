@@ -36,7 +36,7 @@ export const NavigationGroup: React.FC<NavigationGroupProps> = ({
   }
 
   return (
-    <div className={cn('pt-3 pb-1 select-none', className)}>
+    <div className={cn('pt-2 pb-0.5 select-none', className)}>
       {/* Group Header */}
       <div className="flex items-center justify-between px-2.5 mb-1 group">
         <button

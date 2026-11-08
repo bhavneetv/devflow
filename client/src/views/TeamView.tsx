@@ -5,7 +5,7 @@ import {
   Users, UserPlus, Search, Clock, CheckCircle2, Crown,
   MoreHorizontal, Shield, Trash2, RefreshCw, X, ChevronDown,
   Copy, Check, AlertCircle, Loader2, Mail, Building2, Plus,
-  Filter, UserMinus, Settings, LayoutGrid, List, ArrowLeft, ArrowRight,
+  Filter, UserMinus, UserX, Settings, LayoutGrid, List, ArrowLeft, ArrowRight,
   Star, Edit3, Key, Terminal, Code, Sparkles, Globe, UserCheck, RotateCcw,
   FolderKanban, PieChart, TrendingUp, CheckSquare, Activity, Info, Palette, Smile,
   Layers, ShieldCheck, MessageSquare, Upload
@@ -31,7 +31,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { QUICK_AVATAR_ICONS, MORE_AVATAR_ICONS, AVATAR_COLORS } from '../types/onboarding';
 import { cn } from '../lib/utils';
 import { apiUrl } from '../config/api';
-import type { Team, TeamMember, TeamInvitation, TeamMemberRole } from '../types/team';
+import type { Team, TeamMember, TeamInvitation, TeamMemberRole, TeamMemberPermissions, TeamMemberPermissionItem } from '../types/team';
 import { ROLE_LABELS, ROLE_COLORS, ASSIGNABLE_ROLES } from '../types/team';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
@@ -1139,10 +1139,55 @@ const EditMemberModal: React.FC<{
 // ─── Team Settings Full Page Screen (Matching Account Settings Layout) ───────
 
 const TEAM_SETTINGS_CATEGORIES: SettingsCategory[] = [
-  { id: 'general-information', label: 'General Information' },
-  { id: 'appearance-branding', label: 'Appearance & Branding' },
-  { id: 'members-access', label: 'Members & Access' },
+  { id: 'general-settings', label: 'General Settings' },
+  { id: 'members-roles', label: 'Members & Roles' },
+  { id: 'permissions', label: 'Permissions' },
+  { id: 'invitations', label: 'Invitations' },
   { id: 'danger-zone', label: 'Danger Zone' },
+];
+
+const SETTINGS_PERMISSION_CONFIG: Array<{
+  key: keyof TeamMemberPermissions;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+}> = [
+  {
+    key: 'manageTeamMembers',
+    label: 'Manage Team Members',
+    description: 'Add or invite new members to the team',
+    icon: <Users size={16} className="text-emerald-400" />,
+  },
+  {
+    key: 'removeTeamMembers',
+    label: 'Remove Team Members',
+    description: 'Remove existing members from the team',
+    icon: <UserX size={16} className="text-rose-400" />,
+  },
+  {
+    key: 'manageMemberRoles',
+    label: 'Manage Member Roles',
+    description: 'Promote, demote, or change roles of team members',
+    icon: <UserCheck size={16} className="text-amber-400" />,
+  },
+  {
+    key: 'manageTeamDetails',
+    label: 'Manage Team Details',
+    description: 'Edit team name, description, color, and branding',
+    icon: <Edit3 size={16} className="text-indigo-400" />,
+  },
+  {
+    key: 'manageTeamSettings',
+    label: 'Manage Team Settings',
+    description: 'Modify team configurations and integrations',
+    icon: <Settings size={16} className="text-cyan-400" />,
+  },
+  {
+    key: 'manageInvitations',
+    label: 'Manage Invitations',
+    description: 'Resend and cancel pending invitations',
+    icon: <Mail size={16} className="text-purple-400" />,
+  },
 ];
 
 const TeamSettingsPage: React.FC<{
@@ -1170,6 +1215,111 @@ const TeamSettingsPage: React.FC<{
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showMoreModal, setShowMoreModal] = useState(false);
+
+  // Permissions & Members Management State
+  const [permMembers, setPermMembers] = useState<TeamMemberPermissionItem[]>([]);
+  const [selectedPermMember, setSelectedPermMember] = useState<TeamMemberPermissionItem | null>(null);
+  const [loadingPerms, setLoadingPerms] = useState(false);
+  const [savingPerm, setSavingPerm] = useState(false);
+  const [invitationsList, setInvitationsList] = useState<TeamInvitation[]>(team.invitations || []);
+  const [resendingId, setResendingId] = useState<number | null>(null);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  const isOwner = team.myRole === 'OWNER';
+
+  const loadPermissions = useCallback(async () => {
+    setLoadingPerms(true);
+    try {
+      const res = await teamService.getPermissions(team.id);
+      if (res.success && res.data) {
+        setPermMembers(res.data);
+        if (res.data.length > 0) {
+          const nonOwner = res.data.find((m) => !m.isOwner);
+          setSelectedPermMember(nonOwner || res.data[0]);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load permissions:', err);
+    } finally {
+      setLoadingPerms(false);
+    }
+  }, [team.id]);
+
+  useEffect(() => {
+    loadPermissions();
+  }, [loadPermissions]);
+
+  const handleTogglePermission = async (permKey: keyof TeamMemberPermissions) => {
+    if (!isOwner) {
+      toast.error('Permission Denied', 'Only the Team Owner can change member permissions.');
+      return;
+    }
+    if (!selectedPermMember) return;
+
+    const currentVal = selectedPermMember.permissions[permKey];
+    const newVal = !currentVal;
+
+    const updatedPerms: TeamMemberPermissions = {
+      ...selectedPermMember.permissions,
+      [permKey]: newVal,
+    };
+
+    setSelectedPermMember((prev: TeamMemberPermissionItem | null) => (prev ? { ...prev, permissions: updatedPerms } : null));
+    setPermMembers((prev: TeamMemberPermissionItem[]) =>
+      prev.map((m) =>
+        m.memberId === selectedPermMember.memberId ? { ...m, permissions: updatedPerms } : m
+      )
+    );
+
+    setSavingPerm(true);
+    try {
+      const res = await teamService.updateMemberPermissions(
+        team.id,
+        selectedPermMember.memberId,
+        updatedPerms
+      );
+      if (!res.success) {
+        toast.error('Update Failed', res.error || 'Failed to update permissions');
+        await loadPermissions();
+      } else {
+        toast.success('Permission Updated', `${String(permKey)} updated successfully`);
+      }
+    } catch (err: any) {
+      toast.error('Error', err.message);
+      await loadPermissions();
+    } finally {
+      setSavingPerm(false);
+    }
+  };
+
+  const handleResendInv = async (invId: number) => {
+    setResendingId(invId);
+    try {
+      const res = await teamService.resendInvitation(team.id, invId);
+      if (res.success) {
+        toast.success('Invitation Resent', 'Invite email dispatched successfully');
+      } else {
+        toast.error('Failed to resend', res.error);
+      }
+    } finally {
+      setResendingId(null);
+    }
+  };
+
+  const handleCancelInv = async (invId: number) => {
+    setCancellingId(invId);
+    try {
+      const res = await teamService.cancelInvitation(team.id, invId);
+      if (res.success) {
+        toast.success('Invitation Cancelled');
+        setInvitationsList((prev) => prev.filter((i) => i.id !== invId));
+      } else {
+        toast.error('Failed to cancel', res.error);
+      }
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const isCurrentMoreIcon =
     avatarType === 'icon' &&
@@ -1347,10 +1497,10 @@ const TeamSettingsPage: React.FC<{
 
       {/* ONE continuous scrollable screen with all sections matching DevFlow Settings layout */}
       <form onSubmit={handleSave} className="pb-28 space-y-2">
-        {/* ── Section 1: General Information ── */}
+        {/* ── Section 1: General Settings ── */}
         <SettingsSection
-          id="general-information"
-          title="General Information"
+          id="general-settings"
+          title="General Settings"
           description="Configure your team workspace display name, key identifier, and description."
         >
           <SettingsRow
@@ -1648,67 +1798,247 @@ const TeamSettingsPage: React.FC<{
           </SettingsRow>
         </SettingsSection>
 
-        {/* ── Section 3: Members & Access ── */}
+        {/* ── Section 2: Members & Roles ── */}
         <SettingsSection
-          id="members-access"
-          title="Members & Access"
-          description="View active team members, membership status, and direct invite link."
+          id="members-roles"
+          title="Members & Roles"
+          description="View active team members, membership status, and manage roles."
         >
-          <SettingsRow
-            label="Active Members"
-            description="Collaborators currently active in this workspace."
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              {team.members && team.members.length > 0 ? (
-                <div className="p-3.5 rounded-2xl bg-[#111216] border border-[#27272A] flex items-center gap-4 max-w-md">
-                  {renderMemberAvatarStack(team.members, 6)}
+          <div className="space-y-4 max-w-4xl">
+            <div className="rounded-xl border border-[#27272A] bg-[#111216] overflow-hidden">
+              <div className="divide-y divide-[#1C1D24]">
+                {(team.members || []).map((member: any) => {
+                  return (
+                    <div key={member.id} className="p-3.5 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                          {member.user?.avatarUrl ? (
+                            <img src={member.user.avatarUrl} alt={member.user.name} className="w-full h-full rounded-full object-cover" />
+                          ) : (
+                            member.user?.name?.charAt(0).toUpperCase() || 'U'
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-xs text-white truncate">{member.user?.name}</span>
+                            {member.role === 'OWNER' && <Crown size={12} className="text-amber-400 shrink-0" />}
+                          </div>
+                          <span className="text-[11px] text-zinc-500 font-mono truncate">{member.user?.email}</span>
+                        </div>
+                      </div>
 
-                  <div className="border-l border-[#27272A] pl-3 py-0.5">
-                    <span className="text-sm font-bold text-white block">
-                      {team.members.length} {team.members.length === 1 ? 'Member' : 'Members'}
-                    </span>
-                    <span className="text-[11px] text-zinc-400">Assigned with roles & permissions</span>
-                  </div>
-                </div>
-              ) : (
-                <span className="text-xs text-zinc-500">No active members yet</span>
-              )}
-            </div>
-          </SettingsRow>
-
-          <SettingsRow
-            label="Pending Invitations"
-            description="Invites sent waiting for recipient confirmation."
-          >
-            <div className="p-3.5 rounded-xl bg-[#111216] border border-[#27272A] inline-flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center">
-                <Clock size={16} />
+                      <div className="flex items-center gap-2 shrink-0">
+                        <RoleBadge role={member.role} small />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+            </div>
+
+            {/* Share Team Link */}
+            <div className="p-3.5 rounded-xl border border-[#27272A] bg-[#111216] flex items-center justify-between gap-3">
               <div>
-                <span className="text-base font-bold text-white block">{team.invitations?.length || 0} Pending</span>
-                <span className="text-[11px] text-zinc-400">Awaiting workspace join response</span>
+                <span className="text-xs font-semibold text-white block">Share Team Link</span>
+                <span className="text-[11px] text-zinc-400">Direct URL for members to access this team workspace.</span>
               </div>
-            </div>
-          </SettingsRow>
-
-          <SettingsRow
-            label="Share Team Link"
-            description="Workspace teammates can quickly navigate to this team view using this link."
-          >
-            <div className="max-w-md flex items-center gap-2">
-              <code className="flex-1 px-3 py-2 rounded-lg bg-[#0C0D10] border border-[#27272A] text-xs font-mono text-zinc-300 truncate">
-                {window.location.origin}/teams/{team.id}
-              </code>
               <button
                 type="button"
                 onClick={handleCopyLink}
-                className="h-9 px-3 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                className="h-8 px-3 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
               >
                 {copiedLink ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-                <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                <span>{copiedLink ? 'Copied' : 'Copy link'}</span>
               </button>
             </div>
-          </SettingsRow>
+          </div>
+        </SettingsSection>
+
+        {/* ── Section 3: Permissions (RBAC) ── */}
+        <SettingsSection
+          id="permissions"
+          title="Permissions (RBAC)"
+          description="Control what individual employees and roles are allowed to perform in this team."
+        >
+          <div className="space-y-4 max-w-4xl">
+            {/* Owner Permission Control Banner */}
+            <div
+              className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+                isOwner
+                  ? 'bg-purple-500/10 border-purple-500/25 text-purple-300'
+                  : 'bg-zinc-800/40 border-zinc-700 text-zinc-400'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Crown size={16} className={isOwner ? 'text-amber-400 shrink-0' : 'text-zinc-500 shrink-0'} />
+                <span className="text-xs sm:text-[13px] font-medium">
+                  {isOwner
+                    ? 'As Team Owner, you have complete control over permissions. Changes persist immediately.'
+                    : 'Only the Team Owner can modify member permissions. Viewing in read-only mode.'}
+                </span>
+              </div>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/[0.06] text-white shrink-0">
+                {team.myRole || 'VIEWER'}
+              </span>
+            </div>
+
+            {/* Member Selection Tabs */}
+            {permMembers.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-400">Select Member to Configure</label>
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                  {permMembers.map((m) => {
+                    const isSelected = selectedPermMember?.memberId === m.memberId;
+                    return (
+                      <button
+                        key={m.memberId}
+                        type="button"
+                        onClick={() => setSelectedPermMember(m)}
+                        className={`px-3 py-2 rounded-xl border text-xs flex items-center gap-2 shrink-0 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-purple-500/60 bg-purple-500/15 text-white font-semibold shadow-sm'
+                            : 'border-[#27272A] bg-[#111216] text-zinc-400 hover:text-white hover:border-zinc-600'
+                        }`}
+                      >
+                        <div className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-white font-bold">
+                          {m.avatarUrl ? (
+                            <img src={m.avatarUrl} alt={m.name} className="w-full h-full rounded-full object-cover" />
+                          ) : (
+                            m.name?.charAt(0).toUpperCase() || 'M'
+                          )}
+                        </div>
+                        <span>{m.name}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/[0.06] text-zinc-300">
+                          {m.role}
+                        </span>
+                        {m.isOwner && <Crown size={11} className="text-amber-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Permissions Switches Grid */}
+            {selectedPermMember && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-zinc-300">
+                    Permissions for <span className="text-white font-bold">{selectedPermMember.name}</span>
+                  </p>
+                  {selectedPermMember.isOwner && (
+                    <span className="text-[11px] font-mono text-amber-400">
+                      Team Owner retains all permissions
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {SETTINGS_PERMISSION_CONFIG.map((p) => {
+                    const isAllowed = selectedPermMember.isOwner
+                      ? true
+                      : selectedPermMember.permissions[p.key];
+                    const canToggle = isOwner && !selectedPermMember.isOwner;
+
+                    return (
+                      <div
+                        key={String(p.key)}
+                        className="p-3.5 rounded-xl bg-[#111216] border border-[#27272A] flex items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.06] shrink-0 mt-0.5">
+                            {p.icon}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-white">{p.label}</p>
+                            <p className="text-[11px] text-zinc-400 leading-tight mt-0.5">{p.description}</p>
+                          </div>
+                        </div>
+
+                        {/* Toggle Switch */}
+                        <button
+                          type="button"
+                          disabled={!canToggle || savingPerm}
+                          onClick={() => handleTogglePermission(p.key)}
+                          className={`w-11 h-6 rounded-full transition-colors relative shrink-0 p-0.5 ${
+                            canToggle ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                          } ${isAllowed ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                          title={canToggle ? `Toggle ${p.label}` : 'Cannot toggle'}
+                        >
+                          <div
+                            className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                              isAllowed ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </SettingsSection>
+
+        {/* ── Section 4: Invitations ── */}
+        <SettingsSection
+          id="invitations"
+          title="Invitations"
+          description="Manage pending invitations sent to join this team."
+        >
+          <div className="space-y-4 max-w-4xl">
+            {invitationsList.length === 0 ? (
+              <div className="p-8 text-center rounded-xl bg-[#111216] border border-[#27272A] space-y-2">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+                  <Mail size={18} />
+                </div>
+                <p className="text-xs font-semibold text-white">No pending invitations</p>
+                <p className="text-[11px] text-zinc-500">All invited teammates have accepted or joined.</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[#27272A] bg-[#111216] overflow-hidden divide-y divide-[#1C1D24]">
+                {invitationsList.map((inv) => (
+                  <div key={inv.id} className="p-3.5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                        <Clock size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white truncate">{inv.invitedEmail}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <RoleBadge role={inv.assignedRole} small />
+                          <span className="text-[10px] font-mono text-zinc-500">
+                            Sent {formatDate(inv.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={resendingId === inv.id}
+                        onClick={() => handleResendInv(inv.id)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium text-purple-400 hover:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                      >
+                        {resendingId === inv.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                        <span>Resend</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={cancellingId === inv.id}
+                        onClick={() => handleCancelInv(inv.id)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                      >
+                        {cancellingId === inv.id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                        <span>Cancel</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </SettingsSection>
 
         {/* ── Section 4: Danger Zone ── */}
@@ -3838,6 +4168,7 @@ export const TeamView: React.FC = () => {
   const { toast } = useToast();
   const { accentColor } = useAccentTheme();
   const { currentOrganization } = useOrganization();
+  const { isResourceFavorite, toggleFavoriteResource } = useNavigation();
 
   const activeOrgSlug = organizationSlug || currentOrganization?.slug;
   const teamsBasePath = activeOrgSlug ? `/organizations/${activeOrgSlug}/teams` : '/teams';
@@ -3853,25 +4184,11 @@ export const TeamView: React.FC = () => {
   const [teamsViewMode, setTeamsViewMode] = useState<'grid' | 'list'>('grid');
   const [focusedIndexTeamId, setFocusedIndexTeamId] = useState<number | null>(null);
 
-  // Favorites state persisted in localStorage
-  const [favoriteTeamIds, setFavoriteTeamIds] = useState<number[]>(() => {
-    try {
-      const saved = localStorage.getItem('devflow_favorite_teams');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
   const toggleFavoriteTeam = (id: number) => {
-    setFavoriteTeamIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      try {
-        localStorage.setItem('devflow_favorite_teams', JSON.stringify(next));
-      } catch (e) {
-        console.error(e);
-      }
-      return next;
+    const target = teams.find((t) => t.id === id);
+    toggleFavoriteResource('TEAM', id, currentOrganization?.id, {
+      name: target?.name || 'Team',
+      color: target?.color,
     });
   };
 
@@ -4572,7 +4889,7 @@ export const TeamView: React.FC = () => {
                     const { key, cleanDesc } = parseTeamMetadata(team.description, team.name);
                     const membersCount = team._count?.members || (team.members?.length ?? 1);
                     const invitesCount = team._count?.invitations || 0;
-                    const isFavorite = favoriteTeamIds.includes(team.id);
+                    const isFavorite = isResourceFavorite('TEAM', team.id);
 
                     return (
                       <motion.div
@@ -4589,9 +4906,26 @@ export const TeamView: React.FC = () => {
                         />
 
                         <div className="space-y-3.5 relative z-10">
-                          {/* Top Row: Avatar + Key + Role + Favorite & Settings Buttons */}
+                          {/* Top Row: Star + Avatar + Key + Role + Settings Button */}
                           <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {/* Star / Favorite Button at Beginning */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFavoriteTeam(team.id);
+                                }}
+                                className={`p-1.5 rounded-lg border transition-all cursor-pointer shrink-0 ${
+                                  isFavorite
+                                    ? 'text-amber-400 bg-amber-400/15 border-amber-400/35'
+                                    : 'text-zinc-500 bg-white/[0.03] border-white/[0.08] hover:text-amber-400 hover:border-amber-400/30'
+                                }`}
+                                title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                              >
+                                <Star size={14} fill={isFavorite ? 'currentColor' : 'none'} />
+                              </button>
+
                               {renderTeamAvatar(team, 'w-11 h-11', 18)}
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
@@ -4612,23 +4946,8 @@ export const TeamView: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Fav button & Setting button */}
+                            {/* Settings button */}
                             <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleFavoriteTeam(team.id);
-                                }}
-                                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                                  isFavorite
-                                    ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 shadow-sm'
-                                    : 'text-zinc-500 hover:text-amber-400 hover:bg-white/[0.06]'
-                                }`}
-                                title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                              >
-                                <Star size={15} className={isFavorite ? 'fill-amber-400' : ''} />
-                              </button>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -4684,7 +5003,7 @@ export const TeamView: React.FC = () => {
                     const { key, cleanDesc } = parseTeamMetadata(team.description, team.name);
                     const membersCount = team._count?.members || 1;
                     const invitesCount = team._count?.invitations || 0;
-                    const isFavorite = favoriteTeamIds.includes(team.id);
+                    const isFavorite = isResourceFavorite('TEAM', team.id);
 
                     return (
                       <motion.div
@@ -4694,8 +5013,25 @@ export const TeamView: React.FC = () => {
                         onClick={() => navigate(`${teamsBasePath}/${team.id}`)}
                         className="rounded-xl bg-[#0E0F14]/90 border border-[#27272A] px-4 py-3 sm:px-5 sm:py-3.5 hover:border-zinc-500/70 hover:bg-[#12131A] transition-all duration-150 cursor-pointer group flex items-center justify-between gap-4 shadow-sm"
                       >
-                        {/* Left Side: Avatar + Name + Key + Description */}
+                        {/* Left Side: Star + Avatar + Name + Key + Description */}
                         <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                          {/* Star / Favorite Button at Beginning */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFavoriteTeam(team.id);
+                            }}
+                            className={`p-1.5 rounded-lg border transition-all cursor-pointer shrink-0 ${
+                              isFavorite
+                                ? 'text-amber-400 bg-amber-400/15 border-amber-400/35'
+                                : 'text-zinc-500 bg-white/[0.03] border-white/[0.08] hover:text-amber-400 hover:border-amber-400/30'
+                            }`}
+                            title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                          >
+                            <Star size={13} fill={isFavorite ? 'currentColor' : 'none'} />
+                          </button>
+
                           {renderTeamAvatar(team, 'w-9 h-9', 16)}
 
                           <div className="min-w-0 flex-1">
@@ -4724,7 +5060,7 @@ export const TeamView: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Right Side: Members Count + Role Badge + Fav + Settings + Arrow */}
+                        {/* Right Side: Members Count + Role Badge + Settings + Arrow */}
                         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                           <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400">
                             {renderMemberAvatarStack(team.members, 4)}
@@ -4739,22 +5075,6 @@ export const TeamView: React.FC = () => {
                           </div>
 
                           <RoleBadge role={team.myRole || 'OWNER'} small />
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFavoriteTeam(team.id);
-                            }}
-                            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                              isFavorite
-                                ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20 shadow-sm'
-                                : 'text-zinc-500 hover:text-amber-400 hover:bg-white/[0.06]'
-                            }`}
-                            title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                          >
-                            <Star size={14} className={isFavorite ? 'fill-amber-400' : ''} />
-                          </button>
 
                           <button
                             type="button"

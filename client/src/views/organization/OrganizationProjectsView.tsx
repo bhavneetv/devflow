@@ -33,10 +33,12 @@ import {
   Tag,
   Crown,
   Building2,
+  Star,
 } from 'lucide-react';
 import { useOrganization } from '../../context/OrganizationContext';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { organizationService } from '../../services/organization.service';
+import { useNavigation } from '../../context/NavigationContext';
 import { useToast } from '../../context/ToastContext';
 import { apiUrl } from '../../config/api';
 import { authService } from '../../services/auth.service';
@@ -185,6 +187,7 @@ export const OrganizationProjectsView: React.FC = () => {
   const { currentOrganization } = useOrganization();
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
+  const { isResourceFavorite, toggleFavoriteResource } = useNavigation();
 
   const targetSlug = organizationSlug || currentOrganization?.slug;
 
@@ -824,6 +827,27 @@ export const OrganizationProjectsView: React.FC = () => {
                           {/* Top Row: Icon + Title + Status Badge */}
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-start gap-3 min-w-0 flex-1">
+                              {/* Star / Favorite Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  toggleFavoriteResource('PROJECT', proj.id, currentOrganization?.id, {
+                                    name: title,
+                                    color: proj.avatarColor,
+                                  });
+                                }}
+                                className={`p-2 rounded-xl border transition-all shrink-0 cursor-pointer mt-0.5 ${
+                                  isResourceFavorite('PROJECT', proj.id)
+                                    ? 'text-amber-400 bg-amber-400/15 border-amber-400/35'
+                                    : 'text-zinc-500 bg-white/[0.03] border-white/[0.08] hover:text-amber-400 hover:border-amber-400/30'
+                                }`}
+                                title={isResourceFavorite('PROJECT', proj.id) ? 'Remove from favorites' : 'Mark as favorite'}
+                              >
+                                <Star size={15} fill={isResourceFavorite('PROJECT', proj.id) ? 'currentColor' : 'none'} />
+                              </button>
+
                               {/* Project Avatar Icon */}
                               {(() => {
                                 const pColor = proj.avatarColor || '#8B5CF6';
@@ -1018,7 +1042,28 @@ export const OrganizationProjectsView: React.FC = () => {
                             className="hover:bg-white/[0.03] transition-colors group cursor-pointer"
                           >
                             <td className="py-3 px-4 min-w-[240px]">
-                              <Link to={`/projects/${proj.id}`} className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    toggleFavoriteResource('PROJECT', proj.id, currentOrganization?.id, {
+                                      name: title,
+                                      color: proj.avatarColor,
+                                    });
+                                  }}
+                                  className={`p-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                                    isResourceFavorite('PROJECT', proj.id)
+                                      ? 'text-amber-400 bg-amber-400/15 border-amber-400/35'
+                                      : 'text-zinc-600 border-transparent hover:text-amber-400 hover:border-white/10'
+                                  }`}
+                                  title={isResourceFavorite('PROJECT', proj.id) ? 'Remove from favorites' : 'Mark as favorite'}
+                                >
+                                  <Star size={13} fill={isResourceFavorite('PROJECT', proj.id) ? 'currentColor' : 'none'} />
+                                </button>
+
+                                <Link to={`/projects/${proj.id}`} className="flex items-center gap-3 flex-1 min-w-0">
                                 {(() => {
                                   const pColor = proj.avatarColor || '#8B5CF6';
                                   const IconComp = proj.avatarIcon && AVATAR_ICON_COMPONENTS[proj.avatarIcon]
@@ -1055,6 +1100,7 @@ export const OrganizationProjectsView: React.FC = () => {
                                   </span>
                                 </div>
                               </Link>
+                              </div>
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
                               <span

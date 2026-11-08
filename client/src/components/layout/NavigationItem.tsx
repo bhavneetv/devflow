@@ -13,6 +13,8 @@ interface NavigationItemProps {
   level?: number;
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
+  starPosition?: 'left' | 'right';
+  customIcon?: React.ReactNode;
   onClick?: () => void;
 }
 
@@ -25,6 +27,8 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
   level = 0,
   isFavorite,
   onToggleFavorite,
+  starPosition = 'right',
+  customIcon,
   onClick,
 }) => {
   const location = useLocation();
@@ -54,11 +58,33 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
     >
       <div
         className={cn(
-          'flex items-center gap-2.5 min-w-0 transition-all duration-200',
+          'flex items-center gap-2 min-w-0 transition-all duration-200',
           isCollapsed && 'justify-center'
         )}
       >
-        {Icon ? (
+        {!isCollapsed && onToggleFavorite && starPosition === 'left' && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            className={cn(
+              'p-0.5 -ml-1 rounded transition-colors shrink-0',
+              isFavorite
+                ? 'text-amber-400 opacity-100 hover:text-amber-300'
+                : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-amber-400'
+            )}
+            title={isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+          >
+            <Star size={13} fill={isFavorite ? 'currentColor' : 'none'} />
+          </button>
+        )}
+
+        {customIcon ? (
+          <div className="shrink-0 flex items-center justify-center">{customIcon}</div>
+        ) : Icon ? (
           <Icon
             size={16}
             className={cn(
@@ -93,7 +119,7 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
             </span>
           )}
 
-          {onToggleFavorite && (
+          {onToggleFavorite && starPosition === 'right' && (
             <button
               type="button"
               onClick={(e) => {

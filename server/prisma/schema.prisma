@@ -101,6 +101,8 @@ model User {
   orgSentInvitations      OrganizationInvitation[] @relation("OrgSentInvitations")
   orgActivities           OrganizationActivity[]   @relation("OrgActivityActor")
   sentMessages            TeamMessage[]            @relation("MessageSender")
+  favorites               UserFavorite[]
+  notifications           Notification[]           @relation("UserNotifications")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -370,4 +372,51 @@ model TeamInvitation {
   @@index([invitedEmail])
   @@index([invitationToken])
   @@map("team_invitations")
+}
+
+enum FavoriteResourceType {
+  PROJECT
+  TEAM
+}
+
+model UserFavorite {
+  id             Int                  @id @default(autoincrement())
+  userId         Int
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceType   FavoriteResourceType
+  resourceId     Int
+  organizationId Int?
+  createdAt      DateTime             @default(now())
+
+  @@unique([userId, resourceType, resourceId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("user_favorites")
+}
+
+enum NotificationType {
+  ORGANIZATION_INVITATION
+  TEAM_INVITATION
+  SYSTEM
+}
+
+model Notification {
+  id                    Int              @id @default(autoincrement())
+  recipientId           Int
+  recipient             User             @relation("UserNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  type                  NotificationType
+  title                 String
+  message               String           @db.Text
+  data                  String?          @db.Text // JSON metadata: { token, invitationId, orgId, orgName, orgSlug, teamId, teamName, role, inviterName }
+  isRead                Boolean          @default(false)
+  relatedInvitationId   Int?
+  relatedOrganizationId Int?
+  relatedTeamId         Int?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([recipientId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }

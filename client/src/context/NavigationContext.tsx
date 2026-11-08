@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { initialFavorites, FavoriteItem } from '../config/navigation';
 import { favoriteService, FavoriteProject, FavoriteTeam } from '../services/favorite.service';
+import { useOrganization } from './OrganizationContext';
 
 export interface ActiveProject {
   id: number;
@@ -13,7 +15,11 @@ interface NavigationContextType {
   setMode: (mode: 'workspace' | 'project') => void;
   activeProject: ActiveProject | null;
   selectProject: (project: ActiveProject) => void;
-  exitProjectMode: () => void;
+  openProject: (project: { id: number; title?: string; status?: string }) => Promise<void>;
+  exitProjectMode: (targetPath?: string) => void;
+  isProjectLoading: boolean;
+  setIsProjectLoading: (loading: boolean) => void;
+  openingProjectId: number | null;
 
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean | ((prev: boolean) => boolean)) => void;
@@ -51,12 +57,18 @@ interface NavigationContextType {
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
 
 export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { currentOrganization } = useOrganization();
+
   const [mode, setMode] = useState<'workspace' | 'project'>('workspace');
   const [activeProject, setActiveProject] = useState<ActiveProject | null>({
     id: 1,
     title: 'DevFlow Cloud Platform v2',
     status: 'IN_PROGRESS',
   });
+  const [openingProjectId, setOpeningProjectId] = useState<number | null>(null);
+  const [isProjectLoading, setIsProjectLoading] = useState<boolean>(false);
 
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     return window.innerWidth >= 768 && window.innerWidth < 1024;
@@ -68,6 +80,30 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [favoriteProjects, setFavoriteProjects] = useState<FavoriteProject[]>([]);
   const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  // Synchronize mode with current URL pathname
+  useEffect(() => {
+    const isProjectSettings =
+      location.pathname.includes('/projects/') && location.pathname.includes('/settings');
+    const isProjectWorkspace =
+      location.pathname.startsWith('/projects/') && !isProjectSettings;
+
+    if (isProjectWorkspace) {
+      const match = location.pathname.match(/\/projects\/(\d+)/);
+      if (match) {
+        const pId = parseInt(match[1], 10);
+        setMode('project');
+        setActiveProject((prev) =>
+          prev && prev.id === pId
+            ? prev
+            : { id: pId, title: prev?.id === pId ? prev.title : `Project #${pId}` }
+        );
+      }
+    } else if (!isProjectSettings) {
+      // Outside project: automatically update sidebar back to workspace mode!
+      setMode('workspace');
+    }
+  }, [location.pathname]);
 
   const refreshFavorites = useCallback(async (orgSlugOrId?: string | number) => {
     try {
@@ -180,14 +216,49 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const selectProject = (project: ActiveProject) => {
+  const selectProject = useCallback((project: ActiveProject) => {
     setActiveProject(project);
     setMode('project');
-  };
+  }, []);
 
-  const exitProjectMode = () => {
-    setMode('workspace');
-  };
+  const openProject = useCallback(
+    async (project: { id: number; title?: string; status?: string }) => {
+      setOpeningProjectId(project.id);
+      setIsProjectLoading(true);
+      setActiveProject({
+        id: project.id,
+        title: project.title || `Project #${project.id}`,
+        status: project.status || 'IN_PROGRESS',
+      });
+
+      // 2.2 second smooth transition time to open project sidebar and page
+      await new Promise((resolve) => setTimeout(resolve, 2200));
+
+      navigate(`/projects/${project.id}`);
+      setMode('project');
+      setOpeningProjectId(null);
+
+      // Keep skeleton in sidebar briefly for smooth layout transition
+      setTimeout(() => {
+        setIsProjectLoading(false);
+      }, 500);
+    },
+    [navigate]
+  );
+
+  const exitProjectMode = useCallback(
+    (targetPath?: string) => {
+      setMode('workspace');
+      if (typeof targetPath === 'string' && targetPath.trim().length > 0) {
+        navigate(targetPath);
+      } else if (currentOrganization?.slug) {
+        navigate(`/organizations/${currentOrganization.slug}/projects`);
+      } else {
+        navigate('/projects');
+      }
+    },
+    [currentOrganization, navigate]
+  );
 
   const toggleSidebar = () => {
     setIsCollapsed((prev) => !prev);
@@ -224,7 +295,11 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setMode,
         activeProject,
         selectProject,
+        openProject,
         exitProjectMode,
+        isProjectLoading,
+        setIsProjectLoading,
+        openingProjectId,
         isCollapsed,
         setIsCollapsed,
         toggleSidebar,

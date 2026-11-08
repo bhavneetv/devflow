@@ -23,6 +23,7 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
     mode,
     activeProject,
     exitProjectMode,
+    isProjectLoading,
     setIsSearchOpen,
     setIsCreateOpen,
   } = useNavigation();
@@ -133,26 +134,36 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
         >
           <div className="flex items-center gap-1.5 overflow-hidden">
             <button
-              onClick={exitProjectMode}
+              onClick={() => exitProjectMode()}
               className="p-1 -ml-1 rounded hover:bg-sidebar-hover text-sidebar-icon hover:text-white transition-colors flex-shrink-0"
               title="Back to Workspace"
             >
               <ArrowLeft size={14} />
             </button>
             {!isCollapsed && (
-              <div className="flex items-center gap-2 truncate">
-                <div className="w-5 h-5 rounded bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 flex-shrink-0">
-                  <FolderKanban size={12} />
-                </div>
-                <div className="truncate">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-text-muted leading-none">
-                    Project
-                  </div>
-                  <div className="text-[13px] font-semibold text-white truncate leading-tight mt-0.5">
-                    {activeProject?.title || 'Active Project'}
+              isProjectLoading ? (
+                <div className="flex items-center gap-2 truncate animate-pulse">
+                  <div className="w-5 h-5 rounded bg-zinc-800/80 border border-zinc-700/50 shrink-0" />
+                  <div className="space-y-1">
+                    <div className="w-8 h-2 bg-zinc-800/60 rounded" />
+                    <div className="w-24 h-3 bg-zinc-800/90 rounded" />
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center gap-2 truncate">
+                  <div className="w-5 h-5 rounded bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 flex-shrink-0">
+                    <FolderKanban size={12} />
+                  </div>
+                  <div className="truncate">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-text-muted leading-none">
+                      Project
+                    </div>
+                    <div className="text-[13px] font-semibold text-white truncate leading-tight mt-0.5">
+                      {activeProject?.title || 'Active Project'}
+                    </div>
+                  </div>
+                </div>
+              )
             )}
           </div>
 

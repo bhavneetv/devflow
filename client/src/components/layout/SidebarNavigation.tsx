@@ -35,6 +35,8 @@ export const SidebarNavigation: React.FC = () => {
     mode,
     activeProject,
     exitProjectMode,
+    isProjectLoading,
+    setIsProjectLoading,
     isCollapsed,
     favoriteProjects,
     favoriteTeams,
@@ -170,6 +172,10 @@ export const SidebarNavigation: React.FC = () => {
                       <NavigationItem
                         title={proj.name}
                         path={`/projects/${proj.id}`}
+                        onClick={() => {
+                          setIsProjectLoading(true);
+                          setTimeout(() => setIsProjectLoading(false), 1200);
+                        }}
                         customIcon={
                           <div
                             className="w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
@@ -256,6 +262,10 @@ export const SidebarNavigation: React.FC = () => {
                       key={`proj-${proj.id}`}
                       title={title}
                       path={`/projects/${proj.id}`}
+                      onClick={() => {
+                        setIsProjectLoading(true);
+                        setTimeout(() => setIsProjectLoading(false), 1200);
+                      }}
                       customIcon={
                         <div
                           className="w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
@@ -362,6 +372,57 @@ export const SidebarNavigation: React.FC = () => {
             />
           </div>
         </>
+      ) : isProjectLoading ? (
+        /* Skeleton Effect in Project Sidebar */
+        <div className="space-y-5 px-1 py-1 animate-in fade-in duration-200 select-none">
+          {/* Skeleton Group 1 */}
+          <div className="space-y-1.5">
+            {!isCollapsed && (
+              <div className="h-2 w-14 bg-zinc-800/80 rounded animate-pulse px-1 mb-2" />
+            )}
+            {['w-28', 'w-20', 'w-32', 'w-24'].map((widthClass, idx) => (
+              <div
+                key={`sk-1-${idx}`}
+                className="flex items-center gap-2.5 h-[32px] px-2 rounded-md bg-zinc-900/40 border border-transparent"
+              >
+                <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+                {!isCollapsed && (
+                  <div className={`h-3 ${widthClass} bg-zinc-800/60 rounded animate-pulse`} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Skeleton Group 2 */}
+          <div className="space-y-1.5">
+            {!isCollapsed && (
+              <div className="h-2 w-16 bg-zinc-800/80 rounded animate-pulse px-1 mb-2" />
+            )}
+            {['w-24', 'w-28', 'w-16'].map((widthClass, idx) => (
+              <div
+                key={`sk-2-${idx}`}
+                className="flex items-center gap-2.5 h-[32px] px-2 rounded-md bg-zinc-900/40 border border-transparent"
+              >
+                <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+                {!isCollapsed && (
+                  <div className={`h-3 ${widthClass} bg-zinc-800/60 rounded animate-pulse`} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Skeleton Quick Links */}
+          <div className="pt-2 border-t border-sidebar-border/40 space-y-1">
+            <div className="flex items-center gap-2.5 h-[32px] px-2 rounded-md">
+              <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+              {!isCollapsed && <div className="h-3 w-24 bg-zinc-800/60 rounded animate-pulse" />}
+            </div>
+            <div className="flex items-center gap-2.5 h-[32px] px-2 rounded-md">
+              <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+              {!isCollapsed && <div className="h-3 w-32 bg-zinc-800/60 rounded animate-pulse" />}
+            </div>
+          </div>
+        </div>
       ) : (
         /* Project Context Navigation Mode */
         <>
@@ -394,8 +455,8 @@ export const SidebarNavigation: React.FC = () => {
               icon={Settings}
             />
             <button
-              onClick={exitProjectMode}
-              className="w-full flex items-center gap-2.5 h-[34px] px-2 rounded-md text-[13.5px] text-zinc-400 hover:text-white hover:bg-sidebar-hover transition-colors"
+              onClick={() => exitProjectMode()}
+              className="w-full flex items-center gap-2.5 h-[34px] px-2 rounded-md text-[13.5px] text-zinc-400 hover:text-white hover:bg-sidebar-hover transition-colors cursor-pointer"
             >
               <ArrowLeft size={16} className="text-zinc-500" />
               <span>Back to Workspace</span>

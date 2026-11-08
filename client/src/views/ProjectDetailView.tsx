@@ -12,7 +12,7 @@ import { apiUrl } from '../config/api';
 
 export const ProjectDetailView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { selectProject, exitProjectMode } = useNavigation();
+  const { selectProject, exitProjectMode, isProjectLoading } = useNavigation();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,8 +39,63 @@ export const ProjectDetailView: React.FC = () => {
     loadProject();
   }, [id]);
 
-  if (loading) {
-    return <div className="p-8 text-center text-zinc-500 text-xs">Loading project details...</div>;
+  if (loading || isProjectLoading) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto space-y-6 animate-pulse select-none">
+        {/* Banner Skeleton */}
+        <div className="p-5 rounded-xl border border-[#27272A] bg-[#0E0E10] space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-zinc-800/80 border border-zinc-700/50 shrink-0" />
+              <div className="space-y-2 min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="h-5 w-44 bg-zinc-800 rounded" />
+                  <div className="h-4 w-20 bg-zinc-800/70 rounded" />
+                  <div className="h-6 w-28 bg-zinc-800/50 rounded-lg ml-1" />
+                </div>
+                <div className="h-3 w-56 bg-zinc-800/40 rounded" />
+              </div>
+            </div>
+            <div className="h-7 w-36 bg-zinc-800/60 rounded-md" />
+          </div>
+          <div className="h-3 w-3/4 bg-zinc-800/40 rounded border-t border-zinc-800/60 pt-2" />
+        </div>
+
+        {/* Metrics Grid Skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="p-4 rounded-lg bg-[#0E0E10] border border-[#27272A] space-y-2">
+              <div className="h-2.5 w-20 bg-zinc-800/60 rounded" />
+              <div className="h-6 w-16 bg-zinc-800 rounded" />
+              <div className="h-2.5 w-32 bg-zinc-800/40 rounded" />
+            </div>
+          ))}
+        </div>
+
+        {/* Tasks List Skeleton */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="h-4 w-36 bg-zinc-800/70 rounded" />
+            <div className="h-3 w-12 bg-zinc-800/50 rounded" />
+          </div>
+
+          <div className="border border-[#27272A] rounded-lg divide-y divide-[#27272A] bg-[#0E0E10] overflow-hidden">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex items-center justify-between p-3.5 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-3 w-14 bg-zinc-800/70 rounded" />
+                  <div className={`h-3 ${i % 2 === 0 ? 'w-48' : 'w-64'} bg-zinc-800 rounded`} />
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="h-3 w-16 bg-zinc-800/50 rounded" />
+                  <div className="h-4 w-14 bg-zinc-800/70 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!project) {
@@ -48,8 +103,8 @@ export const ProjectDetailView: React.FC = () => {
       <div className="p-8 text-center text-zinc-500 text-xs">
         <p>Project not found.</p>
         <button
-          onClick={exitProjectMode}
-          className="mt-3 px-3 py-1.5 rounded bg-zinc-800 text-white"
+          onClick={() => exitProjectMode()}
+          className="mt-3 px-3 py-1.5 rounded bg-zinc-800 text-white cursor-pointer"
         >
           Back to Workspace
         </button>
@@ -89,8 +144,8 @@ export const ProjectDetailView: React.FC = () => {
           </div>
 
           <button
-            onClick={exitProjectMode}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
+            onClick={() => exitProjectMode()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer"
           >
             <ArrowLeft size={13} />
             <span>Return to Workspace</span>

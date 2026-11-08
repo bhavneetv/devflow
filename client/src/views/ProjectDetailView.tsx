@@ -25,7 +25,7 @@ import { ReleaseReadinessPanel } from '../components/project/overview/ReleaseRea
 export const ProjectDetailView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { selectProject, exitProjectMode } = useNavigation();
+  const { selectProject, exitProjectMode, isProjectLoading } = useNavigation();
   const shouldReduceMotion = useReducedMotion();
 
   const [overviewData, setOverviewData] = useState<any | null>(null);
@@ -69,7 +69,7 @@ export const ProjectDetailView: React.FC = () => {
     fetchOverview();
   }, [fetchOverview]);
 
-  if (loading && !overviewData) {
+  if ((loading || isProjectLoading) && !overviewData) {
     return <ProjectOverviewSkeleton />;
   }
 
@@ -92,7 +92,7 @@ export const ProjectDetailView: React.FC = () => {
             <span>Retry</span>
           </button>
           <button
-            onClick={exitProjectMode}
+            onClick={() => exitProjectMode()}
             className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-zinc-800 border border-zinc-700 transition-colors cursor-pointer"
           >
             Back to Workspace
@@ -107,7 +107,7 @@ export const ProjectDetailView: React.FC = () => {
       <div className="p-8 text-center text-zinc-500 text-xs">
         <p>Project not found.</p>
         <button
-          onClick={exitProjectMode}
+          onClick={() => exitProjectMode()}
           className="mt-3 px-3 py-1.5 rounded bg-zinc-800 text-white cursor-pointer"
         >
           Back to Workspace
@@ -172,7 +172,7 @@ export const ProjectDetailView: React.FC = () => {
         onDateRangeChange={setDateRange}
         isIllustrativeActive={illustrativeOverride}
         onToggleIllustrative={() => setIllustrativeOverride((prev) => !prev)}
-        onExitProject={exitProjectMode}
+        onExitProject={() => exitProjectMode()}
         onOpenInviteModal={() => {
           navigate(`/projects/${project.id}/settings`);
         }}

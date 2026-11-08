@@ -3,7 +3,7 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { getUserIdFromToken } from '../lib/auth.js';
-import { sendOrganizationInvitationEmail, sendInvitationDecisionEmail } from '../lib/email.service.js';
+import { sendOrganizationInvitationEmail, sendInvitationDecisionEmail, sendOrgJoinRequestEmail } from '../lib/email.service.js';
 import { createNotification } from './notifications.routes.js';
 
 export const organizationsRouter = Router();
@@ -1144,6 +1144,111 @@ organizationsRouter.post('/join/:token/decline', async (req: Request, res: Respo
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// POST /api/organizations/:slugOrId/join-request — Request to join an organization
+organizationsRouter.post('/:slugOrId/join-request', async (req: Request, res: Response) => {
+  const userId = getUserIdFromToken(req);
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  const slugOrId = getParam(req.params.slugOrId);
+  const org = await resolveOrganization(slugOrId);
+  if (!org) return res.status(404).json({ success: false, error: 'Organization not found' });
+
+  // Check if caller is already a member
+  const existingMembership = await prisma.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId: org.id, userId } },
+  });
+  if (existingMembership) {
+    return res.status(400).json({ success: false, error: 'You are already a member of this organization' });
+  }
+
+  // Requester details
+  const requester = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true },
+  });
+  if (!requester) {
+    return res.status(404).json({ success: false, error: 'User not found' });
+  }
+
+  const message = (req.body?.message as string | undefined)?.trim() || undefined;
+
+  // Find all Org Owners and Admins to notify
+  const adminMembers = await prisma.organizationMember.findMany({
+    where: {
+      organizationId: org.id,
+      role: { in: ['OWNER', 'ADMIN'] },
+    },
+    include: {
+      user: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  if (adminMembers.length === 0) {
+    return res.status(400).json({ success: false, error: 'No administrators found for this organization' });
+  }
+
+  // For each admin, create in-app notification and dispatch email
+  await Promise.all(
+    adminMembers.map(async (admin) => {
+      const existingNotification = await prisma.notification.findFirst({
+        where: {
+          recipientId: admin.userId,
+          type: 'ORGANIZATION_JOIN_REQUEST',
+          relatedOrganizationId: org.id,
+          isRead: false,
+        },
+      });
+
+      if (!existingNotification) {
+        await createNotification({
+          recipientId: admin.userId,
+          type: 'ORGANIZATION_JOIN_REQUEST',
+          title: `Join request for ${org.name}`,
+          message: `${requester.name || requester.email} has requested to join ${org.name}.`,
+          data: {
+            requesterId: requester.id,
+            requesterName: requester.name || requester.email,
+            requesterEmail: requester.email,
+            orgId: org.id,
+            orgName: org.name,
+            orgSlug: org.slug,
+            message,
+          },
+          relatedOrganizationId: org.id,
+        });
+      }
+
+      if (admin.user?.email) {
+        const origin = req.get('origin') || process.env.CORS_ORIGIN || 'http://localhost:5173';
+        const inboxLink = `${origin}/inbox`;
+        sendOrgJoinRequestEmail({
+          toEmail: admin.user.email,
+          adminName: admin.user.name || admin.user.email,
+          requesterName: requester.name || requester.email,
+          requesterEmail: requester.email,
+          organizationName: org.name,
+          inboxLink,
+          message,
+        }).catch((err) => console.warn('Background sendOrgJoinRequestEmail error:', err));
+      }
+    })
+  );
+
+  await recordOrgActivity({
+    organizationId: org.id,
+    actorId: userId,
+    action: 'REQUESTED_TO_JOIN',
+    resourceType: 'ORGANIZATION',
+    resourceId: org.id,
+    details: { requesterEmail: requester.email, message },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: `Your request to join ${org.name} has been sent to the workspace administrators.`,
+  });
 });
 
 // ─── Scoped Teams, Projects & Activity Endpoints ────────────────────────────

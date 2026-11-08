@@ -30,12 +30,18 @@ import {
 } from '../../config/navigation';
 import { NavigationItem } from './NavigationItem';
 import { NavigationGroup } from './NavigationGroup';
+import { SidebarProjectModules } from './SidebarProjectModules';
+import { resolveModuleIcon } from '../project/ModuleIconPicker';
+import { cn } from '../../lib/utils';
 
 export const SidebarNavigation: React.FC = () => {
   const {
     mode,
     activeProject,
     exitProjectMode,
+    isProjectLoading,
+    setIsProjectLoading,
+    projectModules,
     isCollapsed,
     favoriteProjects,
     favoriteTeams,
@@ -78,6 +84,22 @@ export const SidebarNavigation: React.FC = () => {
   }, [fetchOrgResources]);
 
   const hasAnyFavorites = favoriteProjects.length > 0 || favoriteTeams.length > 0;
+
+  const [, setSidebarConfigTick] = useState(0);
+
+  useEffect(() => {
+    const onConfigChange = () => setSidebarConfigTick((t) => t + 1);
+    window.addEventListener('devflow-sidebar-config-changed', onConfigChange);
+    return () => window.removeEventListener('devflow-sidebar-config-changed', onConfigChange);
+  }, []);
+
+  const isOverviewVisible = activeProject
+    ? localStorage.getItem(`devflow_proj_${activeProject.id}_overview_visible`) !== 'false'
+    : true;
+
+  const hasOverviewSubmodule = projectModules?.some((m) =>
+    m.submodules?.some((s) => s.builtInKey === 'overview' && s.isVisible)
+  );
 
   return (
     <div className="flex-1 overflow-y-auto px-2 space-y-2 py-1.5 text-sidebar-text">
@@ -195,6 +217,10 @@ export const SidebarNavigation: React.FC = () => {
                       <NavigationItem
                         title={proj.name}
                         path={`/projects/${proj.id}`}
+                        onClick={() => {
+                          setIsProjectLoading(true);
+                          setTimeout(() => setIsProjectLoading(false), 1200);
+                        }}
                         customIcon={
                           <div
                             className="w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
@@ -281,6 +307,10 @@ export const SidebarNavigation: React.FC = () => {
                       key={`proj-${proj.id}`}
                       title={title}
                       path={`/projects/${proj.id}`}
+                      onClick={() => {
+                        setIsProjectLoading(true);
+                        setTimeout(() => setIsProjectLoading(false), 1200);
+                      }}
                       customIcon={
                         <div
                           className="w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
@@ -387,43 +417,131 @@ export const SidebarNavigation: React.FC = () => {
             />
           </div>
         </>
+      ) : isProjectLoading ? (
+        /* Skeleton Effect in Project Sidebar */
+        <div className="space-y-5 px-1 py-1 animate-in fade-in duration-200 select-none">
+          {/* Skeleton Group 1 */}
+          <div className="space-y-1.5">
+            {!isCollapsed && (
+              <div className="h-2 w-14 bg-zinc-800/80 rounded animate-pulse px-1 mb-2" />
+            )}
+            {['w-28', 'w-20', 'w-32', 'w-24'].map((widthClass, idx) => (
+              <div
+                key={`sk-1-${idx}`}
+                className="flex items-center gap-2.5 h-[32px] px-2 rounded-md bg-zinc-900/40 border border-transparent"
+              >
+                <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+                {!isCollapsed && (
+                  <div className={`h-3 ${widthClass} bg-zinc-800/60 rounded animate-pulse`} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Skeleton Group 2 */}
+          <div className="space-y-1.5">
+            {!isCollapsed && (
+              <div className="h-2 w-16 bg-zinc-800/80 rounded animate-pulse px-1 mb-2" />
+            )}
+            {['w-24', 'w-28', 'w-16'].map((widthClass, idx) => (
+              <div
+                key={`sk-2-${idx}`}
+                className="flex items-center gap-2.5 h-[32px] px-2 rounded-md bg-zinc-900/40 border border-transparent"
+              >
+                <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+                {!isCollapsed && (
+                  <div className={`h-3 ${widthClass} bg-zinc-800/60 rounded animate-pulse`} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Skeleton Quick Links */}
+          <div className="pt-2 border-t border-sidebar-border/40 space-y-1">
+            <div className="flex items-center gap-2.5 h-[32px] px-2 rounded-md">
+              <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+              {!isCollapsed && <div className="h-3 w-24 bg-zinc-800/60 rounded animate-pulse" />}
+            </div>
+            <div className="flex items-center gap-2.5 h-[32px] px-2 rounded-md">
+              <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
+              {!isCollapsed && <div className="h-3 w-32 bg-zinc-800/60 rounded animate-pulse" />}
+            </div>
+          </div>
+        </div>
       ) : (
         /* Project Context Navigation Mode */
         <>
-          {activeProject &&
-            getProjectNavGroups(activeProject.id).map((group) => (
-              <NavigationGroup
-                key={group.id}
-                id={group.id}
-                title={group.title}
-                collapsible={group.collapsible}
-                defaultExpanded={group.defaultExpanded}
-              >
-                {group.items.map((item) => (
+          {activeProject && (
+            <>
+              {/* Preserved Project Overview at Top (if not hidden and not placed inside custom modules) */}
+              {isOverviewVisible && !hasOverviewSubmodule && (
+                <div className="space-y-0.5 mb-2.5">
                   <NavigationItem
-                    key={item.id}
-                    title={item.title}
-                    path={item.path}
-                    icon={item.icon}
-                    badge={item.badge}
+                    title="Overview"
+                    path={`/projects/${activeProject.id}`}
+                    icon={LayoutDashboard}
                   />
-                ))}
-              </NavigationGroup>
-            ))}
+                </div>
+              )}
+
+              {/* Dynamic Project Modules & Submodules */}
+              {projectModules && projectModules.length > 0 ? (
+                <SidebarProjectModules projectId={activeProject.id} />
+              ) : (
+                /* Fallback to default project navigation groups if no custom modules created */
+                getProjectNavGroups(activeProject.id).map((group) => (
+                  <NavigationGroup
+                    key={group.id}
+                    id={group.id}
+                    title={group.title}
+                    collapsible={group.collapsible}
+                    defaultExpanded={group.defaultExpanded}
+                  >
+                    <div
+                      className={cn(
+                        'space-y-0.5',
+                        !isCollapsed && 'pl-3'
+                      )}
+                    >
+                      {group.items.map((item) => (
+                        <NavigationItem
+                          key={item.id}
+                          title={item.title}
+                          path={item.path}
+                          icon={item.icon}
+                          badge={item.badge}
+                          level={1}
+                        />
+                      ))}
+                    </div>
+                  </NavigationGroup>
+                ))
+              )}
+            </>
+          )}
 
           {/* Project Bottom Quick Links */}
-          <div className="pt-2 border-t border-sidebar-border/60 space-y-0.5">
+          <div className="mt-3 pt-2.5 border-t border-sidebar-border/60 space-y-0.5">
             <NavigationItem
               title="Project Settings"
               path={`/projects/${activeProject?.id || 1}/settings`}
               icon={Settings}
             />
             <button
-              onClick={exitProjectMode}
-              className="w-full flex items-center gap-2.5 h-[34px] px-2 rounded-md text-[13.5px] text-zinc-400 hover:text-white hover:bg-sidebar-hover transition-colors"
+              onClick={() => exitProjectMode()}
+              className={cn(
+                'group flex items-center h-[34px] rounded-md text-[13.5px] text-zinc-400 hover:text-white hover:bg-sidebar-hover transition-colors cursor-pointer relative',
+                isCollapsed ? 'justify-center px-0 w-10 mx-auto' : 'w-full px-2 gap-2.5'
+              )}
+              title={isCollapsed ? 'Back to Workspace' : undefined}
             >
-              <ArrowLeft size={16} className="text-zinc-500" />
-              <span>Back to Workspace</span>
+              <ArrowLeft size={16} className="text-zinc-500 group-hover:text-white shrink-0" />
+              {!isCollapsed && <span>Back to Workspace</span>}
+              {isCollapsed && (
+                <div className="absolute left-full ml-2 px-2 py-1 bg-[#1C1C1F] border border-sidebar-border text-white text-xs font-medium rounded shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+                  Back to Workspace
+                </div>
+              )}
             </button>
           </div>
         </>

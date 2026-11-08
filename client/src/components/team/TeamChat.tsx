@@ -22,6 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { teamService } from '../../services/team.service';
 import { useAccentTheme } from '../../services/accentTheme.service';
+import { getSocketUrl } from '../../config/api';
 import type { Team, TeamMember, TeamConversation, TeamMessage, TeamUser } from '../../types/team';
 
 interface TeamChatProps {
@@ -54,7 +55,7 @@ export const TeamChat: React.FC<TeamChatProps> = ({ team, currentUserId }) => {
 
   // Initialize socket connection
   useEffect(() => {
-    const socketUrl = window.location.origin.includes('localhost') ? 'http://localhost:5000' : '/';
+    const socketUrl = getSocketUrl();
     const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       withCredentials: true,

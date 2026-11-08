@@ -34,6 +34,7 @@ import {
   Crown,
   Building2,
   Star,
+  Loader2,
 } from 'lucide-react';
 import { useOrganization } from '../../context/OrganizationContext';
 import { useAccentTheme } from '../../services/accentTheme.service';
@@ -43,6 +44,7 @@ import { useToast } from '../../context/ToastContext';
 import { apiUrl } from '../../config/api';
 import { authService } from '../../services/auth.service';
 import { CreateProjectModal } from '../../components/project/CreateProjectModal';
+import { cn } from '../../lib/utils';
 import { AVATAR_ICON_COMPONENTS } from '../../components/onboarding/StepProfile';
 
 // ─── Status Filter Tabs ──────────────────────────────────────────────────────
@@ -187,7 +189,12 @@ export const OrganizationProjectsView: React.FC = () => {
   const { currentOrganization } = useOrganization();
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
-  const { isResourceFavorite, toggleFavoriteResource } = useNavigation();
+  const {
+    isResourceFavorite,
+    toggleFavoriteResource,
+    openProject,
+    openingProjectId,
+  } = useNavigation();
 
   const targetSlug = organizationSlug || currentOrganization?.slug;
 
@@ -819,9 +826,17 @@ export const OrganizationProjectsView: React.FC = () => {
                       animate={{ opacity: 1, y: 0 }}
                       className="group"
                     >
-                      <Link
-                        to={`/projects/${proj.id}`}
-                        className="p-5 rounded-2xl bg-[#0E0F14] border border-[#27272A] hover:border-zinc-600/80 transition-all flex flex-col justify-between shadow-sm text-left h-full space-y-4 cursor-pointer block"
+                      <div
+                        onClick={() => {
+                          if (openingProjectId) return;
+                          openProject({ id: proj.id, title, status: proj.status });
+                        }}
+                        className={cn(
+                          'p-5 rounded-2xl bg-[#0E0F14] border transition-all flex flex-col justify-between shadow-sm text-left h-full space-y-4 cursor-pointer block group',
+                          openingProjectId === proj.id
+                            ? 'border-emerald-500/50 ring-2 ring-emerald-500/20 shadow-emerald-500/10 shadow-lg scale-[1.01]'
+                            : 'border-[#27272A] hover:border-zinc-600/80'
+                        )}
                       >
                         <div className="space-y-3">
                           {/* Top Row: Icon + Title + Status Badge */}
@@ -996,13 +1011,22 @@ export const OrganizationProjectsView: React.FC = () => {
                                 {formatDate(proj.startDate)}
                               </span>
                             )}
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 group-hover:translate-x-0.5 transition-transform shrink-0">
-                              <span>Open</span>
-                              <ArrowRight size={13} />
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 group-hover:translate-x-0.5 transition-transform shrink-0">
+                              {openingProjectId === proj.id ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin text-emerald-400" />
+                                  <span>Opening...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>Open</span>
+                                  <ArrowRight size={13} />
+                                </>
+                              )}
                             </span>
                           </div>
                         </div>
-                      </Link>
+                      </div>
                     </motion.div>
                   );
                 })}
@@ -1063,7 +1087,13 @@ export const OrganizationProjectsView: React.FC = () => {
                                   <Star size={13} fill={isResourceFavorite('PROJECT', proj.id) ? 'currentColor' : 'none'} />
                                 </button>
 
-                                <Link to={`/projects/${proj.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                                <div
+                                  onClick={() => {
+                                    if (openingProjectId) return;
+                                    openProject({ id: proj.id, title, status: proj.status });
+                                  }}
+                                  className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                                >
                                 {(() => {
                                   const pColor = proj.avatarColor || '#8B5CF6';
                                   const IconComp = proj.avatarIcon && AVATAR_ICON_COMPONENTS[proj.avatarIcon]
@@ -1099,7 +1129,7 @@ export const OrganizationProjectsView: React.FC = () => {
                                     #{proj.identifier || `PRJ-${proj.id}`} {proj.description ? `· ${proj.description}` : ''}
                                   </span>
                                 </div>
-                              </Link>
+                              </div>
                               </div>
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
@@ -1149,13 +1179,27 @@ export const OrganizationProjectsView: React.FC = () => {
                               {formatDate(proj.updatedAt || proj.createdAt)}
                             </td>
                             <td className="py-3 px-4 text-right whitespace-nowrap">
-                              <Link
-                                to={`/projects/${proj.id}`}
-                                className="px-2.5 py-1 rounded-lg text-[11px] font-mono text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 transition-colors inline-flex items-center gap-1"
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (openingProjectId) return;
+                                  openProject({ id: proj.id, title, status: proj.status });
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-mono text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                               >
-                                <span>Open</span>
-                                <ArrowRight size={11} />
-                              </Link>
+                                {openingProjectId === proj.id ? (
+                                  <>
+                                    <Loader2 size={11} className="animate-spin text-emerald-400" />
+                                    <span>Opening...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>Open</span>
+                                    <ArrowRight size={11} />
+                                  </>
+                                )}
+                              </button>
                             </td>
                           </tr>
                         );

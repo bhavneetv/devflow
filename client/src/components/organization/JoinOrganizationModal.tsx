@@ -29,7 +29,7 @@ export const JoinOrganizationModal: React.FC<JoinOrganizationModalProps> = ({
 }) => {
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
-  const { switchOrganization, refreshOrganizations } = useOrganization();
+  const { switchOrganization, refreshOrganizations, organizations } = useOrganization();
   const navigate = useNavigate();
 
   const [orgId, setOrgId] = useState('');
@@ -72,47 +72,76 @@ export const JoinOrganizationModal: React.FC<JoinOrganizationModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Check if it matches an existing organization by slug or ID
-      const checkOrg = await organizationService.getOrganization(cleanId);
-      if (checkOrg.success && checkOrg.data) {
+      // 1. If already a member of this organization, switch to it immediately
+      const alreadyMember = organizations.find(
+        (o) => o.slug.toLowerCase() === cleanId.toLowerCase() || String(o.id) === cleanId
+      );
+      if (alreadyMember) {
         setIsSuccess(true);
-        toast.success('Organization found!', `Switching to ${checkOrg.data.name}...`);
-        await refreshOrganizations();
-        await switchOrganization(checkOrg.data.slug);
+        toast.success('Organization found!', `Switching to ${alreadyMember.name}...`);
+        await switchOrganization(alreadyMember.slug);
         setTimeout(() => {
           setIsSubmitting(false);
           onClose();
-          navigate(`/organizations/${checkOrg.data?.slug}/overview`);
+          navigate(`/organizations/${alreadyMember.slug}/overview`);
           onJoined?.(cleanId);
         }, 500);
         return;
       }
 
-      // 2. Frontend simulation / Join request submission
-      setTimeout(() => {
+      // 2. Submit real join request to organization administrators
+      const joinReqRes = await organizationService.requestToJoin(cleanId);
+      if (joinReqRes.success) {
         setIsSuccess(true);
         toast.success(
           'Join request submitted!',
-          `Your request to join organization "${cleanId}" has been sent to the workspace administrators.`
+          joinReqRes.message || `Your request to join organization "${cleanId}" has been sent to the workspace administrators.`
         );
         setTimeout(() => {
           setIsSubmitting(false);
           onClose();
           onJoined?.(cleanId);
         }, 800);
-      }, 600);
-    } catch {
-      // Frontend graceful fallback
-      setIsSuccess(true);
-      toast.success(
-        'Join request submitted!',
-        `Your request to join organization "${cleanId}" has been submitted.`
-      );
-      setTimeout(() => {
-        setIsSubmitting(false);
-        onClose();
-        onJoined?.(cleanId);
-      }, 700);
+        return;
+      }
+
+      // If user is already a member according to backend, refresh and switch
+      if (joinReqRes.error && joinReqRes.error.toLowerCase().includes('already a member')) {
+        await refreshOrganizations();
+        setIsSuccess(true);
+        toast.success('Already a member', 'Switching to workspace...');
+        await switchOrganization(cleanId);
+        setTimeout(() => {
+          setIsSubmitting(false);
+          onClose();
+          navigate(`/organizations/${cleanId}/overview`);
+          onJoined?.(cleanId);
+        }, 500);
+        return;
+      }
+
+      // 3. Fallback: Check if cleanId is an invite token
+      const tokenRes = await organizationService.joinOrganization(cleanId);
+      if (tokenRes.success && tokenRes.data?.organization) {
+        setIsSuccess(true);
+        toast.success('Joined organization!', tokenRes.message || `Successfully joined ${tokenRes.data.organization.name}`);
+        await refreshOrganizations();
+        await switchOrganization(tokenRes.data.organization.slug);
+        setTimeout(() => {
+          setIsSubmitting(false);
+          onClose();
+          navigate(`/organizations/${tokenRes.data?.organization.slug}/overview`);
+          onJoined?.(cleanId);
+        }, 500);
+        return;
+      }
+
+      // Display backend error
+      setError(joinReqRes.error || tokenRes.error || 'Organization not found. Please check the ID or slug.');
+      setIsSubmitting(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to submit join request. Please try again.');
+      setIsSubmitting(false);
     }
   };
 

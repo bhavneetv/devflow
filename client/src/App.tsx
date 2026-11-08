@@ -16,6 +16,7 @@ import { RequirementDetailView } from './views/requirements/RequirementDetailVie
 import { RequirementReviewView } from './views/requirements/RequirementReviewView';
 import { RequirementsTraceabilityView } from './views/requirements/RequirementsTraceabilityView';
 import { ProjectSettingsView } from './views/project/ProjectSettingsView';
+import { SubmodulePlaceholderView } from './views/project/SubmodulePlaceholderView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
 import { LoginPage } from './pages/LoginPage';
@@ -146,6 +147,8 @@ export const App: React.FC = () => {
                             <Route path="/organizations/:organizationSlug/projects" element={<OrganizationProjectsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings/:section" element={<ProjectSettingsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/submodules/:submoduleId" element={<SubmodulePlaceholderView />} />
                             <Route path="/organizations/:organizationSlug/activity" element={<OrganizationActivityView />} />
                             <Route path="/organizations/:organizationSlug/settings" element={<OrganizationSettingsView />} />
                             <Route path="/organizations/:organizationSlug" element={<Navigate to="overview" replace />} />
@@ -197,6 +200,8 @@ export const App: React.FC = () => {
                             <Route path="/projects/:id/requirements" element={<RequirementsDashboardView />} />
                             <Route path="/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
+                            <Route path="/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />
+                            <Route path="/projects/:id/submodules/:submoduleId" element={<SubmodulePlaceholderView />} />
                             <Route path="/projects/:id" element={<ProjectDetailView />} />
                             <Route path="/projects/:id/*" element={<ProjectDetailView />} />
 

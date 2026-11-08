@@ -203,6 +203,19 @@ export const organizationService = {
     }
   },
 
+  async requestToJoin(slugOrId: string | number, message?: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/organizations/${slugOrId}/join-request`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ message }),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to submit join request' };
+    }
+  },
+
   // ─── Scoped Teams, Projects & Activity ────────────────────────────────────
 
   async listTeams(slugOrId: string | number): Promise<{ success: boolean; data?: any[]; error?: string }> {

@@ -670,7 +670,7 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
           No modules or submodules match "{searchQuery}"
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filteredModules.map((module, mIdx) => {
             const isExpanded = expandedModuleIds[module.id] ?? true;
             const ModuleIcon = resolveModuleIcon(module.icon, FolderKanban);
@@ -956,7 +956,7 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                               onDrop={(e) => handleSubmoduleDrop(e, module.id, sub.id)}
                               onDragEnd={handleSubmoduleDragEnd}
                               className={cn(
-                                'p-3 pl-8 sm:pl-10 flex items-center justify-between gap-3 text-xs transition-all hover:bg-[#14151C]/70 group/row select-none',
+                                'p-3 pl-4 sm:pl-5 flex items-center justify-between gap-3 text-xs transition-all hover:bg-[#14151C]/70 group/row select-none',
                                 !sub.isVisible && 'opacity-60 bg-[#0A0A0D]',
                                 draggingSubmoduleId === sub.id && 'opacity-30 border-dashed border-2 border-indigo-500/50 bg-indigo-500/5 scale-[0.99]',
                                 dragOverSubmoduleId === sub.id && draggingSubmoduleId !== sub.id && 'border-t-2 border-indigo-400 bg-indigo-500/10'

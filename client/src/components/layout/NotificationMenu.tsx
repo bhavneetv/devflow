@@ -20,6 +20,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useOrganization } from '../../context/OrganizationContext';
 import { useToast } from '../../context/ToastContext';
 import { useAccentTheme } from '../../services/accentTheme.service';
+import { getSocketUrl } from '../../config/api';
 
 export const NotificationMenu: React.FC = () => {
   const { user } = useAuth();
@@ -68,9 +69,7 @@ export const NotificationMenu: React.FC = () => {
   useEffect(() => {
     if (!user) return;
 
-    const socketUrl = window.location.origin.includes('localhost')
-      ? 'http://localhost:5000'
-      : '/';
+    const socketUrl = getSocketUrl();
 
     const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
@@ -242,10 +241,10 @@ export const NotificationMenu: React.FC = () => {
               </div>
             ) : (
               notifications.map((item) => {
+                const isJoinRequest = item.type === 'ORGANIZATION_JOIN_REQUEST';
                 const isInvite =
-                  item.type === 'ORGANIZATION_INVITATION' || item.type === 'TEAM_INVITATION';
-                const isOrg = item.type === 'ORGANIZATION_INVITATION';
-                const pData = item.parsedData || {};
+                  item.type === 'ORGANIZATION_INVITATION' || item.type === 'TEAM_INVITATION' || isJoinRequest;
+                const isOrg = item.type === 'ORGANIZATION_INVITATION' || isJoinRequest;
                 const isActioning = actioningId === item.id;
 
                 return (
@@ -259,14 +258,18 @@ export const NotificationMenu: React.FC = () => {
                       {/* Icon */}
                       <div
                         className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 ${
-                          isOrg
+                          isJoinRequest
+                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                            : isOrg
                             ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                             : isInvite
                             ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                             : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                         }`}
                       >
-                        {isOrg ? (
+                        {isJoinRequest ? (
+                          <UserCheck size={15} />
+                        ) : isOrg ? (
                           <Building2 size={15} />
                         ) : isInvite ? (
                           <Layers size={15} />
@@ -286,7 +289,7 @@ export const NotificationMenu: React.FC = () => {
 
                         <p className="text-xs text-zinc-400 leading-relaxed">{item.message}</p>
 
-                        {/* Invitation details and actions */}
+                        {/* Invitation / Request details and actions */}
                         {isInvite && !item.isRead && (
                           <div className="pt-2 flex items-center gap-2">
                             <button
@@ -300,7 +303,7 @@ export const NotificationMenu: React.FC = () => {
                               ) : (
                                 <CheckCircle2 size={13} />
                               )}
-                              <span>Accept</span>
+                              <span>{isJoinRequest ? 'Approve' : 'Accept'}</span>
                             </button>
 
                             <button

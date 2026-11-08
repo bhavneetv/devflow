@@ -727,6 +727,7 @@ model UserFavorite {
 enum NotificationType {
   ORGANIZATION_INVITATION
   TEAM_INVITATION
+  ORGANIZATION_JOIN_REQUEST
   SYSTEM
 }
 

@@ -2,13 +2,13 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { getUserIdFromToken } from '../lib/auth.js';
 import { emitToUser, emitToTeam } from '../lib/socket.js';
-import { sendInvitationDecisionEmail } from '../lib/email.service.js';
+import { sendInvitationDecisionEmail, sendOrgJoinDecisionEmail } from '../lib/email.service.js';
 
 export const notificationsRouter = Router();
 
 export interface CreateNotificationParams {
   recipientId: number;
-  type: 'ORGANIZATION_INVITATION' | 'TEAM_INVITATION' | 'SYSTEM';
+  type: 'ORGANIZATION_INVITATION' | 'TEAM_INVITATION' | 'ORGANIZATION_JOIN_REQUEST' | 'SYSTEM';
   title: string;
   message: string;
   data?: Record<string, any>;
@@ -338,6 +338,80 @@ notificationsRouter.post('/:id/action', async (req: Request, res: Response) => {
         }).catch((e) => console.warn('Background email error:', e));
 
         return res.json({ success: true, message: 'Invitation declined' });
+      }
+    } else if (notification.type === 'ORGANIZATION_JOIN_REQUEST') {
+      const requesterId = meta.requesterId;
+      const orgId = notification.relatedOrganizationId || meta.orgId;
+      if (!requesterId || !orgId) {
+        return res.status(400).json({ success: false, error: 'Invalid join request details' });
+      }
+
+      const org = await prisma.organization.findUnique({ where: { id: orgId } });
+      const requester = await prisma.user.findUnique({ where: { id: requesterId } });
+      if (!org || !requester) {
+        return res.status(404).json({ success: false, error: 'Organization or requester not found' });
+      }
+
+      if (action === 'ACCEPT') {
+        await prisma.$transaction([
+          prisma.organizationMember.upsert({
+            where: { organizationId_userId: { organizationId: org.id, userId: requester.id } },
+            update: { role: 'MEMBER' },
+            create: { organizationId: org.id, userId: requester.id, role: 'MEMBER' },
+          }),
+          prisma.notification.update({
+            where: { id: notification.id },
+            data: { isRead: true },
+          }),
+        ]);
+
+        createNotification({
+          recipientId: requester.id,
+          type: 'SYSTEM',
+          title: `Join request approved!`,
+          message: `Your request to join ${org.name} has been approved. You are now a member.`,
+          relatedOrganizationId: org.id,
+          data: { orgId: org.id, orgName: org.name, orgSlug: org.slug },
+        }).catch((e) => console.warn('Requester notification error:', e));
+
+        sendOrgJoinDecisionEmail({
+          toEmail: requester.email,
+          requesterName: requester.name || requester.email,
+          organizationName: org.name,
+          decision: 'APPROVED',
+          role: 'MEMBER',
+        }).catch((e) => console.warn('Requester email error:', e));
+
+        emitToUser(requester.id, 'join_request_approved', { orgId: org.id, orgName: org.name, orgSlug: org.slug });
+
+        return res.json({
+          success: true,
+          message: `Approved join request for ${requester.name || requester.email}`,
+          organization: org,
+        });
+      } else {
+        await prisma.notification.update({
+          where: { id: notification.id },
+          data: { isRead: true },
+        });
+
+        createNotification({
+          recipientId: requester.id,
+          type: 'SYSTEM',
+          title: `Join request declined`,
+          message: `Your request to join ${org.name} was declined by the administrator.`,
+          relatedOrganizationId: org.id,
+          data: { orgId: org.id, orgName: org.name, orgSlug: org.slug },
+        }).catch((e) => console.warn('Requester notification error:', e));
+
+        sendOrgJoinDecisionEmail({
+          toEmail: requester.email,
+          requesterName: requester.name || requester.email,
+          organizationName: org.name,
+          decision: 'DECLINED',
+        }).catch((e) => console.warn('Requester email error:', e));
+
+        return res.json({ success: true, message: `Declined join request for ${requester.name || requester.email}` });
       }
     }
 

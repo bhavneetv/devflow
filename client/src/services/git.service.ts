@@ -13,6 +13,8 @@ import type {
   GitFileContent,
   GitCommitDetail,
   GitCommitSummary,
+  GitMemberMapping,
+  GitMemberMappingData,
 } from '../types/git';
 
 function getAuthHeaders(): Record<string, string> {
@@ -535,6 +537,50 @@ export const gitService = {
       return await res.json();
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to complete OAuth authentication' };
+    }
+  },
+
+  // ─── Git Member Mapping ────────────────────────────────────────────────────
+
+  async getMemberMappings(projectId: number): Promise<{ success: boolean; data?: GitMemberMappingData; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/git/member-mappings`), {
+        headers: getAuthHeaders(),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to fetch git member mappings' };
+    }
+  },
+
+  async saveMemberMapping(
+    projectId: number,
+    data: { userId: number; gitUsername?: string; gitEmail?: string; gitName?: string; avatarUrl?: string }
+  ): Promise<{ success: boolean; data?: GitMemberMapping; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/git/member-mappings`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(data),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to save member mapping' };
+    }
+  },
+
+  async deleteMemberMapping(
+    projectId: number,
+    mappingId: number
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/git/member-mappings/${mappingId}`), {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete member mapping' };
     }
   },
 };

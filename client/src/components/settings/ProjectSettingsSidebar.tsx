@@ -12,6 +12,7 @@ import {
   FolderKanban,
   Boxes,
   PanelLeft,
+  UserCheck,
   LucideIcon,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
@@ -63,6 +64,13 @@ export const PROJECT_NAV_ITEMS: ProjectNavSection[] = [
     subpath: 'connections',
     icon: GitBranch,
     description: 'GitHub, GitLab & webhooks',
+  },
+  {
+    id: 'git-members',
+    label: 'Git Member Mapping',
+    subpath: 'git-members',
+    icon: UserCheck,
+    description: 'Link DevFlow team members to Git commit author identities',
   },
   {
     id: 'labels',

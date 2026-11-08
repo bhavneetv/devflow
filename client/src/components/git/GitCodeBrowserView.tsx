@@ -142,6 +142,7 @@ export const GitCodeBrowserView: React.FC<GitCodeBrowserViewProps> = ({
   const [selectedRepoId, setSelectedRepoId] = useState<number | null>(initialRepoId || null);
   const [branches, setBranches] = useState<GitBranchSummary[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const [loadingRepos, setLoadingRepos] = useState(true);
 
   // Navigation path: current directory path
   const [currentPath, setCurrentPath] = useState<string>(initialPath);
@@ -167,6 +168,7 @@ export const GitCodeBrowserView: React.FC<GitCodeBrowserViewProps> = ({
     let isMounted = true;
     const fetchRepos = async () => {
       try {
+        setLoadingRepos(true);
         const res = await gitService.getRepositories(projectId);
         if (isMounted && res.success && res.data && res.data.length > 0) {
           setRepositories(res.data);
@@ -176,6 +178,8 @@ export const GitCodeBrowserView: React.FC<GitCodeBrowserViewProps> = ({
         }
       } catch (err) {
         console.error(err);
+      } finally {
+        if (isMounted) setLoadingRepos(false);
       }
     };
     fetchRepos();
@@ -271,6 +275,10 @@ export const GitCodeBrowserView: React.FC<GitCodeBrowserViewProps> = ({
     };
   }, [projectId, selectedRepoId, selectedFilePath, selectedBranch]);
 
+  const selectedRepo = useMemo(() => {
+    return repositories.find((r) => r.id === selectedRepoId) || repositories[0];
+  }, [repositories, selectedRepoId]);
+
   // Breadcrumbs calculation
   const breadcrumbs = useMemo(() => {
     const parts = currentPath ? currentPath.split('/').filter(Boolean) : [];
@@ -281,11 +289,7 @@ export const GitCodeBrowserView: React.FC<GitCodeBrowserViewProps> = ({
       crumbs.push({ label: part, path: accumulated });
     }
     return crumbs;
-  }, [currentPath, selectedRepoId, repositories]);
-
-  const selectedRepo = useMemo(() => {
-    return repositories.find((r) => r.id === selectedRepoId) || repositories[0];
-  }, [repositories, selectedRepoId]);
+  }, [currentPath, selectedRepo, repositories]);
 
   // Handle clicking a tree item
   const handleItemClick = (item: GitTreeItem) => {
@@ -331,6 +335,31 @@ export const GitCodeBrowserView: React.FC<GitCodeBrowserViewProps> = ({
     const q = filterQuery.toLowerCase();
     return treeItems.filter((i) => i.name.toLowerCase().includes(q));
   }, [treeItems, filterQuery]);
+
+  if (loadingRepos) {
+    return (
+      <div className="p-16 text-center text-xs text-zinc-500 flex flex-col items-center justify-center gap-2">
+        <Loader2 size={22} className="animate-spin text-zinc-400" />
+        <span>Loading repository files...</span>
+      </div>
+    );
+  }
+
+  if (repositories.length === 0) {
+    return (
+      <div className="p-16 rounded-2xl border border-dashed border-[#27272A] bg-[#0E0F14] text-center space-y-3">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center mx-auto">
+          <Code2 size={24} />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-white">No Connected Git Repository</h3>
+          <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+            Connect your GitHub or GitLab repository in Project Settings to browse source code online.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 text-left">
@@ -593,6 +622,12 @@ export const GitCodeBrowserView: React.FC<GitCodeBrowserViewProps> = ({
                     theme="vs-dark"
                     language={getMonacoLanguage(selectedFilePath)}
                     value={fileContent?.content || ''}
+                    loading={
+                      <div className="flex flex-col items-center justify-center h-full text-xs text-zinc-500 gap-2 bg-[#1e1e1e]">
+                        <Loader2 size={20} className="animate-spin text-zinc-400" />
+                        <span>Initializing VS Code Editor...</span>
+                      </div>
+                    }
                     options={{
                       readOnly: true,
                       minimap: { enabled: true },

@@ -48,6 +48,120 @@ async function checkProjectAccess(projectId: number, userId: number | null) {
   return { allowed: isOwner || isLead || isProjectMember || isOrgMember, notFound: false, project };
 }
 
+// ─── GIT MEMBER MAPPING HELPERS ──────────────────────────────────────────────
+
+async function getProjectMemberMappingsAndUsers(projectId: number) {
+  const [rawMappings, project] = await Promise.all([
+    prisma.$queryRawUnsafe<any[]>(
+      `SELECT m.id, m.project_id AS projectId, m.user_id AS userId, 
+              m.git_username AS gitUsername, m.git_email AS gitEmail, 
+              m.git_name AS gitName, m.avatar_url AS avatarUrl, 
+              m.created_at AS createdAt, m.updated_at AS updatedAt,
+              u.name, u.email, u.username, u.avatarUrl AS userAvatarUrl, 
+              u.avatarColor AS userAvatarColor, u.role
+       FROM git_member_mappings m
+       JOIN users u ON m.user_id = u.id
+       WHERE m.project_id = ?
+       ORDER BY m.created_at DESC`,
+      projectId
+    ).catch(() => []),
+    prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        owner: { select: { id: true, name: true, email: true, username: true, avatarUrl: true, avatarColor: true, role: true } },
+        lead: { select: { id: true, name: true, email: true, username: true, avatarUrl: true, avatarColor: true, role: true } },
+        members: {
+          include: {
+            user: { select: { id: true, name: true, email: true, username: true, avatarUrl: true, avatarColor: true, role: true } },
+          },
+        },
+        team: {
+          include: {
+            members: {
+              include: {
+                user: { select: { id: true, name: true, email: true, username: true, avatarUrl: true, avatarColor: true, role: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const userMap = new Map<number, any>();
+  if (project?.owner) userMap.set(project.owner.id, project.owner);
+  if (project?.lead) userMap.set(project.lead.id, project.lead);
+  project?.members?.forEach((pm) => {
+    if (pm.user) userMap.set(pm.user.id, pm.user);
+  });
+  project?.team?.members?.forEach((tm) => {
+    if (tm.user) userMap.set(tm.user.id, tm.user);
+  });
+
+  const members = Array.from(userMap.values());
+
+  const formattedMappings = rawMappings.map((m) => ({
+    id: m.id,
+    projectId: m.projectId,
+    userId: m.userId,
+    gitUsername: m.gitUsername,
+    gitEmail: m.gitEmail,
+    gitName: m.gitName,
+    avatarUrl: m.avatarUrl,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+    user: {
+      id: m.userId,
+      name: m.name,
+      email: m.email,
+      username: m.username,
+      avatarUrl: m.userAvatarUrl,
+      avatarColor: m.userAvatarColor,
+      role: m.role,
+    },
+  }));
+
+  return { mappings: formattedMappings, members };
+}
+
+function matchCommitToUser(
+  commit: { authorName?: string; name?: string; authorEmail?: string; email?: string; authorUsername?: string; username?: string },
+  mappings: any[],
+  members: any[]
+) {
+  const commitEmail = (commit.authorEmail || commit.email)?.trim().toLowerCase();
+  const commitUsername = (commit.authorUsername || commit.username)?.trim().toLowerCase();
+  const commitName = (commit.authorName || commit.name)?.trim().toLowerCase();
+
+  // 1. Explicit mapping matches
+  for (const m of mappings) {
+    if (commitEmail && m.gitEmail && m.gitEmail.trim().toLowerCase() === commitEmail) {
+      return m.user;
+    }
+    if (commitUsername && m.gitUsername && m.gitUsername.trim().toLowerCase() === commitUsername) {
+      return m.user;
+    }
+    if (commitName && m.gitName && m.gitName.trim().toLowerCase() === commitName) {
+      return m.user;
+    }
+  }
+
+  // 2. Direct user identity matches (email, username, or display name)
+  for (const u of members) {
+    if (commitEmail && u.email && u.email.trim().toLowerCase() === commitEmail) {
+      return u;
+    }
+    if (commitUsername && u.username && u.username.trim().toLowerCase() === commitUsername) {
+      return u;
+    }
+    if (commitName && u.name && u.name.trim().toLowerCase() === commitName) {
+      return u;
+    }
+  }
+
+  return null;
+}
+
 // ─── ENVIRONMENT CONFIG & OAUTH HELPERS ──────────────────────────────────────
 
 // GET /api/projects/:projectId/git/env-config
@@ -680,9 +794,17 @@ gitRoutes.get('/repositories/:repoId/commits', async (req: Request, res: Respons
       repo.providerConnection.tokenTag
     );
     const adapter = getGitProviderAdapter(repo.providerConnection.provider);
-    const commits = await adapter.listCommits(decryptedToken, repo.owner, repo.name, branch, 30);
+    const [commits, { mappings, members }] = await Promise.all([
+      adapter.listCommits(decryptedToken, repo.owner, repo.name, branch, 30),
+      getProjectMemberMappingsAndUsers(projectId),
+    ]);
 
-    res.json({ success: true, data: commits });
+    const enrichedCommits = commits.map((c) => ({
+      ...c,
+      mappedUser: matchCommitToUser(c, mappings, members),
+    }));
+
+    res.json({ success: true, data: enrichedCommits });
   } catch (error: any) {
     console.error('Error fetching commits:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -708,9 +830,17 @@ gitRoutes.get('/repositories/:repoId/commits/:sha', async (req: Request, res: Re
       repo.providerConnection.tokenTag
     );
     const adapter = getGitProviderAdapter(repo.providerConnection.provider);
-    const commit = await adapter.getCommit(decryptedToken, repo.owner, repo.name, sha);
+    const [commit, { mappings, members }] = await Promise.all([
+      adapter.getCommit(decryptedToken, repo.owner, repo.name, sha),
+      getProjectMemberMappingsAndUsers(projectId),
+    ]);
 
-    res.json({ success: true, data: commit });
+    const enrichedCommit = {
+      ...commit,
+      mappedUser: matchCommitToUser(commit, mappings, members),
+    };
+
+    res.json({ success: true, data: enrichedCommit });
   } catch (error: any) {
     console.error('Error fetching commit detail:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -1390,6 +1520,210 @@ gitRoutes.delete('/links/:linkId', async (req: Request, res: Response) => {
     res.json({ success: true, message: 'Record link deleted' });
   } catch (error: any) {
     console.error('Error deleting record link:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── GIT MEMBER MAPPING ENDPOINTS ──────────────────────────────────────────
+
+const createMemberMappingSchema = z.object({
+  userId: z.number().int().positive('Valid userId is required'),
+  gitUsername: z.string().optional().nullable(),
+  gitEmail: z.string().optional().nullable(),
+  gitName: z.string().optional().nullable(),
+  avatarUrl: z.string().optional().nullable(),
+}).refine(
+  (data) => Boolean((data.gitUsername && data.gitUsername.trim()) || (data.gitEmail && data.gitEmail.trim()) || (data.gitName && data.gitName.trim())),
+  { message: 'At least one Git identity (username, author name, or email) must be specified' }
+);
+
+// GET /api/projects/:projectId/git/member-mappings
+gitRoutes.get('/member-mappings', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    const userId = getUserIdFromToken(req);
+    const { allowed, notFound } = await checkProjectAccess(projectId, userId);
+    if (notFound) return res.status(404).json({ success: false, error: 'Project not found' });
+    if (!allowed) return res.status(403).json({ success: false, error: 'Unauthorized' });
+
+    const { mappings, members } = await getProjectMemberMappingsAndUsers(projectId);
+
+    // Fetch repositories to detect commit authors from recent repository activity
+    const repos = await (prisma as any).gitRepositoryConnection.findMany({
+      where: { projectId },
+      include: { providerConnection: true },
+    });
+
+    const authorMap = new Map<string, any>();
+    const memberStats: Record<number, { commitCount: number; latestCommitDate: string | null }> = {};
+
+    for (const m of members) {
+      memberStats[m.id] = { commitCount: 0, latestCommitDate: null };
+    }
+
+    for (const repo of repos) {
+      try {
+        const decryptedToken = decryptSecret(
+          repo.providerConnection.tokenEncrypted,
+          repo.providerConnection.tokenIv,
+          repo.providerConnection.tokenTag
+        );
+        const adapter = getGitProviderAdapter(repo.providerConnection.provider);
+        const commits = await adapter.listCommits(decryptedToken, repo.owner, repo.name, undefined, 50);
+
+        for (const c of commits) {
+          const authorKey = (c.authorEmail || c.authorUsername || c.authorName || 'unknown').toLowerCase().trim();
+          const existing = authorMap.get(authorKey);
+          if (!existing) {
+            authorMap.set(authorKey, {
+              name: c.authorName,
+              email: c.authorEmail,
+              username: c.authorUsername,
+              avatarUrl: c.authorAvatarUrl,
+              commitCount: 1,
+              latestCommitDate: c.committedDate,
+            });
+          } else {
+            existing.commitCount += 1;
+            if (new Date(c.committedDate) > new Date(existing.latestCommitDate)) {
+              existing.latestCommitDate = c.committedDate;
+            }
+          }
+
+          // Track member stats
+          const matchedUser = matchCommitToUser(c, mappings, members);
+          if (matchedUser) {
+            const stats = memberStats[matchedUser.id] || { commitCount: 0, latestCommitDate: null };
+            stats.commitCount += 1;
+            if (!stats.latestCommitDate || new Date(c.committedDate) > new Date(stats.latestCommitDate)) {
+              stats.latestCommitDate = c.committedDate;
+            }
+            memberStats[matchedUser.id] = stats;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`Could not inspect commits for repo ${repo.fullName}:`, err.message);
+      }
+    }
+
+    // Enrich detected authors with mapping status
+    const detectedAuthors = Array.from(authorMap.values()).map((author) => {
+      const matchedUser = matchCommitToUser(author, mappings, members);
+      return {
+        ...author,
+        mappedUserId: matchedUser ? matchedUser.id : null,
+        mappedUser: matchedUser || null,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        mappings,
+        members,
+        detectedAuthors,
+        memberStats,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching git member mappings:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/projects/:projectId/git/member-mappings
+gitRoutes.post('/member-mappings', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    const authUserId = getUserIdFromToken(req);
+    const { allowed, notFound } = await checkProjectAccess(projectId, authUserId);
+    if (notFound) return res.status(404).json({ success: false, error: 'Project not found' });
+    if (!allowed) return res.status(403).json({ success: false, error: 'Unauthorized' });
+
+    const parsed = createMemberMappingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message || 'Validation failed' });
+    }
+
+    const { userId, gitUsername, gitEmail, gitName, avatarUrl } = parsed.data;
+
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO git_member_mappings (project_id, user_id, git_username, git_email, git_name, avatar_url, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(3), NOW(3))`,
+      projectId,
+      userId,
+      gitUsername?.trim() || null,
+      gitEmail?.trim() || null,
+      gitName?.trim() || null,
+      avatarUrl || null
+    );
+
+    // Fetch newly created mapping with user details
+    const createdMappings = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT m.id, m.project_id AS projectId, m.user_id AS userId,
+              m.git_username AS gitUsername, m.git_email AS gitEmail,
+              m.git_name AS gitName, m.avatar_url AS avatarUrl,
+              m.created_at AS createdAt, m.updated_at AS updatedAt,
+              u.name, u.email, u.username, u.avatarUrl AS userAvatarUrl,
+              u.avatarColor AS userAvatarColor, u.role
+       FROM git_member_mappings m
+       JOIN users u ON m.user_id = u.id
+       WHERE m.project_id = ? AND m.user_id = ?
+       ORDER BY m.id DESC LIMIT 1`,
+      projectId,
+      userId
+    );
+
+    const record = createdMappings[0];
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: record.id,
+        projectId: record.projectId,
+        userId: record.userId,
+        gitUsername: record.gitUsername,
+        gitEmail: record.gitEmail,
+        gitName: record.gitName,
+        avatarUrl: record.avatarUrl,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        user: {
+          id: record.userId,
+          name: record.name,
+          email: record.email,
+          username: record.username,
+          avatarUrl: record.userAvatarUrl,
+          avatarColor: record.userAvatarColor,
+          role: record.role,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error('Error creating git member mapping:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/projects/:projectId/git/member-mappings/:mappingId
+gitRoutes.delete('/member-mappings/:mappingId', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    const mappingId = parseId(req.params.mappingId);
+    const authUserId = getUserIdFromToken(req);
+    const { allowed, notFound } = await checkProjectAccess(projectId, authUserId);
+    if (notFound) return res.status(404).json({ success: false, error: 'Project not found' });
+    if (!allowed) return res.status(403).json({ success: false, error: 'Unauthorized' });
+
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM git_member_mappings WHERE id = ? AND project_id = ?`,
+      mappingId,
+      projectId
+    );
+
+    res.json({ success: true, message: 'Member mapping deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting git member mapping:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

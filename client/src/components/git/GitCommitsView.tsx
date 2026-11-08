@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   GitCommit,
@@ -12,6 +13,8 @@ import {
   Loader2,
   X,
   Users,
+  UserCheck,
+  UserPlus,
   Calendar,
   Clock,
   ArrowRight,
@@ -453,10 +456,10 @@ export const GitCommitsView: React.FC<GitCommitsViewProps> = ({
                       )}
                     </div>
 
-                    {/* Bottom Row: Author + Relative timestamp */}
+                    {/* Bottom Row: Author + Mapped Member + Relative timestamp */}
                     <div className="flex items-center justify-between pt-3 mt-3 border-t border-[#27272A]/80 text-[11px] text-zinc-500 relative z-10">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+                        <div className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[9px] font-bold text-white shrink-0 overflow-hidden">
                           {c.authorAvatarUrl ? (
                             <img src={c.authorAvatarUrl} alt="" className="w-full h-full rounded-full object-cover" />
                           ) : (
@@ -465,7 +468,32 @@ export const GitCommitsView: React.FC<GitCommitsViewProps> = ({
                         </div>
                         <span className="text-zinc-400 truncate">{c.authorName}</span>
                       </div>
-                      <span className="shrink-0">{new Date(c.committedDate).toLocaleDateString()}</span>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {c.mappedUser ? (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-300 font-medium"
+                            title={`Attributed to team member: ${c.mappedUser.name}`}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: c.mappedUser.avatarColor || '#10B981' }}
+                            />
+                            <span className="truncate max-w-[80px]">{c.mappedUser.name}</span>
+                          </div>
+                        ) : (
+                          <Link
+                            to={`/projects/${projectId}/settings/git-members`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800/80 hover:bg-zinc-700 text-[10px] text-zinc-400 hover:text-amber-300 transition-colors"
+                            title="Unlinked Git author. Click to link in settings"
+                          >
+                            <UserPlus size={10} />
+                            <span>Link</span>
+                          </Link>
+                        )}
+                        <span className="shrink-0">{new Date(c.committedDate).toLocaleDateString()}</span>
+                      </div>
                     </div>
                   </motion.div>
                 );
@@ -508,6 +536,30 @@ export const GitCommitsView: React.FC<GitCommitsViewProps> = ({
                         </p>
                         <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
                           <span>{c.authorName}</span>
+                          {c.mappedUser ? (
+                            <>
+                              <span>•</span>
+                              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: c.mappedUser.avatarColor || '#10B981' }}
+                                />
+                                <span>{c.mappedUser.name}</span>
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span>•</span>
+                              <Link
+                                to={`/projects/${projectId}/settings/git-members`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[10px] text-zinc-400 hover:text-amber-300 transition-colors flex items-center gap-1"
+                              >
+                                <UserPlus size={10} />
+                                <span>Link member</span>
+                              </Link>
+                            </>
+                          )}
                           <span>•</span>
                           <span>{new Date(c.committedDate).toLocaleDateString()}</span>
                         </div>
@@ -607,6 +659,30 @@ export const GitCommitsView: React.FC<GitCommitsViewProps> = ({
                       </span>
                     </div>
                   )}
+
+                  {/* DevFlow Attributed Member */}
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <span className="text-[11px] text-zinc-500">DevFlow Member:</span>
+                    {focusedDetail.mappedUser ? (
+                      <div className="flex items-center gap-1.5">
+                        <div
+                          className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0 shadow-sm"
+                          style={{ backgroundColor: focusedDetail.mappedUser.avatarColor || '#10B981' }}
+                        >
+                          {focusedDetail.mappedUser.name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <span className="text-emerald-300 font-semibold text-xs">{focusedDetail.mappedUser.name}</span>
+                      </div>
+                    ) : (
+                      <Link
+                        to={`/projects/${projectId}/settings/git-members`}
+                        className="text-amber-400 hover:text-amber-300 text-[11px] flex items-center gap-1 hover:underline"
+                      >
+                        <UserPlus size={11} />
+                        <span>Link to member</span>
+                      </Link>
+                    )}
+                  </div>
 
                   <div className="flex items-center justify-between text-zinc-400">
                     <span className="text-[11px] text-zinc-500">Committed:</span>

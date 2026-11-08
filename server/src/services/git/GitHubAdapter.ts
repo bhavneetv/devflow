@@ -137,6 +137,7 @@ export class GitHubAdapter implements GitProviderAdapter {
       message: c.commit?.message || '',
       authorName: c.commit?.author?.name || c.author?.login || 'Unknown',
       authorEmail: c.commit?.author?.email,
+      authorUsername: c.author?.login || undefined,
       authorAvatarUrl: c.author?.avatar_url,
       committedDate: c.commit?.author?.date || c.commit?.committer?.date || new Date().toISOString(),
       webUrl: c.html_url,

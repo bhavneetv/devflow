@@ -61,6 +61,7 @@ import { AccountSettingsLayout } from '../../components/settings/AccountSettings
 import { ProjectStructureView } from './ProjectStructureView';
 import { SidebarOrderSettingsView } from './SidebarOrderSettingsView';
 import { ProjectGitHubLinker } from '../../components/git/ProjectGitHubLinker';
+import { ProjectGitMemberMapping } from '../../components/git/ProjectGitMemberMapping';
 
 // ─── CONSTANTS & DICTIONARIES ────────────────────────────────────────────────
 
@@ -1642,6 +1643,13 @@ export const ProjectSettingsView: React.FC = () => {
               </SettingsRow>
             </SettingsSection>
           </div>
+        </div>
+      )}
+
+      {/* ─── TAB: GIT MEMBER MAPPING ─────────────────────────────────────── */}
+      {activeSection === 'git-members' && (
+        <div className="px-6 sm:px-8 py-6">
+          <ProjectGitMemberMapping projectId={projectId} />
         </div>
       )}
 

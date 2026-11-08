@@ -37,9 +37,19 @@ export interface GitCommitSummary {
   message: string;
   authorName: string;
   authorEmail?: string;
+  authorUsername?: string;
   authorAvatarUrl?: string;
   committedDate: string;
   webUrl?: string;
+  mappedUser?: {
+    id: number;
+    name: string;
+    email: string;
+    username?: string | null;
+    avatarUrl?: string | null;
+    avatarColor?: string | null;
+    role?: string;
+  } | null;
 }
 
 export interface GitNormalizedIssue {
@@ -198,6 +208,44 @@ export interface GitCommitDetail extends GitCommitSummary {
     deletions: number;
     patch?: string;
   }>;
+}
+
+export interface GitMemberMappingRecord {
+  id: number;
+  projectId: number;
+  userId: number;
+  gitUsername?: string | null;
+  gitEmail?: string | null;
+  gitName?: string | null;
+  avatarUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+    username?: string | null;
+    avatarUrl?: string | null;
+    avatarColor?: string | null;
+    role?: string;
+  };
+}
+
+export interface DetectedGitAuthor {
+  name: string;
+  email?: string;
+  username?: string;
+  avatarUrl?: string;
+  commitCount: number;
+  latestCommitDate: string;
+  mappedUserId?: number | null;
+  mappedUser?: {
+    id: number;
+    name: string;
+    email: string;
+    avatarUrl?: string | null;
+    avatarColor?: string | null;
+  } | null;
 }
 
 

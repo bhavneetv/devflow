@@ -8,6 +8,7 @@ import {
   Moon,
   Sun,
   ExternalLink,
+  FileText,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -73,8 +74,22 @@ export const Header: React.FC = () => {
         <Breadcrumbs />
       </div>
 
-      {/* Right Section: Search Bar (left to dark mode button) -> Dark Mode Button -> Notifications -> Help -> Avatar */}
+      {/* Right Section: Specs Launcher -> Search Bar -> Dark Mode Button -> Notifications -> Help -> Avatar */}
       <div className="flex items-center gap-2.5 flex-shrink-0">
+        {/* Quick Requirements Launcher */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('devflow:toggle-requirements-drawer'))}
+          className="hidden sm:flex items-center gap-1.5 h-[34px] px-2.5 rounded-lg text-xs font-medium text-[var(--sidebar-text-muted)] hover:text-[var(--sidebar-text-active)] bg-[var(--input-bg)] hover:bg-[var(--sidebar-hover)] border border-[var(--header-border)] hover:border-blue-500/50 transition-all cursor-pointer shadow-sm"
+          title="Requirements Quick Hub (Shortcut: g then r)"
+        >
+          <FileText size={14} className="text-blue-400 shrink-0" />
+          <span className="hidden md:inline font-medium">Specs</span>
+          <kbd className="px-1 py-0.2 rounded bg-[var(--sidebar-border)] text-[9.5px] font-mono text-[var(--sidebar-text-muted)]">
+            g r
+          </kbd>
+        </button>
+
         {/* Search Bar placed directly left to the Dark Mode button */}
         <button
           type="button"

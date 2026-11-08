@@ -48,6 +48,7 @@ import type { OrganizationActivity } from '../../types/organization';
 
 const CATEGORY_TABS = [
   { id: 'all', label: 'All Activities', icon: Activity },
+  { id: 'requirements', label: 'Requirements', icon: FileText },
   { id: 'members', label: 'Members', icon: Users },
   { id: 'teams', label: 'Squads', icon: Layers },
   { id: 'projects', label: 'Projects', icon: FolderKanban },
@@ -63,7 +64,35 @@ type ModalTab = 'attributes' | 'json' | 'ledger';
 
 const getActionMeta = (action: string) => {
   const upper = (action || '').toUpperCase();
-  if (upper.startsWith('CREATED_') || upper.startsWith('FOUNDED_') || upper.startsWith('INITIATED_')) {
+  if (upper.startsWith('REQUIREMENT.APPROVED') || upper.endsWith('.APPROVED')) {
+    return {
+      type: 'APPROVE',
+      badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
+      dot: '#10B981',
+    };
+  }
+  if (upper.startsWith('REQUIREMENT.REJECTED') || upper.endsWith('.REJECTED')) {
+    return {
+      type: 'REJECT',
+      badge: 'bg-rose-500/10 text-rose-400 border-rose-500/25',
+      dot: '#F43F5E',
+    };
+  }
+  if (upper.startsWith('REQUIREMENT.CHANGES_REQUESTED')) {
+    return {
+      type: 'CHANGES',
+      badge: 'bg-amber-500/10 text-amber-400 border-amber-500/25',
+      dot: '#F59E0B',
+    };
+  }
+  if (upper.startsWith('REQUIREMENT.SUBMITTED')) {
+    return {
+      type: 'SUBMIT',
+      badge: 'bg-blue-500/10 text-blue-400 border-blue-500/25',
+      dot: '#3B82F6',
+    };
+  }
+  if (upper.startsWith('CREATED_') || upper.startsWith('FOUNDED_') || upper.startsWith('INITIATED_') || upper.startsWith('REQUIREMENT.CREATED') || upper.startsWith('REQUIREMENT.DRAFT_CREATED')) {
     return {
       type: 'CREATE',
       badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
@@ -126,6 +155,12 @@ const getResourceBadge = (resourceType: string) => {
         label: 'Project',
         color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
         icon: FolderKanban,
+      };
+    case 'REQUIREMENT':
+      return {
+        label: 'Requirement',
+        color: 'text-blue-400 bg-blue-500/10 border-blue-500/25',
+        icon: FileText,
       };
     default:
       return {
@@ -473,6 +508,25 @@ export const OrganizationActivityView: React.FC = () => {
         return `${actorName} updated organization details & general workspace configuration.`;
       case 'TRANSFERRED_OWNERSHIP':
         return `${actorName} transferred primary ownership of the organization.`;
+      case 'requirement.draft_created':
+      case 'requirement.created':
+        return `${actorName} created specification ${detailsObj.code || ''}: "${detailsObj.title || 'Untitled'}".`;
+      case 'requirement.submitted':
+        return `${actorName} submitted specification ${detailsObj.code || ''} for formal review.`;
+      case 'requirement.approved':
+        return `${actorName} approved specification ${detailsObj.code || ''}: "${detailsObj.title || 'Approved'}".`;
+      case 'requirement.changes_requested':
+        return `${actorName} requested changes on specification ${detailsObj.code || ''}.`;
+      case 'requirement.rejected':
+        return `${actorName} rejected specification ${detailsObj.code || ''}.`;
+      case 'requirement.version_created':
+        return `${actorName} released revision v${detailsObj.version || '2'} for specification ${detailsObj.code || ''}.`;
+      case 'requirement.dependency_added':
+        return `${actorName} linked an architecture dependency on specification ${detailsObj.code || ''}.`;
+      case 'requirement.comment_added':
+        return `${actorName} posted feedback on specification ${detailsObj.code || ''}.`;
+      case 'requirement.criterion_completed':
+        return `${actorName} verified an acceptance criterion on specification ${detailsObj.code || ''}.`;
       default:
         return `${actorName} performed ${act.action.toLowerCase().replace(/_/g, ' ')}.`;
     }
@@ -583,6 +637,30 @@ export const OrganizationActivityView: React.FC = () => {
       });
     }
 
+    // Category filter
+    if (activeFilter !== 'all') {
+      result = result.filter((act) => {
+        const rType = act.resourceType?.toUpperCase() || '';
+        const actAction = act.action?.toLowerCase() || '';
+        if (activeFilter === 'requirements') {
+          return rType === 'REQUIREMENT' || actAction.startsWith('requirement.');
+        }
+        if (activeFilter === 'members') {
+          return ['MEMBER', 'INVITATION'].includes(rType);
+        }
+        if (activeFilter === 'teams') {
+          return rType === 'TEAM';
+        }
+        if (activeFilter === 'projects') {
+          return rType === 'PROJECT';
+        }
+        if (activeFilter === 'settings') {
+          return rType === 'ORGANIZATION';
+        }
+        return true;
+      });
+    }
+
     // Date window filter
     if (dateWindow !== 'all') {
       const now = new Date().getTime();
@@ -616,7 +694,7 @@ export const OrganizationActivityView: React.FC = () => {
     });
 
     return result;
-  }, [activities, searchQuery, dateWindow, sortBy]);
+  }, [activities, searchQuery, activeFilter, dateWindow, sortBy]);
 
   // Sidebar Analytics: Counts, Top Actors, Velocity
   const analytics = useMemo(() => {
@@ -625,6 +703,9 @@ export const OrganizationActivityView: React.FC = () => {
     const last24h = activities.filter((a) => now - new Date(a.createdAt).getTime() <= 24 * 60 * 60 * 1000).length;
 
     // Distribution by Category
+    const requirementsCount = activities.filter(
+      (a) => a.resourceType?.toUpperCase() === 'REQUIREMENT' || (a.action?.toLowerCase() || '').startsWith('requirement.')
+    ).length;
     const membersCount = activities.filter((a) => ['MEMBER', 'INVITATION'].includes(a.resourceType?.toUpperCase())).length;
     const squadsCount = activities.filter((a) => a.resourceType?.toUpperCase() === 'TEAM').length;
     const projectsCount = activities.filter((a) => a.resourceType?.toUpperCase() === 'PROJECT').length;
@@ -647,6 +728,7 @@ export const OrganizationActivityView: React.FC = () => {
     return {
       total,
       last24h,
+      requirementsCount,
       membersCount,
       squadsCount,
       projectsCount,
@@ -1514,6 +1596,12 @@ export const OrganizationActivityView: React.FC = () => {
 
               <div className="space-y-3">
                 {[
+                  {
+                    label: 'Requirements & Specs',
+                    count: analytics.requirementsCount,
+                    color: '#60A5FA',
+                    icon: FileText,
+                  },
                   {
                     label: 'Members & Access',
                     count: analytics.membersCount,

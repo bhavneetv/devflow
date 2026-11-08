@@ -66,6 +66,86 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum RequirementWorkflowStatus {
+  DRAFT
+  PENDING_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  DEPRECATED
+  ARCHIVED
+}
+
+enum RequirementImplementationStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  IMPLEMENTED
+  VERIFIED
+}
+
+enum RequirementType {
+  FUNCTIONAL
+  NON_FUNCTIONAL
+  BUSINESS
+  TECHNICAL
+  SECURITY
+  PERFORMANCE
+  USABILITY
+  COMPLIANCE
+  INTERFACE
+}
+
+enum RequirementPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ReviewDecision {
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
+enum DependencyType {
+  DEPENDS_ON
+  BLOCKS
+  RELATED_TO
+  ENHANCES
+  CONFLICTS_WITH
+}
+
+enum LinkTargetType {
+  TASK
+  COMMIT
+  PULL_REQUEST
+  TEST
+  DEFECT
+  RELEASE
+  OBJECTIVE
+}
+
+enum CategoryScope {
+  ORG
+  PROJECT
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Complexity {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
 model User {
   id                      Int                      @id @default(autoincrement())
   email                   String                   @unique
@@ -101,6 +181,15 @@ model User {
   orgSentInvitations      OrganizationInvitation[] @relation("OrgSentInvitations")
   orgActivities           OrganizationActivity[]   @relation("OrgActivityActor")
   sentMessages            TeamMessage[]            @relation("MessageSender")
+  authoredRequirements    Requirement[]            @relation("RequirementAuthor")
+  assignedRequirements    Requirement[]            @relation("RequirementAssignee")
+  submittedRequirements   Requirement[]            @relation("RequirementSubmitter")
+  approvedRequirements    Requirement[]            @relation("RequirementApprover")
+  reviewerOfRequirements  Requirement[]            @relation("RequirementReviewer")
+  responsibleRequirements Requirement[]            @relation("RequirementResponsible")
+  requirementReviews      RequirementReview[]      @relation("ReviewReviewer")
+  requirementVersions     RequirementVersion[]     @relation("VersionChangedBy")
+  requirementComments     RequirementComment[]     @relation("CommentAuthor")
   favorites               UserFavorite[]
   notifications           Notification[]           @relation("UserNotifications")
   createdModules          ProjectModule[]          @relation("ModuleCreator")
@@ -124,6 +213,8 @@ model Organization {
   activities  OrganizationActivity[]
   teams       Team[]
   projects    Project[]
+  requirementCategories RequirementCategory[] @relation("OrgCategories")
+  requirementTemplates  RequirementTemplate[] @relation("OrgTemplates")
   createdAt   DateTime                 @default(now())
   updatedAt   DateTime                 @updatedAt
 
@@ -207,10 +298,13 @@ model Project {
   team           Team?           @relation("TeamProjects", fields: [teamId], references: [id], onDelete: SetNull)
   members        ProjectMember[]
   tasks          Task[]
-  modules        ProjectModule[]
-  submodules     ProjectSubmodule[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  modules               ProjectModule[]
+  submodules            ProjectSubmodule[]
+  requirements          Requirement[]
+  requirementCategories RequirementCategory[] @relation("ProjectCategories")
+  requirementTemplates  RequirementTemplate[] @relation("ProjectTemplates")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
   @@index([ownerId])
   @@index([leadId])
@@ -243,9 +337,10 @@ model Task {
   dueDate     DateTime?
   projectId   Int
   project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assigneeId  Int?
-  assignee    User?      @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  createdAt   DateTime   @default(now())
+  assigneeId       Int?
+  assignee         User?              @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  requirementLinks RequirementLink[]
+  createdAt        DateTime           @default(now())
   updatedAt   DateTime   @updatedAt
 
   @@index([projectId])
@@ -268,6 +363,7 @@ model Team {
   permissions    TeamMemberPermission[]
   conversations  TeamConversation[]
   messages       TeamMessage[]
+  responsibleForRequirements Requirement[] @relation("RequirementTeam")
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
 
@@ -376,6 +472,236 @@ model TeamInvitation {
   @@index([invitedEmail])
   @@index([invitationToken])
   @@map("team_invitations")
+}
+
+model Requirement {
+  id                   Int                             @id @default(autoincrement())
+  code                 String                          // REQ-001 — unique per project
+  projectId            Int
+  project              Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title                String
+  summary              String?                         @db.Text
+  type                 RequirementType                 @default(FUNCTIONAL)
+  categoryId           Int?
+  category             RequirementCategory?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  description          String?                         @db.LongText   // rich-text HTML
+  businessJustification String?                        @db.Text
+  expectedBehavior     String?                         @db.Text
+  preconditions        String?                         @db.Text
+  constraints          String?                         @db.Text
+  dependencies         String?                         @db.Text       // free-form text
+  referenceLinks       String?                         @db.Text       // JSON array of URLs
+  attachments          String?                         @db.Text       // JSON array of file refs
+  priority             RequirementPriority             @default(MEDIUM)
+  workflowStatus       RequirementWorkflowStatus       @default(DRAFT)
+  implementationStatus RequirementImplementationStatus @default(NOT_STARTED)
+
+  // People
+  authorId             Int
+  author               User                            @relation("RequirementAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  responsibleTeamId    Int?
+  responsibleTeam      Team?                           @relation("RequirementTeam", fields: [responsibleTeamId], references: [id], onDelete: SetNull)
+  responsibleMemberId  Int?
+  responsibleMember    User?                           @relation("RequirementResponsible", fields: [responsibleMemberId], references: [id], onDelete: SetNull)
+  reviewerId           Int?
+  reviewer             User?                           @relation("RequirementReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  assigneeId           Int?
+  assignee             User?                           @relation("RequirementAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  collaborators        String?                         @db.Text       // JSON array of user IDs
+
+  // Assessment
+  targetDate           DateTime?
+  businessImpact       String?                         @db.Text
+  riskLevel            RiskLevel?
+  complexity           Complexity?
+
+  // Versioning
+  currentVersion       Int                             @default(1)
+
+  // Workflow audit
+  submittedAt          DateTime?
+  submittedById        Int?
+  submittedBy          User?                           @relation("RequirementSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  approvedAt           DateTime?
+  approvedById         Int?
+  approvedBy           User?                           @relation("RequirementApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectionReason      String?                         @db.Text
+
+  // Relations
+  acceptanceCriteria   AcceptanceCriterion[]
+  versions             RequirementVersion[]
+  reviews              RequirementReview[]
+  dependenciesFrom     RequirementDependency[]         @relation("DepFrom")
+  dependenciesTo       RequirementDependency[]         @relation("DepTo")
+  comments             RequirementComment[]
+  links                RequirementLink[]
+
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@index([workflowStatus])
+  @@index([implementationStatus])
+  @@index([authorId])
+  @@index([reviewerId])
+  @@index([assigneeId])
+  @@index([responsibleTeamId])
+  @@index([categoryId])
+  @@index([priority])
+  @@map("requirements")
+}
+
+model AcceptanceCriterion {
+  id                 Int          @id @default(autoincrement())
+  requirementId      Int
+  requirement        Requirement  @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  code               String       // AC-001 — unique per requirement
+  description        String       @db.Text
+  verificationMethod String?      @db.Text
+  relatedTestId      Int?         // nullable — linked when QA module exists
+  isComplete         Boolean      @default(false)
+  sortOrder          Int          @default(0)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([requirementId, code])
+  @@index([requirementId])
+  @@map("acceptance_criteria")
+}
+
+model RequirementCategory {
+  id             Int              @id @default(autoincrement())
+  name           String
+  description    String?          @db.Text
+  icon           String?          // icon identifier
+  color          String?          // hex color
+  defaultType    RequirementType  @default(FUNCTIONAL)
+  scope          CategoryScope    @default(PROJECT)
+  isActive       Boolean          @default(true)
+  organizationId Int?
+  organization   Organization?    @relation("OrgCategories", fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      Int?
+  project        Project?         @relation("ProjectCategories", fields: [projectId], references: [id], onDelete: Cascade)
+  requirements   Requirement[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([scope])
+  @@map("requirement_categories")
+}
+
+model RequirementTemplate {
+  id             Int              @id @default(autoincrement())
+  name           String
+  description    String?          @db.Text
+  structure      String           @db.LongText  // JSON blob
+  scope          CategoryScope    @default(ORG)
+  isActive       Boolean          @default(true)
+  organizationId Int?
+  organization   Organization?    @relation("OrgTemplates", fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      Int?
+  project        Project?         @relation("ProjectTemplates", fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("requirement_templates")
+}
+
+model RequirementVersion {
+  id              Int                       @id @default(autoincrement())
+  requirementId   Int
+  requirement     Requirement               @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  versionNumber   Int
+  snapshot        String                    @db.LongText  // full JSON snapshot
+  changedById     Int
+  changedBy       User                      @relation("VersionChangedBy", fields: [changedById], references: [id], onDelete: Cascade)
+  changeReason    String?                   @db.Text
+  createdAt       DateTime                  @default(now())
+
+  @@unique([requirementId, versionNumber])
+  @@index([requirementId])
+  @@index([changedById])
+  @@map("requirement_versions")
+}
+
+model RequirementReview {
+  id             Int             @id @default(autoincrement())
+  requirementId  Int
+  requirement    Requirement     @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  reviewerId     Int
+  reviewer       User            @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+  versionNumber  Int             @default(1)
+  decision       ReviewDecision
+  checklist      String?         @db.Text   // JSON checklist state
+  comment        String?         @db.Text
+  createdAt      DateTime        @default(now())
+
+  @@index([requirementId])
+  @@index([reviewerId])
+  @@map("requirement_reviews")
+}
+
+model RequirementDependency {
+  id                Int             @id @default(autoincrement())
+  fromRequirementId Int
+  fromRequirement   Requirement     @relation("DepFrom", fields: [fromRequirementId], references: [id], onDelete: Cascade)
+  toRequirementId   Int
+  toRequirement     Requirement     @relation("DepTo", fields: [toRequirementId], references: [id], onDelete: Cascade)
+  type              DependencyType  @default(RELATED_TO)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([fromRequirementId, toRequirementId])
+  @@index([fromRequirementId])
+  @@index([toRequirementId])
+  @@map("requirement_dependencies")
+}
+
+model RequirementComment {
+  id            Int          @id @default(autoincrement())
+  requirementId Int
+  requirement   Requirement  @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  versionId     Int?         // nullable — optional association to a version
+  authorId      Int
+  author        User         @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body          String       @db.Text
+  mentions      String?      @db.Text       // JSON array of user IDs
+  attachments   String?      @db.Text       // JSON array of file refs
+  pinned        Boolean      @default(false)
+  resolvedAt    DateTime?
+  parentId      Int?
+  parent        RequirementComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies       RequirementComment[] @relation("CommentReplies")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([requirementId])
+  @@index([authorId])
+  @@index([parentId])
+  @@map("requirement_comments")
+}
+
+model RequirementLink {
+  id            Int             @id @default(autoincrement())
+  requirementId Int
+  requirement   Requirement     @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  targetType    LinkTargetType
+  targetId      Int
+  isPrimary     Boolean         @default(false)
+  taskId        Int?
+  task          Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now())
+
+  @@unique([requirementId, targetType, targetId])
+  @@index([requirementId])
+  @@index([targetType, targetId])
+  @@index([taskId])
+  @@map("requirement_links")
 }
 
 enum FavoriteResourceType {

@@ -169,6 +169,14 @@ export const mainWorkspaceNavItems: NavItemConfig[] = [
   },
   {
     order: 4,
+    id: 'requirements',
+    title: 'Requirements',
+    path: '/requirements',
+    icon: FileText,
+    purpose: 'Specifications and requirements management',
+  },
+  {
+    order: 5,
     id: 'my-tasks',
     title: 'My Tasks',
     path: '/my-tasks',
@@ -176,7 +184,7 @@ export const mainWorkspaceNavItems: NavItemConfig[] = [
     purpose: 'Tasks assigned to me',
   },
   {
-    order: 5,
+    order: 6,
     id: 'teams',
     title: 'Teams',
     path: '/teams',
@@ -184,7 +192,7 @@ export const mainWorkspaceNavItems: NavItemConfig[] = [
     purpose: 'Manage workspace teams',
   },
   {
-    order: 6,
+    order: 7,
     id: 'activity',
     title: 'Activity',
     path: '/activity',
@@ -233,10 +241,11 @@ export function getProjectNavGroups(projectId: number | string): NavGroupConfig[
       collapsible: false,
       items: [
         { order: 1, id: 'p-overview', title: 'Project Overview', path: `${base}`, icon: LayoutDashboard },
-        { order: 2, id: 'p-issues', title: 'Issues', path: `${base}/issues`, icon: CircleDot, badge: 8 },
-        { order: 3, id: 'p-board', title: 'Board', path: `${base}/board`, icon: Kanban },
-        { order: 4, id: 'p-cycles', title: 'Cycles / Sprints', path: `${base}/cycles`, icon: RotateCcw },
-        { order: 5, id: 'p-milestones', title: 'Milestones', path: `${base}/milestones`, icon: Flag },
+        { order: 2, id: 'p-requirements', title: 'Requirements', path: `${base}/requirements`, icon: FileText },
+        { order: 3, id: 'p-issues', title: 'Issues', path: `${base}/issues`, icon: CircleDot, badge: 8 },
+        { order: 4, id: 'p-board', title: 'Board', path: `${base}/board`, icon: Kanban },
+        { order: 5, id: 'p-cycles', title: 'Cycles / Sprints', path: `${base}/cycles`, icon: RotateCcw },
+        { order: 6, id: 'p-milestones', title: 'Milestones', path: `${base}/milestones`, icon: Flag },
       ],
     },
     {

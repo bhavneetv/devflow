@@ -15,7 +15,7 @@ interface NavigationItemProps {
   onToggleFavorite?: () => void;
   starPosition?: 'left' | 'right';
   customIcon?: React.ReactNode;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent) => void;
   className?: string;
 }
 
@@ -39,8 +39,8 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
   // Active match check: either exact path or starting with path for deep sub-routes
   const isActive = location.pathname === path || (path !== '/' && location.pathname.startsWith(path + '/'));
 
-  const handleClick = () => {
-    if (onClick) onClick();
+  const handleClick = (e: React.MouseEvent) => {
+    if (onClick) onClick(e);
     setIsMobileOpen(false);
   };
 

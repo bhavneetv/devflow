@@ -29,6 +29,9 @@ import {
 } from '../../config/navigation';
 import { NavigationItem } from './NavigationItem';
 import { NavigationGroup } from './NavigationGroup';
+import { SidebarProjectModules } from './SidebarProjectModules';
+import { resolveModuleIcon } from '../project/ModuleIconPicker';
+import { cn } from '../../lib/utils';
 
 export const SidebarNavigation: React.FC = () => {
   const {
@@ -37,6 +40,7 @@ export const SidebarNavigation: React.FC = () => {
     exitProjectMode,
     isProjectLoading,
     setIsProjectLoading,
+    projectModules,
     isCollapsed,
     favoriteProjects,
     favoriteTeams,
@@ -426,26 +430,54 @@ export const SidebarNavigation: React.FC = () => {
       ) : (
         /* Project Context Navigation Mode */
         <>
-          {activeProject &&
-            getProjectNavGroups(activeProject.id).map((group) => (
-              <NavigationGroup
-                key={group.id}
-                id={group.id}
-                title={group.title}
-                collapsible={group.collapsible}
-                defaultExpanded={group.defaultExpanded}
-              >
-                {group.items.map((item) => (
-                  <NavigationItem
-                    key={item.id}
-                    title={item.title}
-                    path={item.path}
-                    icon={item.icon}
-                    badge={item.badge}
-                  />
-                ))}
-              </NavigationGroup>
-            ))}
+          {activeProject && (
+            <>
+              {/* Preserved Project Overview at Top */}
+              <div className="space-y-0.5 mb-2.5">
+                <NavigationItem
+                  title="Overview"
+                  path={`/projects/${activeProject.id}`}
+                  icon={LayoutDashboard}
+                />
+              </div>
+
+              {/* Dynamic Project Modules & Submodules */}
+              {projectModules && projectModules.length > 0 ? (
+                <SidebarProjectModules projectId={activeProject.id} />
+              ) : (
+                /* Fallback to default project navigation groups if no custom modules created */
+                getProjectNavGroups(activeProject.id).map((group) => (
+                  <NavigationGroup
+                    key={group.id}
+                    id={group.id}
+                    title={group.title}
+                    collapsible={group.collapsible}
+                    defaultExpanded={group.defaultExpanded}
+                    className="mb-1.5"
+                  >
+                    <div
+                      className={cn(
+                        'space-y-0.5',
+                        !isCollapsed &&
+                          'ml-3 pl-2.5 border-l border-white/[0.08] mt-1.5 mb-1.5'
+                      )}
+                    >
+                      {group.items.map((item) => (
+                        <NavigationItem
+                          key={item.id}
+                          title={item.title}
+                          path={item.path}
+                          icon={item.icon}
+                          badge={item.badge}
+                          level={1}
+                        />
+                      ))}
+                    </div>
+                  </NavigationGroup>
+                ))
+              )}
+            </>
+          )}
 
           {/* Project Bottom Quick Links */}
           <div className="pt-2 border-t border-sidebar-border/60 space-y-0.5">
@@ -456,10 +488,19 @@ export const SidebarNavigation: React.FC = () => {
             />
             <button
               onClick={() => exitProjectMode()}
-              className="w-full flex items-center gap-2.5 h-[34px] px-2 rounded-md text-[13.5px] text-zinc-400 hover:text-white hover:bg-sidebar-hover transition-colors cursor-pointer"
+              className={cn(
+                'group flex items-center h-[34px] rounded-md text-[13.5px] text-zinc-400 hover:text-white hover:bg-sidebar-hover transition-colors cursor-pointer relative',
+                isCollapsed ? 'justify-center px-0 w-10 mx-auto' : 'w-full px-2 gap-2.5'
+              )}
+              title={isCollapsed ? 'Back to Workspace' : undefined}
             >
-              <ArrowLeft size={16} className="text-zinc-500" />
-              <span>Back to Workspace</span>
+              <ArrowLeft size={16} className="text-zinc-500 group-hover:text-white shrink-0" />
+              {!isCollapsed && <span>Back to Workspace</span>}
+              {isCollapsed && (
+                <div className="absolute left-full ml-2 px-2 py-1 bg-[#1C1C1F] border border-sidebar-border text-white text-xs font-medium rounded shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+                  Back to Workspace
+                </div>
+              )}
             </button>
           </div>
         </>

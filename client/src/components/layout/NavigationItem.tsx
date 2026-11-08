@@ -16,6 +16,7 @@ interface NavigationItemProps {
   starPosition?: 'left' | 'right';
   customIcon?: React.ReactNode;
   onClick?: () => void;
+  className?: string;
 }
 
 export const NavigationItem: React.FC<NavigationItemProps> = ({
@@ -30,6 +31,7 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
   starPosition = 'right',
   customIcon,
   onClick,
+  className,
 }) => {
   const location = useLocation();
   const { isCollapsed, setIsMobileOpen } = useNavigation();
@@ -47,13 +49,18 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
       to={path}
       onClick={handleClick}
       className={cn(
-        'group flex items-center h-[34px] rounded-md transition-all duration-200 text-[13.5px] select-none relative overflow-hidden',
+        'group flex items-center rounded-md transition-all duration-200 select-none relative overflow-hidden',
+        level === 1 && !isCollapsed
+          ? 'h-[32px] text-[13px]'
+          : 'h-[34px] text-[13.5px]',
         isCollapsed ? 'justify-center px-0 w-10 mx-auto' : 'justify-between px-2 w-full',
-        level === 1 && !isCollapsed && 'ml-4',
         level === 2 && !isCollapsed && 'ml-7 pl-2 border-l border-sidebar-border',
         isActive
           ? 'bg-sidebar-active text-sidebar-text-active font-medium'
-          : 'text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover'
+          : level === 1
+            ? 'text-zinc-400 hover:text-zinc-100 hover:bg-sidebar-hover'
+            : 'text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover',
+        className
       )}
     >
       <div
@@ -86,7 +93,7 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
           <div className="shrink-0 flex items-center justify-center">{customIcon}</div>
         ) : Icon ? (
           <Icon
-            size={16}
+            size={level === 1 ? 15 : 16}
             className={cn(
               'flex-shrink-0 transition-colors duration-150',
               isActive

@@ -18,6 +18,7 @@ export const Breadcrumbs: React.FC = () => {
     if (str === 'labels') return 'Labels & Categories';
     if (str === 'status') return 'Status & Workflow';
     if (str === 'security') return 'Security & Access';
+    if (str === 'structure') return 'Project Structure';
     if (str === 'overview') return 'Overview';
     return str
       .replace(/-/g, ' ')

@@ -12,6 +12,7 @@ import { teamsRouter } from './routes/teams.routes.js';
 import { organizationsRouter } from './routes/organizations.routes.js';
 import { favoritesRouter } from './routes/favorites.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
+import { projectModulesRouter } from './routes/projectModules.routes.js';
 import { initSocketIO } from './lib/socket.js';
 
 dotenv.config();
@@ -73,6 +74,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/health', healthRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/projects', projectsRouter);
+app.use('/api/projects', projectModulesRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/seed', seedRouter);
 app.use('/api/teams', teamsRouter);

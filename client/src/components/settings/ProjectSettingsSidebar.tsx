@@ -10,6 +10,7 @@ import {
   Tags,
   Activity,
   FolderKanban,
+  Boxes,
   LucideIcon,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
@@ -29,24 +30,31 @@ export interface ProjectNavSection {
 export const PROJECT_NAV_ITEMS: ProjectNavSection[] = [
   {
     id: 'overview',
-    label: 'Overview',
+    label: 'General',
     subpath: 'overview',
     icon: Sliders,
     description: 'Project identity, team & timeline',
   },
   {
-    id: 'connections',
-    label: 'Connected Accounts',
-    subpath: 'connections',
-    icon: GitBranch,
-    description: 'GitHub, GitLab & webhooks',
+    id: 'structure',
+    label: 'Project Structure',
+    subpath: 'structure',
+    icon: Boxes,
+    description: 'Modules, submodules & sidebar layout',
   },
   {
     id: 'security',
-    label: 'Security & Access',
+    label: 'Members & Access',
     subpath: 'security',
     icon: ShieldCheck,
-    description: 'Permissions, visibility & danger zone',
+    description: 'Permissions, visibility & access control',
+  },
+  {
+    id: 'connections',
+    label: 'Integrations',
+    subpath: 'connections',
+    icon: GitBranch,
+    description: 'GitHub, GitLab & webhooks',
   },
   {
     id: 'labels',

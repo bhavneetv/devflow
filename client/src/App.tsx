@@ -11,6 +11,7 @@ import { InboxView } from './views/InboxView';
 import { MyIssuesView } from './views/MyIssuesView';
 import { ProjectDetailView } from './views/ProjectDetailView';
 import { ProjectSettingsView } from './views/project/ProjectSettingsView';
+import { SubmodulePlaceholderView } from './views/project/SubmodulePlaceholderView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
 import { LoginPage } from './pages/LoginPage';
@@ -141,6 +142,7 @@ export const App: React.FC = () => {
                             <Route path="/organizations/:organizationSlug/projects" element={<OrganizationProjectsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings/:section" element={<ProjectSettingsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/submodules/:submoduleId" element={<SubmodulePlaceholderView />} />
                             <Route path="/organizations/:organizationSlug/activity" element={<OrganizationActivityView />} />
                             <Route path="/organizations/:organizationSlug/settings" element={<OrganizationSettingsView />} />
                             <Route path="/organizations/:organizationSlug" element={<Navigate to="overview" replace />} />
@@ -180,6 +182,7 @@ export const App: React.FC = () => {
                             {/* Project Context Mode Routes */}
                             <Route path="/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
+                            <Route path="/projects/:id/submodules/:submoduleId" element={<SubmodulePlaceholderView />} />
                             <Route path="/projects/:id" element={<ProjectDetailView />} />
                             <Route path="/projects/:id/*" element={<ProjectDetailView />} />
 

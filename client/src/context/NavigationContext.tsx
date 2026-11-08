@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useLocation, useNavigate } from 'react-router-dom';
 import { initialFavorites, FavoriteItem } from '../config/navigation';
 import { favoriteService, FavoriteProject, FavoriteTeam } from '../services/favorite.service';
+import { projectModuleService } from '../services/projectModule.service';
+import type { ProjectModule } from '../types/module';
 import { useOrganization } from './OrganizationContext';
 
 export interface ActiveProject {
@@ -20,6 +22,11 @@ interface NavigationContextType {
   isProjectLoading: boolean;
   setIsProjectLoading: (loading: boolean) => void;
   openingProjectId: number | null;
+
+  projectModules: ProjectModule[];
+  setProjectModules: React.Dispatch<React.SetStateAction<ProjectModule[]>>;
+  isLoadingModules: boolean;
+  refreshProjectModules: (projectId: number) => Promise<void>;
 
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean | ((prev: boolean) => boolean)) => void;
@@ -80,6 +87,33 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [favoriteProjects, setFavoriteProjects] = useState<FavoriteProject[]>([]);
   const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  // Dynamic Project Modules & Submodules
+  const [projectModules, setProjectModules] = useState<ProjectModule[]>([]);
+  const [isLoadingModules, setIsLoadingModules] = useState<boolean>(false);
+
+  const refreshProjectModules = useCallback(async (projectId: number) => {
+    try {
+      setIsLoadingModules(true);
+      const res = await projectModuleService.getModules(projectId);
+      if (res.success && Array.isArray(res.data)) {
+        setProjectModules(res.data);
+      }
+    } catch (err) {
+      console.warn('Failed to load project modules:', err);
+    } finally {
+      setIsLoadingModules(false);
+    }
+  }, []);
+
+  // Automatically fetch modules when entering a project or activeProject changes
+  useEffect(() => {
+    if (activeProject?.id) {
+      refreshProjectModules(activeProject.id);
+    } else {
+      setProjectModules([]);
+    }
+  }, [activeProject?.id, refreshProjectModules]);
 
   // Synchronize mode with current URL pathname
   useEffect(() => {
@@ -300,6 +334,10 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isProjectLoading,
         setIsProjectLoading,
         openingProjectId,
+        projectModules,
+        setProjectModules,
+        isLoadingModules,
+        refreshProjectModules,
         isCollapsed,
         setIsCollapsed,
         toggleSidebar,

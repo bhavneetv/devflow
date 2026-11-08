@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronDown, Plus } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { cn } from '../../lib/utils';
 
 interface NavigationGroupProps {
   id: string;
@@ -9,6 +10,7 @@ interface NavigationGroupProps {
   defaultExpanded?: boolean;
   onAction?: () => void;
   actionTitle?: string;
+  className?: string;
   children: React.ReactNode;
 }
 
@@ -19,6 +21,7 @@ export const NavigationGroup: React.FC<NavigationGroupProps> = ({
   defaultExpanded = true,
   onAction,
   actionTitle,
+  className,
   children,
 }) => {
   const { isCollapsed, isGroupExpanded, toggleGroup } = useNavigation();
@@ -33,7 +36,7 @@ export const NavigationGroup: React.FC<NavigationGroupProps> = ({
   }
 
   return (
-    <div className="pt-3 pb-1 select-none">
+    <div className={cn('pt-3 pb-1 select-none', className)}>
       {/* Group Header */}
       <div className="flex items-center justify-between px-2.5 mb-1 group">
         <button

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FolderTree,
@@ -26,6 +27,8 @@ import {
   Info,
   FolderKanban,
   ExternalLink,
+  Pin,
+  PanelLeft,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { useToast } from '../../context/ToastContext';
@@ -48,6 +51,8 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
   const { refreshProjectModules } = useNavigation();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [modules, setModules] = useState<ProjectModule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,6 +253,27 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
       }
     } catch (err: any) {
       toast.error('Update failed', err.message);
+    }
+  };
+
+  const handleTogglePinModule = async (module: ProjectModule) => {
+    try {
+      const nextPinned = !module.isPinned;
+      const res = await projectModuleService.updateModule(projectId, module.id, {
+        isPinned: nextPinned,
+      });
+      if (res.success) {
+        setModules((prev) =>
+          prev.map((m) => (m.id === module.id ? { ...m, isPinned: nextPinned } : m))
+        );
+        await syncSidebar();
+        toast.success(
+          nextPinned ? 'Module Pinned' : 'Module Unpinned',
+          `"${module.name}" is now ${nextPinned ? 'pinned at the top' : 'in standard modules'}.`
+        );
+      }
+    } catch (err: any) {
+      toast.error('Pin failed', err.message);
     }
   };
 
@@ -579,6 +605,15 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
 
           <button
             type="button"
+            onClick={() => navigate(location.pathname.replace(/\/structure$/, '/sidebar'))}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors cursor-pointer"
+          >
+            <PanelLeft size={13} className="text-indigo-400" />
+            <span>Virtual Sidebar Editor</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsCreateModuleOpen(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-all cursor-pointer"
             style={{ backgroundColor: accentColor }}
@@ -736,6 +771,13 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                           {submodules.length} {submodules.length === 1 ? 'submodule' : 'submodules'}
                         </span>
 
+                        {module.isPinned && (
+                          <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded uppercase font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 shrink-0 inline-flex items-center gap-1">
+                            <Pin size={9} className="fill-amber-400" />
+                            Pinned to top
+                          </span>
+                        )}
+
                         {!module.isVisible && (
                           <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded uppercase font-semibold bg-zinc-800 text-zinc-400 border border-zinc-700 shrink-0">
                             Hidden from sidebar
@@ -774,6 +816,21 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                         <ArrowDown size={12} />
                       </button>
                     </div>
+
+                    {/* Quick Pin Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePinModule(module)}
+                      className={cn(
+                        'p-1.5 rounded-lg border transition-colors cursor-pointer',
+                        module.isPinned
+                          ? 'text-amber-300 border-amber-500/40 bg-amber-500/20 hover:bg-amber-500/30'
+                          : 'text-zinc-500 hover:text-zinc-200 border-zinc-800 hover:bg-zinc-800'
+                      )}
+                      title={module.isPinned ? 'Unpin module from top' : 'Pin module to top of sidebar'}
+                    >
+                      <Pin size={13} className={module.isPinned ? 'fill-amber-400' : ''} />
+                    </button>
 
                     {/* Quick Visibility Toggle */}
                     <button
@@ -1252,6 +1309,7 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('folder');
   const [isVisible, setIsVisible] = useState(true);
+  const [isPinned, setIsPinned] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1277,6 +1335,7 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
         description: description.trim() || null,
         icon,
         isVisible,
+        isPinned,
       });
 
       if (res.success && res.data) {
@@ -1375,6 +1434,23 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
                 className="w-4 h-4 rounded text-purple-600 focus:ring-0 cursor-pointer"
               />
             </div>
+
+            {/* Pin to Top Toggle */}
+            <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#27272A] bg-[#0E0F14]">
+              <div className="flex items-center gap-2">
+                <Pin size={14} className={isPinned ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'} />
+                <div>
+                  <p className="text-xs font-medium text-white">Pin to Top of Sidebar</p>
+                  <p className="text-[11px] text-zinc-400">Position this module prominently at the top of the sidebar</p>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={isPinned}
+                onChange={(e) => setIsPinned(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-500 focus:ring-0 cursor-pointer"
+              />
+            </div>
           </div>
 
           {/* Sticky Footer */}
@@ -1430,6 +1506,7 @@ const EditModuleModal: React.FC<EditModuleModalProps> = ({
   const [name, setName] = useState(module.name);
   const [description, setDescription] = useState(module.description || '');
   const [icon, setIcon] = useState(module.icon || 'folder');
+  const [isPinned, setIsPinned] = useState(Boolean(module.isPinned));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1454,6 +1531,7 @@ const EditModuleModal: React.FC<EditModuleModalProps> = ({
         name: trimmed,
         description: description.trim() || null,
         icon,
+        isPinned,
       });
 
       if (res.success) {
@@ -1530,6 +1608,23 @@ const EditModuleModal: React.FC<EditModuleModalProps> = ({
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-zinc-300">Change Icon</label>
               <ModuleIconPicker value={icon} onChange={setIcon} accentColor={accentColor} />
+            </div>
+
+            {/* Pin to Top Toggle */}
+            <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#27272A] bg-[#0E0F14]">
+              <div className="flex items-center gap-2">
+                <Pin size={14} className={isPinned ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'} />
+                <div>
+                  <p className="text-xs font-medium text-white">Pin to Top of Sidebar</p>
+                  <p className="text-[11px] text-zinc-400">Position this module prominently at the top of the sidebar</p>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={isPinned}
+                onChange={(e) => setIsPinned(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-500 focus:ring-0 cursor-pointer"
+              />
             </div>
           </div>
 

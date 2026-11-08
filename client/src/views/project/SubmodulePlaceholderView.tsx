@@ -18,9 +18,10 @@ import { resolveModuleIcon } from '../../components/project/ModuleIconPicker';
 import { ProjectModule, ProjectSubmodule } from '../../types/module';
 
 export const SubmodulePlaceholderView: React.FC = () => {
-  const { id, submoduleId } = useParams<{ id: string; submoduleId: string }>();
+  const { id, submoduleId, moduleId } = useParams<{ id: string; submoduleId?: string; moduleId?: string }>();
   const projectId = id ? parseInt(id, 10) : 1;
   const subId = submoduleId ? parseInt(submoduleId, 10) : 0;
+  const modId = moduleId ? parseInt(moduleId, 10) : 0;
 
   const { accentColor } = useAccentTheme();
   const { exitProjectMode, activeProject } = useNavigation();
@@ -38,6 +39,10 @@ export const SubmodulePlaceholderView: React.FC = () => {
         const res = await projectModuleService.getModules(projectId);
         if (isMounted && res.success && res.data) {
           for (const m of res.data) {
+            if (modId && m.id === modId) {
+              setModule(m);
+              break;
+            }
             const found = m.submodules?.find((s) => s.id === subId);
             if (found) {
               setModule(m);
@@ -57,19 +62,22 @@ export const SubmodulePlaceholderView: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [projectId, subId]);
+  }, [projectId, subId, modId]);
 
-  const SubIcon = resolveModuleIcon(submodule?.icon, CircleDot);
+  const isIndependent = !!module && !submodule;
+  const SubIcon = resolveModuleIcon(submodule?.icon || module?.icon, isIndependent ? FolderKanban : CircleDot);
   const ModIcon = resolveModuleIcon(module?.icon, FolderKanban);
 
   if (loading) {
     return (
       <div className="p-12 text-center text-zinc-500 text-xs flex flex-col items-center justify-center gap-2">
         <Loader2 size={18} className="animate-spin text-zinc-400" />
-        <span>Loading submodule...</span>
+        <span>Loading {isIndependent ? 'module' : 'submodule'}...</span>
       </div>
     );
   }
+
+  const displayName = isIndependent ? module?.name : submodule?.name;
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -80,7 +88,7 @@ export const SubmodulePlaceholderView: React.FC = () => {
             {activeProject?.title || 'Project'}
           </Link>
           <span>/</span>
-          {module && (
+          {module && !isIndependent && (
             <>
               <span className="flex items-center gap-1 text-zinc-300">
                 <ModIcon size={12} style={{ color: accentColor }} />
@@ -89,15 +97,15 @@ export const SubmodulePlaceholderView: React.FC = () => {
               <span>/</span>
             </>
           )}
-          <span className="text-white font-medium">{submodule?.name || 'Submodule'}</span>
+          <span className="text-white font-medium">{displayName || 'Feature'}</span>
         </div>
 
         <Link
-          to={`/projects/${projectId}/settings/structure`}
+          to={`/projects/${projectId}/settings/sidebar`}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700 transition-colors shadow-sm cursor-pointer"
         >
           <Settings size={12} className="text-zinc-400" />
-          <span>Project Structure Settings</span>
+          <span>Sidebar Settings</span>
         </Link>
       </div>
 
@@ -112,15 +120,22 @@ export const SubmodulePlaceholderView: React.FC = () => {
 
         <div className="space-y-2 max-w-md">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/25">
-            Custom Submodule • Structural Placeholder
+            {isIndependent ? 'Independent Module • Direct Link' : 'Custom Submodule • Structural Placeholder'}
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">
-            {submodule?.name || 'Feature Placeholder'}
+            {displayName || 'Feature Placeholder'}
           </h1>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            This submodule is currently a structural placeholder in your project workspace under module{' '}
-            <strong className="text-zinc-200">"{module?.name || 'Custom Module'}"</strong>.
-            The underlying record management or custom workflow has not been configured yet.
+            {isIndependent ? (
+              <>
+                This module <strong className="text-zinc-200">"{module?.name}"</strong> acts as an independent standalone navigation page in your project workspace.
+              </>
+            ) : (
+              <>
+                This submodule is currently a structural placeholder in your project workspace under module{' '}
+                <strong className="text-zinc-200">"{module?.name || 'Custom Module'}"</strong>.
+              </>
+            )}
           </p>
         </div>
 

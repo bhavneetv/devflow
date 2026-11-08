@@ -54,6 +54,7 @@ const createModuleSchema = z.object({
   description: z.string().trim().max(500).optional().nullable(),
   icon: z.string().trim().optional().default('folder'),
   isVisible: z.boolean().optional().default(true),
+  isPinned: z.boolean().optional().default(false),
 });
 
 const updateModuleSchema = z.object({
@@ -61,6 +62,7 @@ const updateModuleSchema = z.object({
   description: z.string().trim().max(500).optional().nullable(),
   icon: z.string().trim().optional(),
   isVisible: z.boolean().optional(),
+  isPinned: z.boolean().optional(),
   position: z.number().int().optional(),
 });
 
@@ -70,12 +72,14 @@ const createSubmoduleSchema = z.object({
   type: z.enum(['built_in', 'custom']).optional().default('custom'),
   builtInKey: z.string().trim().optional().nullable(),
   isVisible: z.boolean().optional().default(true),
+  isPinned: z.boolean().optional().default(false),
 });
 
 const updateSubmoduleSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   icon: z.string().trim().optional(),
   isVisible: z.boolean().optional(),
+  isPinned: z.boolean().optional(),
   position: z.number().int().optional(),
 });
 
@@ -172,6 +176,7 @@ projectModulesRouter.post('/:projectId/modules', async (req: Request, res: Respo
         description: parsed.data.description || null,
         icon: parsed.data.icon || 'folder',
         isVisible: parsed.data.isVisible,
+        isPinned: parsed.data.isPinned ?? false,
         position: nextPosition,
         createdById: userId || null,
       },
@@ -245,6 +250,7 @@ projectModulesRouter.patch('/:projectId/modules/:moduleId', async (req: Request,
         ...(parsed.data.description !== undefined && { description: parsed.data.description }),
         ...(parsed.data.icon !== undefined && { icon: parsed.data.icon }),
         ...(parsed.data.isVisible !== undefined && { isVisible: parsed.data.isVisible }),
+        ...(parsed.data.isPinned !== undefined && { isPinned: parsed.data.isPinned }),
         ...(parsed.data.position !== undefined && { position: parsed.data.position }),
       },
       include: {
@@ -448,6 +454,7 @@ projectModulesRouter.post('/:projectId/modules/:moduleId/submodules', async (req
         type: parsed.data.type || 'custom',
         builtInKey: parsed.data.builtInKey || null,
         isVisible: parsed.data.isVisible,
+        isPinned: parsed.data.isPinned ?? false,
         position: nextPosition,
         createdById: userId || null,
       },
@@ -517,6 +524,7 @@ projectModulesRouter.patch('/:projectId/submodules/:submoduleId', async (req: Re
         ...(parsed.data.name !== undefined && { name: parsed.data.name }),
         ...(parsed.data.icon !== undefined && { icon: parsed.data.icon }),
         ...(parsed.data.isVisible !== undefined && { isVisible: parsed.data.isVisible }),
+        ...(parsed.data.isPinned !== undefined && { isPinned: parsed.data.isPinned }),
         ...(parsed.data.position !== undefined && { position: parsed.data.position }),
       },
     });

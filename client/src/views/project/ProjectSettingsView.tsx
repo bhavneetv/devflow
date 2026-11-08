@@ -59,6 +59,7 @@ import { SettingsRow } from '../../components/settings/SettingsRow';
 import { SettingsPageHeader } from '../../components/settings/SettingsPageHeader';
 import { AccountSettingsLayout } from '../../components/settings/AccountSettingsLayout';
 import { ProjectStructureView } from './ProjectStructureView';
+import { SidebarOrderSettingsView } from './SidebarOrderSettingsView';
 
 // ─── CONSTANTS & DICTIONARIES ────────────────────────────────────────────────
 
@@ -1487,6 +1488,11 @@ export const ProjectSettingsView: React.FC = () => {
       {/* ─── TAB: PROJECT STRUCTURE ────────────────────────────────────────── */}
       {activeSection === 'structure' && (
         <ProjectStructureView projectId={projectId} />
+      )}
+
+      {/* ─── TAB: SIDEBAR ORDER & VIRTUAL PREVIEW ─────────────────────────── */}
+      {activeSection === 'sidebar' && (
+        <SidebarOrderSettingsView projectId={projectId} />
       )}
 
       {/* ─── TAB 2: CONNECTED ACCOUNTS ────────────────────────────────────── */}

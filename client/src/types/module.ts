@@ -10,6 +10,7 @@ import {
   Kanban,
   Flag,
   RotateCcw,
+  LayoutDashboard,
 } from 'lucide-react';
 
 export type SubmoduleType = 'built_in' | 'custom';
@@ -24,6 +25,7 @@ export interface ProjectSubmodule {
   builtInKey: string | null;
   position: number;
   isVisible: boolean;
+  isPinned?: boolean;
   createdById?: number | null;
   createdAt?: string;
   updatedAt?: string;
@@ -37,6 +39,7 @@ export interface ProjectModule {
   icon: string | null;
   position: number;
   isVisible: boolean;
+  isPinned?: boolean;
   createdById?: number | null;
   createdAt?: string;
   updatedAt?: string;
@@ -48,6 +51,7 @@ export interface CreateModuleInput {
   description?: string | null;
   icon?: string;
   isVisible?: boolean;
+  isPinned?: boolean;
 }
 
 export interface UpdateModuleInput {
@@ -55,6 +59,7 @@ export interface UpdateModuleInput {
   description?: string | null;
   icon?: string;
   isVisible?: boolean;
+  isPinned?: boolean;
   position?: number;
 }
 
@@ -64,12 +69,14 @@ export interface CreateSubmoduleInput {
   type?: SubmoduleType;
   builtInKey?: string | null;
   isVisible?: boolean;
+  isPinned?: boolean;
 }
 
 export interface UpdateSubmoduleInput {
   name?: string;
   icon?: string;
   isVisible?: boolean;
+  isPinned?: boolean;
   position?: number;
 }
 
@@ -83,6 +90,14 @@ export interface BuiltInSubmoduleDefinition {
 }
 
 export const BUILT_IN_SUBMODULE_DEFINITIONS: BuiltInSubmoduleDefinition[] = [
+  {
+    key: 'overview',
+    defaultName: 'Project Overview',
+    description: 'Project summary dashboard, metrics, and timeline',
+    defaultIcon: 'layout-dashboard',
+    iconComponent: LayoutDashboard,
+    subpath: '',
+  },
   {
     key: 'issues',
     defaultName: 'Issues',

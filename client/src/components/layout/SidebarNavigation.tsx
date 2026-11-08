@@ -85,6 +85,22 @@ export const SidebarNavigation: React.FC = () => {
 
   const hasAnyFavorites = favoriteProjects.length > 0 || favoriteTeams.length > 0;
 
+  const [, setSidebarConfigTick] = useState(0);
+
+  useEffect(() => {
+    const onConfigChange = () => setSidebarConfigTick((t) => t + 1);
+    window.addEventListener('devflow-sidebar-config-changed', onConfigChange);
+    return () => window.removeEventListener('devflow-sidebar-config-changed', onConfigChange);
+  }, []);
+
+  const isOverviewVisible = activeProject
+    ? localStorage.getItem(`devflow_proj_${activeProject.id}_overview_visible`) !== 'false'
+    : true;
+
+  const hasOverviewSubmodule = projectModules?.some((m) =>
+    m.submodules?.some((s) => s.builtInKey === 'overview' && s.isVisible)
+  );
+
   return (
     <div className="flex-1 overflow-y-auto px-2 space-y-2 py-1.5 text-sidebar-text">
       {mode === 'workspace' ? (
@@ -457,14 +473,16 @@ export const SidebarNavigation: React.FC = () => {
         <>
           {activeProject && (
             <>
-              {/* Preserved Project Overview at Top */}
-              <div className="space-y-0.5 mb-2.5">
-                <NavigationItem
-                  title="Overview"
-                  path={`/projects/${activeProject.id}`}
-                  icon={LayoutDashboard}
-                />
-              </div>
+              {/* Preserved Project Overview at Top (if not hidden and not placed inside custom modules) */}
+              {isOverviewVisible && !hasOverviewSubmodule && (
+                <div className="space-y-0.5 mb-2.5">
+                  <NavigationItem
+                    title="Overview"
+                    path={`/projects/${activeProject.id}`}
+                    icon={LayoutDashboard}
+                  />
+                </div>
+              )}
 
               {/* Dynamic Project Modules & Submodules */}
               {projectModules && projectModules.length > 0 ? (

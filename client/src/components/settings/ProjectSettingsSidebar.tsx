@@ -11,6 +11,7 @@ import {
   Activity,
   FolderKanban,
   Boxes,
+  PanelLeft,
   LucideIcon,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
@@ -40,7 +41,14 @@ export const PROJECT_NAV_ITEMS: ProjectNavSection[] = [
     label: 'Project Structure',
     subpath: 'structure',
     icon: Boxes,
-    description: 'Modules, submodules & sidebar layout',
+    description: 'Modules, submodules & repository structure',
+  },
+  {
+    id: 'sidebar',
+    label: 'Sidebar Order',
+    subpath: 'sidebar',
+    icon: PanelLeft,
+    description: 'Virtual sidebar preview, reorder, hide & pin modules',
   },
   {
     id: 'security',
@@ -222,7 +230,7 @@ export const ProjectSettingsSidebar: React.FC<ProjectSettingsSidebarProps> = ({
                 />
               </span>
               <span className="text-[10px] font-mono text-zinc-500 group-hover:text-zinc-300">
-                {isSectionOpen ? '5 items' : 'hidden'}
+                {isSectionOpen ? `${PROJECT_NAV_ITEMS.length} items` : 'hidden'}
               </span>
             </button>
           )}

@@ -16,6 +16,13 @@ import { useNavigation } from '../../context/NavigationContext';
 import { projectModuleService } from '../../services/projectModule.service';
 import { resolveModuleIcon } from '../../components/project/ModuleIconPicker';
 import { ProjectModule, ProjectSubmodule } from '../../types/module';
+import { CompositeFeatureRenderer } from '../../components/git/CompositeFeatureRenderer';
+import { GitMergeRequestsView } from '../../components/git/GitMergeRequestsView';
+import { GitCommitsView } from '../../components/git/GitCommitsView';
+import { GitCodeBrowserView } from '../../components/git/GitCodeBrowserView';
+import { GitRepositoryList } from '../../components/git/GitRepositoryList';
+import { GitOverview } from '../../components/git/GitOverview';
+import { GitIssuesView } from '../../components/git/GitIssuesView';
 
 export const SubmodulePlaceholderView: React.FC = () => {
   const { id, submoduleId, moduleId } = useParams<{ id: string; submoduleId?: string; moduleId?: string }>();
@@ -75,6 +82,43 @@ export const SubmodulePlaceholderView: React.FC = () => {
         <span>Loading {isIndependent ? 'module' : 'submodule'}...</span>
       </div>
     );
+  }
+
+  if (submodule && submodule.type === 'composite') {
+    return <CompositeFeatureRenderer projectId={projectId} submodule={submodule} />;
+  }
+
+  if (submodule && submodule.builtInKey) {
+    const key = submodule.builtInKey;
+    let content = null;
+    if (key === 'pulls' || key === 'git-pulls') {
+      content = <GitMergeRequestsView projectId={projectId} />;
+    } else if (key === 'git-commits' || key === 'commits') {
+      content = <GitCommitsView projectId={projectId} />;
+    } else if (key === 'git-code' || key === 'code') {
+      content = <GitCodeBrowserView projectId={projectId} />;
+    } else if (key === 'repositories') {
+      content = <GitRepositoryList projectId={projectId} />;
+    } else if (key === 'git-overview') {
+      content = <GitOverview projectId={projectId} />;
+    } else if (key === 'issues') {
+      content = <GitIssuesView projectId={projectId} />;
+    }
+
+    if (content) {
+      return (
+        <div className="p-4 sm:p-6 max-w-[1600px] mx-auto space-y-6">
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <Link to={`/projects/${projectId}`} className="hover:text-white transition-colors">
+              {activeProject?.title || 'Project'}
+            </Link>
+            <span>/</span>
+            <span className="text-white font-medium">{submodule.name}</span>
+          </div>
+          {content}
+        </div>
+      );
+    }
   }
 
   const displayName = isIndependent ? module?.name : submodule?.name;

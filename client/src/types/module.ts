@@ -11,9 +11,11 @@ import {
   Flag,
   RotateCcw,
   LayoutDashboard,
+  GitCommit,
+  Code2,
 } from 'lucide-react';
 
-export type SubmoduleType = 'built_in' | 'custom';
+export type SubmoduleType = 'built_in' | 'custom' | 'composite';
 
 export interface ProjectSubmodule {
   id: number;
@@ -23,6 +25,7 @@ export interface ProjectSubmodule {
   icon: string | null;
   type: SubmoduleType;
   builtInKey: string | null;
+  config?: string | null;
   position: number;
   isVisible: boolean;
   isPinned?: boolean;
@@ -68,6 +71,7 @@ export interface CreateSubmoduleInput {
   icon?: string;
   type?: SubmoduleType;
   builtInKey?: string | null;
+  config?: string | null;
   isVisible?: boolean;
   isPinned?: boolean;
 }
@@ -75,6 +79,9 @@ export interface CreateSubmoduleInput {
 export interface UpdateSubmoduleInput {
   name?: string;
   icon?: string;
+  type?: SubmoduleType;
+  builtInKey?: string | null;
+  config?: string | null;
   isVisible?: boolean;
   isPinned?: boolean;
   position?: number;
@@ -97,6 +104,14 @@ export const BUILT_IN_SUBMODULE_DEFINITIONS: BuiltInSubmoduleDefinition[] = [
     defaultIcon: 'layout-dashboard',
     iconComponent: LayoutDashboard,
     subpath: '',
+  },
+  {
+    key: 'git-overview',
+    defaultName: 'Git Overview',
+    description: 'Aggregated Git repository stats, pull requests, and activity feed',
+    defaultIcon: 'layout-dashboard',
+    iconComponent: LayoutDashboard,
+    subpath: 'git-overview',
   },
   {
     key: 'issues',
@@ -129,6 +144,22 @@ export const BUILT_IN_SUBMODULE_DEFINITIONS: BuiltInSubmoduleDefinition[] = [
     defaultIcon: 'git-pull-request',
     iconComponent: GitPullRequest,
     subpath: 'pulls',
+  },
+  {
+    key: 'git-commits',
+    defaultName: 'Commits',
+    description: 'Commit log, author timelines, and changeset inspector',
+    defaultIcon: 'git-commit',
+    iconComponent: GitCommit,
+    subpath: 'commits',
+  },
+  {
+    key: 'git-code',
+    defaultName: 'Source Code',
+    description: 'Online VS Code source code browser powered by Monaco',
+    defaultIcon: 'code-2',
+    iconComponent: Code2,
+    subpath: 'code',
   },
   {
     key: 'test-cases',

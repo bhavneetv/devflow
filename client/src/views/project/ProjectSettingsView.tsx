@@ -60,6 +60,7 @@ import { SettingsPageHeader } from '../../components/settings/SettingsPageHeader
 import { AccountSettingsLayout } from '../../components/settings/AccountSettingsLayout';
 import { ProjectStructureView } from './ProjectStructureView';
 import { SidebarOrderSettingsView } from './SidebarOrderSettingsView';
+import { ProjectGitHubLinker } from '../../components/git/ProjectGitHubLinker';
 
 // ─── CONSTANTS & DICTIONARIES ────────────────────────────────────────────────
 
@@ -1079,6 +1080,21 @@ export const ProjectSettingsView: React.FC = () => {
                   />
                 </div>
               </SettingsRow>
+
+              {/* GitHub Integration */}
+              <SettingsRow
+                label="GitHub Repository"
+                description="Link your project's GitHub repository to track branches, commits, pull requests, and issues."
+              >
+                <div className="w-full">
+                  <ProjectGitHubLinker
+                    projectId={projectId}
+                    currentRepoUrl={gitRepoUrl}
+                    onRepoLinked={(fullName) => setGitRepoUrl(fullName)}
+                    onRepoUnlinked={() => setGitRepoUrl('')}
+                  />
+                </div>
+              </SettingsRow>
             </SettingsSection>
 
             {/* Appearance & Avatar */}
@@ -1513,27 +1529,15 @@ export const ProjectSettingsView: React.FC = () => {
               {/* GitHub */}
               <SettingsRow
                 label="GitHub Repository"
-                description="Link an organization or user repository (e.g., devflow/core-engine)."
+                description="Link your GitHub account to sync branches, commits, pull requests, and issues."
               >
-                <div className="space-y-2 max-w-md">
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-500">
-                      github.com/
-                    </span>
-                    <input
-                      type="text"
-                      value={gitRepoUrl}
-                      onChange={(e) => setGitRepoUrl(e.target.value)}
-                      placeholder="organization/repository"
-                      className="w-full pl-24 pr-3.5 py-2.5 bg-[#111216] border border-[#27272A] rounded-xl text-xs sm:text-[13px] text-white placeholder-zinc-500 outline-none focus:border-zinc-500 transition-colors font-mono"
-                    />
-                  </div>
-                  {gitRepoUrl && (
-                    <div className="flex items-center gap-2 text-[11px] text-emerald-400">
-                      <CheckCircle2 size={13} />
-                      <span>Ready to sync pull requests and branches</span>
-                    </div>
-                  )}
+                <div className="w-full">
+                  <ProjectGitHubLinker
+                    projectId={projectId}
+                    currentRepoUrl={gitRepoUrl}
+                    onRepoLinked={(fullName) => setGitRepoUrl(fullName)}
+                    onRepoUnlinked={() => setGitRepoUrl('')}
+                  />
                 </div>
               </SettingsRow>
 

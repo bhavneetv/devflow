@@ -14,6 +14,7 @@ import { requirementsRouter } from './routes/requirements.routes.js';
 import { favoritesRouter } from './routes/favorites.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { projectModulesRouter } from './routes/projectModules.routes.js';
+import { gitRoutes } from './routes/git.routes.js';
 import { initSocketIO } from './lib/socket.js';
 
 dotenv.config();
@@ -83,6 +84,7 @@ app.use('/api/organizations', organizationsRouter);
 app.use('/api/requirements', requirementsRouter);
 app.use('/api/favorites', favoritesRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/projects/:projectId/git', gitRoutes);
 
 // Root route
 app.get('/', (_req: Request, res: Response) => {

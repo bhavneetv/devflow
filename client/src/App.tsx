@@ -17,6 +17,7 @@ import { RequirementReviewView } from './views/requirements/RequirementReviewVie
 import { RequirementsTraceabilityView } from './views/requirements/RequirementsTraceabilityView';
 import { ProjectSettingsView } from './views/project/ProjectSettingsView';
 import { SubmodulePlaceholderView } from './views/project/SubmodulePlaceholderView';
+import { ProjectOverviewView } from './views/project/ProjectOverviewView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
 import { LoginPage } from './pages/LoginPage';
@@ -27,6 +28,15 @@ import { ProfileSettingsPage } from './pages/settings/account/ProfileSettingsPag
 import { SecuritySettingsPage } from './pages/settings/account/SecuritySettingsPage';
 import { ConnectedAccountsPage } from './pages/settings/account/ConnectedAccountsPage';
 import { AccountManagementPage } from './pages/settings/account/AccountManagementPage';
+
+// Git Module Views
+import { GitOverviewPage } from './views/project/git/GitOverviewPage';
+import { GitRepositoriesPage } from './views/project/git/GitRepositoriesPage';
+import { GitIssuesPage } from './views/project/git/GitIssuesPage';
+import { GitMergeRequestsPage } from './views/project/git/GitMergeRequestsPage';
+import { GitCommitsPage } from './views/project/git/GitCommitsPage';
+import { GitCodePage } from './views/project/git/GitCodePage';
+import { GitOAuthCallbackView } from './views/project/git/GitOAuthCallbackView';
 
 // Organization Views
 import {
@@ -125,6 +135,7 @@ export const App: React.FC = () => {
                 <Route path="/invite/:token" element={<InviteAcceptPage />} />
                 <Route path="/invite/org/:token" element={<OrgInviteAcceptPage />} />
                 <Route path="/join/org/:token" element={<OrgInviteAcceptPage />} />
+                <Route path="/git/callback" element={<GitOAuthCallbackView />} />
 
                 {/* Authenticated Workspace Application */}
                 <Route
@@ -145,10 +156,25 @@ export const App: React.FC = () => {
                             <Route path="/organizations/:organizationSlug/teams/:teamId" element={<TeamView />} />
                             <Route path="/organizations/:organizationSlug/teams/:teamId/*" element={<TeamView />} />
                             <Route path="/organizations/:organizationSlug/projects" element={<OrganizationProjectsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id" element={<ProjectOverviewView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/overview" element={<ProjectOverviewView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/classic" element={<ProjectDetailView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/classic/*" element={<ProjectDetailView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/submodules/:submoduleId" element={<SubmodulePlaceholderView />} />
+                            {/* Organization Project Git Routes */}
+                            <Route path="/organizations/:organizationSlug/projects/:id/git-overview" element={<GitOverviewPage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/repositories" element={<GitRepositoriesPage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/issues" element={<GitIssuesPage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/pulls" element={<GitMergeRequestsPage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/git-pulls" element={<GitMergeRequestsPage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/commits" element={<GitCommitsPage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/git-commits" element={<GitCommitsPage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/code" element={<GitCodePage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/git-code" element={<GitCodePage />} />
+
                             <Route path="/organizations/:organizationSlug/activity" element={<OrganizationActivityView />} />
                             <Route path="/organizations/:organizationSlug/settings" element={<OrganizationSettingsView />} />
                             <Route path="/organizations/:organizationSlug" element={<Navigate to="overview" replace />} />
@@ -198,12 +224,24 @@ export const App: React.FC = () => {
                             <Route path="/projects/:id/requirements/:reqId" element={<RequirementDetailView />} />
                             <Route path="/projects/:id/requirements/:reqId/review" element={<RequirementReviewView />} />
                             <Route path="/projects/:id/requirements" element={<RequirementsDashboardView />} />
+                            <Route path="/projects/:id/git-overview" element={<GitOverviewPage />} />
+                            <Route path="/projects/:id/repositories" element={<GitRepositoriesPage />} />
+                            <Route path="/projects/:id/issues" element={<GitIssuesPage />} />
+                            <Route path="/projects/:id/pulls" element={<GitMergeRequestsPage />} />
+                            <Route path="/projects/:id/git-pulls" element={<GitMergeRequestsPage />} />
+                            <Route path="/projects/:id/commits" element={<GitCommitsPage />} />
+                            <Route path="/projects/:id/git-commits" element={<GitCommitsPage />} />
+                            <Route path="/projects/:id/code" element={<GitCodePage />} />
+                            <Route path="/projects/:id/git-code" element={<GitCodePage />} />
                             <Route path="/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />
                             <Route path="/projects/:id/submodules/:submoduleId" element={<SubmodulePlaceholderView />} />
-                            <Route path="/projects/:id" element={<ProjectDetailView />} />
-                            <Route path="/projects/:id/*" element={<ProjectDetailView />} />
+                            <Route path="/projects/:id/overview" element={<ProjectOverviewView />} />
+                            <Route path="/projects/:id/classic" element={<ProjectDetailView />} />
+                            <Route path="/projects/:id/classic/*" element={<ProjectDetailView />} />
+                            <Route path="/projects/:id" element={<ProjectOverviewView />} />
+                            <Route path="/projects/:id/*" element={<ProjectOverviewView />} />
 
                             {/* Fallback */}
                             <Route path="*" element={<Navigate to="/" replace />} />

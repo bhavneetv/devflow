@@ -41,6 +41,13 @@ import {
   BUILT_IN_SUBMODULE_DEFINITIONS,
   BuiltInSubmoduleDefinition,
 } from '../../types/module';
+import {
+  GIT_FEATURES_REGISTRY,
+  GIT_SUMMARY_CARD_DEFINITIONS,
+  GitFeatureKey,
+  CompositeLayout,
+  CompositeSubmoduleConfig,
+} from '../../types/git';
 import { cn } from '../../lib/utils';
 
 interface ProjectStructureViewProps {
@@ -1793,7 +1800,7 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
   onClose,
   onCreated,
 }) => {
-  const [subType, setSubType] = useState<'built_in' | 'custom'>('built_in');
+  const [subType, setSubType] = useState<'built_in' | 'composite' | 'custom'>('built_in');
   const [selectedBuiltInKey, setSelectedBuiltInKey] = useState<string>('issues');
   const [name, setName] = useState('Issues');
   const [icon, setIcon] = useState('circle-dot');
@@ -1801,11 +1808,36 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Composite builder state
+  const [compositeFeatures, setCompositeFeatures] = useState<GitFeatureKey[]>([
+    'git.overview',
+    'git.merge_requests',
+  ]);
+  const [compositeLayout, setCompositeLayout] = useState<CompositeLayout>('tabs');
+  const [compositeCards, setCompositeCards] = useState<string[]>([
+    'total-repos',
+    'open-issues',
+    'open-mrs',
+    'mrs-with-conflicts',
+  ]);
+
   // When selecting built-in, update default name & icon
   const handleSelectBuiltIn = (def: BuiltInSubmoduleDefinition) => {
     setSelectedBuiltInKey(def.key);
     setName(def.defaultName);
     setIcon(def.defaultIcon);
+  };
+
+  const handleToggleCompositeFeature = (key: GitFeatureKey) => {
+    setCompositeFeatures((prev) =>
+      prev.includes(key) ? (prev.length > 1 ? prev.filter((k) => k !== key) : prev) : [...prev, key]
+    );
+  };
+
+  const handleToggleSummaryCard = (id: string) => {
+    setCompositeCards((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1828,10 +1860,20 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
 
     try {
       setIsSubmitting(true);
+      const configJson =
+        subType === 'composite'
+          ? JSON.stringify({
+              features: compositeFeatures,
+              layout: compositeLayout,
+              summaryCards: compositeCards,
+            })
+          : null;
+
       const res = await projectModuleService.createSubmodule(projectId, moduleId, {
         name: trimmed,
         type: subType,
         builtInKey: subType === 'built_in' ? selectedBuiltInKey : null,
+        config: configJson,
         icon,
         isVisible,
       });
@@ -1889,7 +1931,7 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
             {/* Submodule Type Switch */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-zinc-300">Submodule Type</label>
-              <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[#0E0F14] border border-[#27272A]">
+              <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[#0E0F14] border border-[#27272A]">
                 <button
                   type="button"
                   onClick={() => {
@@ -1900,14 +1942,31 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
                     setIcon(def.defaultIcon);
                   }}
                   className={cn(
-                    'py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-2',
+                    'py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5',
                     subType === 'built_in'
                       ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700 font-semibold'
                       : 'text-zinc-400 hover:text-zinc-200'
                   )}
                 >
                   <Sparkles size={13} style={{ color: subType === 'built_in' ? accentColor : undefined }} />
-                  <span>Built-in Feature</span>
+                  <span>Built-in</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubType('composite');
+                    setName('Git Dev Hub');
+                    setIcon('boxes');
+                  }}
+                  className={cn(
+                    'py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5',
+                    subType === 'composite'
+                      ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700 font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  )}
+                >
+                  <Boxes size={13} style={{ color: subType === 'composite' ? accentColor : undefined }} />
+                  <span>Composite</span>
                 </button>
                 <button
                   type="button"
@@ -1917,14 +1976,14 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
                     setIcon('circle-dot');
                   }}
                   className={cn(
-                    'py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-2',
+                    'py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5',
                     subType === 'custom'
                       ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700 font-semibold'
                       : 'text-zinc-400 hover:text-zinc-200'
                   )}
                 >
                   <FolderKanban size={13} style={{ color: subType === 'custom' ? accentColor : undefined }} />
-                  <span>Custom Placeholder</span>
+                  <span>Placeholder</span>
                 </button>
               </div>
             </div>
@@ -1989,6 +2048,104 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            ) : subType === 'composite' ? (
+              /* Composite Submodule Builder UI */
+              <div className="space-y-4 p-4 rounded-xl border border-zinc-800 bg-[#0E0F14]">
+                {/* 1. Feature Selection */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                    <Boxes size={13} className="text-indigo-400" />
+                    <span>Included Git Features</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {GIT_FEATURES_REGISTRY.map((feat) => {
+                      const isChecked = compositeFeatures.includes(feat.key);
+                      return (
+                        <button
+                          key={feat.key}
+                          type="button"
+                          onClick={() => handleToggleCompositeFeature(feat.key)}
+                          className={cn(
+                            'p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2',
+                            isChecked
+                              ? 'border-indigo-500/60 bg-indigo-500/10 text-white'
+                              : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              'w-4 h-4 rounded mt-0.5 flex items-center justify-center border shrink-0',
+                              isChecked ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-zinc-700 bg-zinc-800'
+                            )}
+                          >
+                            {isChecked && <Check size={10} strokeWidth={3} />}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold block">{feat.title}</span>
+                            <span className="text-[10px] text-zinc-400 line-clamp-1">{feat.description}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Layout Mode */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-200">Submodule Layout</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['tabs', 'stacked', 'split'] as const).map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => setCompositeLayout(l)}
+                        className={cn(
+                          'py-1.5 rounded-lg text-xs font-medium capitalize transition-all cursor-pointer text-center border',
+                          compositeLayout === l
+                            ? 'bg-zinc-800 text-white border-zinc-700 font-semibold shadow-xs'
+                            : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        )}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Summary Cards Selection */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-zinc-200">Summary Metric Cards</label>
+                    <span className="text-[10px] text-zinc-500">
+                      {compositeCards.length} selected
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {GIT_SUMMARY_CARD_DEFINITIONS.map((c) => {
+                      const isSelected = compositeCards.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => handleToggleSummaryCard(c.id)}
+                          className={cn(
+                            'px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all cursor-pointer flex items-center gap-1.5',
+                            isSelected
+                              ? 'bg-zinc-800 text-white border-zinc-600 shadow-xs'
+                              : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                          )}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: isSelected ? c.color : '#52525B' }}
+                          />
+                          <span>{c.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -2094,6 +2251,41 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Parse existing config if composite
+  const initialConfig: CompositeSubmoduleConfig = (() => {
+    try {
+      return submodule.config ? JSON.parse(submodule.config) : {};
+    } catch {
+      return {};
+    }
+  })();
+
+  const [compositeFeatures, setCompositeFeatures] = useState<GitFeatureKey[]>(
+    Array.isArray(initialConfig.features) && initialConfig.features.length > 0
+      ? initialConfig.features
+      : ['git.overview', 'git.merge_requests']
+  );
+  const [compositeLayout, setCompositeLayout] = useState<CompositeLayout>(
+    initialConfig.layout || 'tabs'
+  );
+  const [compositeCards, setCompositeCards] = useState<string[]>(
+    Array.isArray(initialConfig.summaryCards)
+      ? initialConfig.summaryCards
+      : ['total-repos', 'open-issues', 'open-mrs', 'mrs-with-conflicts']
+  );
+
+  const handleToggleCompositeFeature = (key: GitFeatureKey) => {
+    setCompositeFeatures((prev) =>
+      prev.includes(key) ? (prev.length > 1 ? prev.filter((k) => k !== key) : prev) : [...prev, key]
+    );
+  };
+
+  const handleToggleSummaryCard = (id: string) => {
+    setCompositeCards((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -2105,9 +2297,19 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
 
     try {
       setIsSubmitting(true);
+      const configJson =
+        submodule.type === 'composite'
+          ? JSON.stringify({
+              features: compositeFeatures,
+              layout: compositeLayout,
+              summaryCards: compositeCards,
+            })
+          : undefined;
+
       const res = await projectModuleService.updateSubmodule(projectId, submodule.id, {
         name: trimmed,
         icon,
+        config: configJson,
       });
       if (res.success) {
         onUpdated();
@@ -2133,7 +2335,10 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
             >
               <Edit2 size={13} strokeWidth={2.5} />
             </div>
-            <h2 className="text-sm font-semibold text-white">Edit Submodule</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-white">Edit Submodule</h2>
+              <span className="text-[11px] text-zinc-400 capitalize">{submodule.type} submodule</span>
+            </div>
           </div>
           <button
             type="button"
@@ -2170,6 +2375,97 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
               <label className="text-xs font-medium text-zinc-300">Icon</label>
               <ModuleIconPicker value={icon} onChange={setIcon} accentColor={accentColor} />
             </div>
+
+            {/* If Composite, show configuration editors */}
+            {submodule.type === 'composite' && (
+              <div className="space-y-4 p-4 rounded-xl border border-zinc-800 bg-[#0E0F14]">
+                {/* 1. Features */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-zinc-200">Included Features</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {GIT_FEATURES_REGISTRY.map((feat) => {
+                      const isChecked = compositeFeatures.includes(feat.key);
+                      return (
+                        <button
+                          key={feat.key}
+                          type="button"
+                          onClick={() => handleToggleCompositeFeature(feat.key)}
+                          className={cn(
+                            'p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2',
+                            isChecked
+                              ? 'border-indigo-500/60 bg-indigo-500/10 text-white'
+                              : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              'w-4 h-4 rounded mt-0.5 flex items-center justify-center border shrink-0',
+                              isChecked ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-zinc-700 bg-zinc-800'
+                            )}
+                          >
+                            {isChecked && <Check size={10} strokeWidth={3} />}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold block">{feat.title}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Layout */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-200">Layout</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['tabs', 'stacked', 'split'] as const).map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => setCompositeLayout(l)}
+                        className={cn(
+                          'py-1.5 rounded-lg text-xs font-medium capitalize transition-all cursor-pointer text-center border',
+                          compositeLayout === l
+                            ? 'bg-zinc-800 text-white border-zinc-700 font-semibold shadow-xs'
+                            : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        )}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Summary Cards */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-zinc-200">Summary Metric Cards</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {GIT_SUMMARY_CARD_DEFINITIONS.map((c) => {
+                      const isSelected = compositeCards.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => handleToggleSummaryCard(c.id)}
+                          className={cn(
+                            'px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all cursor-pointer flex items-center gap-1.5',
+                            isSelected
+                              ? 'bg-zinc-800 text-white border-zinc-600 shadow-xs'
+                              : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                          )}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: isSelected ? c.color : '#52525B' }}
+                          />
+                          <span>{c.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sticky Actions Footer */}

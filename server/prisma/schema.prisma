@@ -194,6 +194,9 @@ model User {
   notifications           Notification[]           @relation("UserNotifications")
   createdModules          ProjectModule[]          @relation("ModuleCreator")
   createdSubmodules       ProjectSubmodule[]       @relation("SubmoduleCreator")
+  gitConnections          GitProviderConnection[]
+  createdGitRecordLinks   GitRecordLink[]          @relation("GitRecordLinkCreator")
+  gitMemberMappings       GitMemberMapping[]       @relation("UserGitMappings")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -303,6 +306,10 @@ model Project {
   requirements          Requirement[]
   requirementCategories RequirementCategory[] @relation("ProjectCategories")
   requirementTemplates  RequirementTemplate[] @relation("ProjectTemplates")
+  gitConnections        GitProviderConnection[]
+  gitRepositories       GitRepositoryConnection[]
+  gitRecordLinks        GitRecordLink[]
+  gitMemberMappings     GitMemberMapping[]
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
@@ -783,8 +790,9 @@ model ProjectSubmodule {
   module      ProjectModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   name        String
   icon        String?       @default("circle-dot")
-  type        String        @default("custom") // "built_in" | "custom"
+  type        String        @default("custom") // "built_in" | "custom" | "composite"
   builtInKey  String?       @map("built_in_key")
+  config      String?       @db.Text
   position    Int           @default(0)
   isVisible   Boolean       @default(true) @map("is_visible")
   isPinned    Boolean       @default(false) @map("is_pinned")
@@ -799,4 +807,103 @@ model ProjectSubmodule {
   @@index([createdById])
   @@map("project_submodules")
 }
+
+model GitProviderConnection {
+  id             Int                       @id @default(autoincrement())
+  projectId      Int                       @map("project_id")
+  project        Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId Int?                      @map("organization_id")
+  userId         Int                       @map("user_id")
+  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String                    // "github" | "gitlab"
+  authType       String                    @default("pat") @map("auth_type")
+  tokenEncrypted String                    @db.Text @map("token_encrypted")
+  tokenIv        String                    @map("token_iv")
+  tokenTag       String                    @map("token_tag")
+  accountName    String                    @map("account_name")
+  accountEmail   String?                   @map("account_email")
+  avatarUrl      String?                   @db.Text @map("avatar_url")
+  status         String                    @default("active")
+  scopes         String?                   @db.Text
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+
+  repositories   GitRepositoryConnection[]
+
+  @@index([projectId])
+  @@index([userId])
+  @@map("git_provider_connections")
+}
+
+model GitRepositoryConnection {
+  id             Int                    @id @default(autoincrement())
+  projectId      Int                    @map("project_id")
+  project        Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  connectionId       Int                    @map("connection_id")
+  providerConnection GitProviderConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  providerRepoId String                 @map("provider_repo_id")
+  name           String
+  fullName       String                 @map("full_name")
+  owner          String
+  defaultBranch  String                 @default("main") @map("default_branch")
+  isPrivate      Boolean                @default(false) @map("is_private")
+  webUrl         String                 @map("web_url")
+  cloneUrl       String?                @map("clone_url")
+  syncStatus     String                 @default("healthy") @map("sync_status")
+  lastSyncAt     DateTime?              @map("last_sync_at")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  recordLinks    GitRecordLink[]
+
+  @@unique([projectId, fullName])
+  @@index([projectId])
+  @@index([connectionId])
+  @@map("git_repository_connections")
+}
+
+model GitRecordLink {
+  id           Int                      @id @default(autoincrement())
+  projectId    Int                      @map("project_id")
+  project      Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repositoryId Int                      @map("repository_id")
+  repository   GitRepositoryConnection  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  provider     String                   // "github" | "gitlab"
+  recordType   String                   @map("record_type") // "issue" | "merge_request"
+  recordNumber Int?                     @map("record_number")
+  recordId     String                   @map("record_id")
+  recordTitle  String?                  @map("record_title")
+  recordUrl    String?                  @map("record_url")
+  targetType   String                   @map("target_type") // "task" | "requirement" | "defect"
+  targetId     Int                      @map("target_id")
+  createdById  Int?                     @map("created_by")
+  createdBy    User?                    @relation("GitRecordLinkCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+
+  @@unique([projectId, recordId, targetType, targetId])
+  @@index([projectId])
+  @@index([repositoryId])
+  @@index([targetType, targetId])
+  @@map("git_record_links")
+}
+
+model GitMemberMapping {
+  id             Int       @id @default(autoincrement())
+  projectId      Int       @map("project_id")
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId         Int       @map("user_id")
+  user           User      @relation("UserGitMappings", fields: [userId], references: [id], onDelete: Cascade)
+  gitUsername    String?   @map("git_username")
+  gitEmail       String?   @map("git_email")
+  gitName        String?   @map("git_name")
+  avatarUrl      String?   @db.Text @map("avatar_url")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@index([userId])
+  @@map("git_member_mappings")
+}
+
 

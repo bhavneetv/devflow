@@ -69,8 +69,9 @@ const updateModuleSchema = z.object({
 const createSubmoduleSchema = z.object({
   name: z.string().trim().min(1, 'Submodule name is required').max(60, 'Submodule name must be under 60 characters'),
   icon: z.string().trim().optional().default('circle-dot'),
-  type: z.enum(['built_in', 'custom']).optional().default('custom'),
+  type: z.enum(['built_in', 'custom', 'composite']).optional().default('custom'),
   builtInKey: z.string().trim().optional().nullable(),
+  config: z.string().optional().nullable(),
   isVisible: z.boolean().optional().default(true),
   isPinned: z.boolean().optional().default(false),
 });
@@ -78,6 +79,9 @@ const createSubmoduleSchema = z.object({
 const updateSubmoduleSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   icon: z.string().trim().optional(),
+  type: z.enum(['built_in', 'custom', 'composite']).optional(),
+  builtInKey: z.string().trim().optional().nullable(),
+  config: z.string().optional().nullable(),
   isVisible: z.boolean().optional(),
   isPinned: z.boolean().optional(),
   position: z.number().int().optional(),

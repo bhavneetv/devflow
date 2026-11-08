@@ -15,6 +15,7 @@ import {
   Calendar,
   ChevronDown,
   LucideIcon,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 export type OverviewTab =
@@ -283,6 +284,15 @@ export const ProjectOverviewHeader: React.FC<ProjectOverviewHeaderProps> = ({
               <span>Invite Members</span>
             </button>
           )}
+
+          <Link
+            to={`/projects/${project.id}/overview`}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 transition-colors shadow-sm"
+            title="Switch to customizable command center overview"
+          >
+            <SlidersHorizontal size={14} className="text-zinc-400" />
+            <span>Custom View</span>
+          </Link>
 
           <Link
             to={`/projects/${project.id}/settings`}

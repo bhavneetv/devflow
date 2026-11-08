@@ -17,6 +17,7 @@ import { RequirementReviewView } from './views/requirements/RequirementReviewVie
 import { RequirementsTraceabilityView } from './views/requirements/RequirementsTraceabilityView';
 import { ProjectSettingsView } from './views/project/ProjectSettingsView';
 import { SubmodulePlaceholderView } from './views/project/SubmodulePlaceholderView';
+import { ProjectOverviewView } from './views/project/ProjectOverviewView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
 import { LoginPage } from './pages/LoginPage';
@@ -155,6 +156,10 @@ export const App: React.FC = () => {
                             <Route path="/organizations/:organizationSlug/teams/:teamId" element={<TeamView />} />
                             <Route path="/organizations/:organizationSlug/teams/:teamId/*" element={<TeamView />} />
                             <Route path="/organizations/:organizationSlug/projects" element={<OrganizationProjectsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id" element={<ProjectOverviewView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/overview" element={<ProjectOverviewView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/classic" element={<ProjectDetailView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/classic/*" element={<ProjectDetailView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />
@@ -232,8 +237,11 @@ export const App: React.FC = () => {
                             <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />
                             <Route path="/projects/:id/submodules/:submoduleId" element={<SubmodulePlaceholderView />} />
-                            <Route path="/projects/:id" element={<ProjectDetailView />} />
-                            <Route path="/projects/:id/*" element={<ProjectDetailView />} />
+                            <Route path="/projects/:id/overview" element={<ProjectOverviewView />} />
+                            <Route path="/projects/:id/classic" element={<ProjectDetailView />} />
+                            <Route path="/projects/:id/classic/*" element={<ProjectDetailView />} />
+                            <Route path="/projects/:id" element={<ProjectOverviewView />} />
+                            <Route path="/projects/:id/*" element={<ProjectOverviewView />} />
 
                             {/* Fallback */}
                             <Route path="*" element={<Navigate to="/" replace />} />

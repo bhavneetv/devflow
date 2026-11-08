@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { getProjectOverview } from '../services/projectOverview.service.js';
 
 export const projectsRouter = Router();
 
@@ -82,6 +83,29 @@ function parseId(param: string | string[] | undefined): number {
   const str = Array.isArray(param) ? param[0] : param;
   return str ? parseInt(str, 10) : NaN;
 }
+
+// GET /api/projects/:id/overview - Get comprehensive project command center overview
+projectsRouter.get('/:id/overview', async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid project ID' });
+    }
+
+    const forceIllustrative = req.query.illustrative === 'true';
+    const userId = (req as any).user?.id || (req.query.userId ? parseInt(req.query.userId as string, 10) : undefined);
+
+    const overview = await getProjectOverview(id, userId, forceIllustrative);
+    if (!overview) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    res.json({ success: true, data: overview });
+  } catch (error: any) {
+    console.error('Failed to get project overview:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // GET /api/projects/:id - Get project by ID
 projectsRouter.get('/:id', async (req: Request, res: Response) => {

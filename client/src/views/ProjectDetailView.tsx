@@ -1,55 +1,114 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import {
-  FolderKanban,
-  ArrowLeft,
-  GitFork,
-  Settings,
-} from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { motion, useReducedMotion, AnimatePresence } from 'framer-motion';
+import { AlertCircle, RotateCcw } from 'lucide-react';
 import { useNavigation } from '../context/NavigationContext';
-import { Project, Task } from '../types';
 import { apiUrl } from '../config/api';
+import { ProjectOverviewSkeleton } from '../components/project/overview/ProjectOverviewSkeleton';
+import { ProjectOverviewHeader, OverviewTab } from '../components/project/overview/ProjectOverviewHeader';
+import { ProjectStatCard } from '../components/project/overview/ProjectStatCard';
+import { ProjectProgressCard } from '../components/project/overview/ProjectProgressCard';
+import { SprintBurndownChart } from '../components/project/overview/SprintBurndownChart';
+import { TeamVelocityChart } from '../components/project/overview/TeamVelocityChart';
+import { TestResultsDonut } from '../components/project/overview/TestResultsDonut';
+import { DefectTrendChart } from '../components/project/overview/DefectTrendChart';
+import { TeamLeaderboardCard } from '../components/project/overview/TeamLeaderboardCard';
+import { RecentTasksCard } from '../components/project/overview/RecentTasksCard';
+import { ProjectActivityFeed } from '../components/project/overview/ProjectActivityFeed';
+import { UpcomingDeadlinesCard } from '../components/project/overview/UpcomingDeadlinesCard';
+import { ProjectRoadmapView } from '../components/project/overview/ProjectRoadmapView';
+import { ProjectHealthPanel } from '../components/project/overview/ProjectHealthPanel';
+import { TeamWorkloadView } from '../components/project/overview/TeamWorkloadView';
+import { RequirementTraceabilityView } from '../components/project/overview/RequirementTraceabilityView';
+import { ReleaseReadinessPanel } from '../components/project/overview/ReleaseReadinessPanel';
 
 export const ProjectDetailView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { selectProject, exitProjectMode } = useNavigation();
-  const [project, setProject] = useState<Project | null>(null);
+  const shouldReduceMotion = useReducedMotion();
+
+  const [overviewData, setOverviewData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [illustrativeOverride, setIllustrativeOverride] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<OverviewTab>('overview');
+  const [dateRange, setDateRange] = useState<string>('30d');
+
+  const fetchOverview = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const targetId = id || '1';
+      const url = apiUrl(
+        `/projects/${targetId}/overview?illustrative=${illustrativeOverride}`
+      );
+      const res = await fetch(url);
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        setOverviewData(json.data);
+        // Keep NavigationContext in sync
+        selectProject({
+          id: json.data.project.id,
+          title: json.data.project.title,
+          status: json.data.project.status,
+        });
+      } else {
+        setError(json.error || 'Failed to load project command center');
+      }
+    } catch (err: any) {
+      console.error('Project Overview fetch error:', err);
+      setError(err.message || 'Network error while loading project overview');
+    } finally {
+      setLoading(false);
+    }
+  }, [id, illustrativeOverride, selectProject]);
 
   useEffect(() => {
-    const loadProject = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(apiUrl(`/projects/${id || 1}`));
-        const data = await res.json();
-        if (data.success) {
-          setProject(data.data);
-          selectProject({
-            id: data.data.id,
-            title: data.data.title,
-            status: data.data.status,
-          });
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadProject();
-  }, [id]);
+    fetchOverview();
+  }, [fetchOverview]);
 
-  if (loading) {
-    return <div className="p-8 text-center text-zinc-500 text-xs">Loading project details...</div>;
+  if (loading && !overviewData) {
+    return <ProjectOverviewSkeleton />;
   }
 
-  if (!project) {
+  if (error && !overviewData) {
+    return (
+      <div className="p-8 max-w-xl mx-auto my-12 text-center rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+        <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto">
+          <AlertCircle size={22} />
+        </div>
+        <div>
+          <h2 className="text-base font-semibold text-white">Project Overview Unavailable</h2>
+          <p className="text-xs text-zinc-400 mt-1">{error}</p>
+        </div>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            onClick={fetchOverview}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors cursor-pointer"
+          >
+            <RotateCcw size={13} />
+            <span>Retry</span>
+          </button>
+          <button
+            onClick={exitProjectMode}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-zinc-800 border border-zinc-700 transition-colors cursor-pointer"
+          >
+            Back to Workspace
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!overviewData) {
     return (
       <div className="p-8 text-center text-zinc-500 text-xs">
         <p>Project not found.</p>
         <button
           onClick={exitProjectMode}
-          className="mt-3 px-3 py-1.5 rounded bg-zinc-800 text-white"
+          className="mt-3 px-3 py-1.5 rounded bg-zinc-800 text-white cursor-pointer"
         >
           Back to Workspace
         </button>
@@ -57,115 +116,301 @@ export const ProjectDetailView: React.FC = () => {
     );
   }
 
+  const {
+    project,
+    stats,
+    progressBars,
+    burndown,
+    velocity,
+    testResults,
+    recentTasks,
+    activity,
+    deadlines,
+    healthIntelligence,
+    roadmap,
+    teamWorkload,
+    traceability,
+    releaseReadiness,
+    analyticsTrends,
+  } = overviewData;
+
+  // Health display config
+  const getHealthConfig = () => {
+    switch (stats.health) {
+      case 'CRITICAL':
+        return {
+          title: 'Critical',
+          color: 'text-red-400',
+          badgeColor: 'bg-red-500/10 text-red-400 border-red-500/30',
+        };
+      case 'AT_RISK':
+        return {
+          title: 'At Risk',
+          color: 'text-amber-400',
+          badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+        };
+      case 'HEALTHY':
+      default:
+        return {
+          title: 'Healthy',
+          color: 'text-emerald-400',
+          badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+        };
+    }
+  };
+
+  const healthConfig = getHealthConfig();
+
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      {/* Project Banner Header */}
-      <div className="p-5 rounded-xl border border-[#27272A] bg-[#0E0E10] space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
-              <FolderKanban size={20} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg font-bold text-white tracking-tight truncate">{project.title}</h1>
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
-                  {project.status.replace('_', ' ')}
-                </span>
-                {/* Left-aligned Project Settings Button */}
-                <Link
-                  to={`/projects/${project.id}/settings`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 transition-colors cursor-pointer shadow-sm ml-1 shrink-0"
-                >
-                  <Settings size={12} className="text-zinc-400" />
-                  <span>Project Settings</span>
-                </Link>
-              </div>
-              <div className="text-xs text-zinc-400 mt-1">
-                Owner: {project.owner?.name || 'Unassigned'} • Created{' '}
-                {new Date(project.createdAt).toLocaleDateString()}
-              </div>
-            </div>
-          </div>
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* 1. Header Card with integrated Tab Navigation & Date Filter */}
+      <ProjectOverviewHeader
+        project={project}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        isIllustrativeActive={illustrativeOverride}
+        onToggleIllustrative={() => setIllustrativeOverride((prev) => !prev)}
+        onExitProject={exitProjectMode}
+        onOpenInviteModal={() => {
+          navigate(`/projects/${project.id}/settings`);
+        }}
+        blockerCount={stats.blockers}
+        riskCount={healthIntelligence?.risks?.length || 0}
+        unlinkedReqCount={traceability?.unlinkedCount || 0}
+      />
 
-          <button
-            onClick={exitProjectMode}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors"
+      {/* 2. Dynamic Content Based on Active Tab */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'overview' && (
+          <motion.div
+            key="tab-overview"
+            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-6"
           >
-            <ArrowLeft size={13} />
-            <span>Return to Workspace</span>
-          </button>
-        </div>
+            {/* 6 Top Stat Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {/* Card 1: Progress */}
+              <ProjectStatCard
+                title="Progress"
+                value={`${stats.progressPct}%`}
+                subText={`${stats.doneUnits} of ${stats.totalUnits} units`}
+                progressPct={stats.progressPct}
+                progressColor="bg-blue-500"
+                delayMs={0}
+              />
 
-        {project.description && (
-          <p className="text-xs text-zinc-300 leading-relaxed border-t border-zinc-800/80 pt-2">
-            {project.description}
-          </p>
-        )}
-      </div>
+              {/* Card 2: Requirements */}
+              <ProjectStatCard
+                title="Requirements"
+                value={stats.requirementCount}
+                subText={`${stats.approvedRequirements} approved`}
+                subTextColor="text-purple-400"
+                progressPct={
+                  stats.requirementCount > 0
+                    ? Math.round((stats.approvedRequirements / stats.requirementCount) * 100)
+                    : 0
+                }
+                progressColor="bg-purple-500"
+                delayMs={80}
+              />
 
-      {/* Project Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="p-4 rounded-lg bg-[#0E0E10] border border-[#27272A]">
-          <div className="text-[11px] uppercase font-semibold text-zinc-500">Total Tasks</div>
-          <div className="text-2xl font-bold text-white mt-1">
-            {project.tasks?.length || 0}
-          </div>
-          <div className="text-[11px] text-zinc-400 mt-1">Relational tasks in MySQL</div>
-        </div>
+              {/* Card 3: Tasks */}
+              <ProjectStatCard
+                title="Tasks"
+                value={stats.taskCount}
+                subText={stats.blockedTasks > 0 ? `${stats.blockedTasks} blocked` : '0 blocked'}
+                subTextColor={
+                  stats.blockedTasks > 0 ? 'text-amber-400 font-semibold' : 'text-zinc-400'
+                }
+                delayMs={160}
+              />
 
-        <div className="p-4 rounded-lg bg-[#0E0E10] border border-[#27272A]">
-          <div className="text-[11px] uppercase font-semibold text-zinc-500">Repository Branch</div>
-          <div className="text-lg font-mono font-semibold text-zinc-200 mt-1 flex items-center gap-1.5">
-            <GitFork size={15} className="text-zinc-400" />
-            <span>main (v2.4.0)</span>
-          </div>
-          <div className="text-[11px] text-zinc-400 mt-1">Latest commit 2h ago</div>
-        </div>
+              {/* Card 4: Sprint */}
+              {stats.activeSprint ? (
+                <ProjectStatCard
+                  title={stats.activeSprint.name}
+                  value={`${stats.activeSprint.pct}%`}
+                  subText={`${stats.activeSprint.daysLeft} days left`}
+                  progressPct={stats.activeSprint.pct}
+                  progressColor="bg-cyan-500"
+                  delayMs={240}
+                />
+              ) : (
+                <ProjectStatCard
+                  title="Sprint"
+                  value="Backlog"
+                  subText="No active sprint"
+                  subTextColor="text-zinc-500"
+                  delayMs={240}
+                />
+              )}
 
-        <div className="p-4 rounded-lg bg-[#0E0E10] border border-[#27272A]">
-          <div className="text-[11px] uppercase font-semibold text-zinc-500">Current Sprint Cycle</div>
-          <div className="text-lg font-semibold text-white mt-1">Sprint #12</div>
-          <div className="text-[11px] text-zinc-400 mt-1">Ends in 4 days</div>
-        </div>
-      </div>
+              {/* Card 5: Team */}
+              <ProjectStatCard
+                title="Team"
+                value={stats.teamCount}
+                subText={`${stats.availableMembers} available`}
+                subTextColor="text-zinc-300"
+                delayMs={320}
+              />
 
-      {/* Project Tasks List */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-200">Project Tasks & Issues</h2>
-          <span className="text-xs text-zinc-500">{project.tasks?.length || 0} items</span>
-        </div>
+              {/* Card 6: Health */}
+              <ProjectStatCard
+                title="Health"
+                value={healthConfig.title}
+                subText={
+                  stats.blockers > 0
+                    ? `${stats.blockers} blocker${stats.blockers > 1 ? 's' : ''}`
+                    : stats.healthReasons?.[0] || 'On track'
+                }
+                subTextColor={healthConfig.color}
+                badge={stats.health}
+                badgeColor={healthConfig.badgeColor}
+                delayMs={400}
+              />
+            </div>
 
-        <div className="border border-[#27272A] rounded-lg divide-y divide-[#27272A] bg-[#0E0E10] overflow-hidden">
-          {project.tasks?.map((task: Task) => (
-            <div
-              key={task.id}
-              className="flex items-center justify-between p-3 hover:bg-[#161619] transition-colors gap-3 text-xs"
-            >
-              <div className="flex items-center gap-3 truncate">
-                <span className="font-mono text-zinc-500 text-[11px]">DEV-{100 + task.id}</span>
-                <span className="font-medium text-zinc-200 truncate">{task.title}</span>
+            {/* Two-Column Command Center Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* LEFT COLUMN (2/3 width) */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* A. Project Progress Card */}
+                <ProjectProgressCard
+                  progressBars={progressBars}
+                  showIllustrativeTag={illustrativeOverride}
+                />
+
+                {/* B. Live Project Analytics Section (4 cards in responsive grid) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                      Live Project Analytics & Velocity
+                    </h2>
+                    <span className="text-[11px] text-zinc-500">Real-time metrics & trends</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <SprintBurndownChart
+                      data={burndown}
+                      isIllustrative={illustrativeOverride}
+                    />
+                    <TeamVelocityChart
+                      data={velocity}
+                      isIllustrative={illustrativeOverride}
+                    />
+                    <TestResultsDonut
+                      data={testResults}
+                      isIllustrative={illustrativeOverride}
+                    />
+                    <DefectTrendChart
+                      data={analyticsTrends?.defectTrend}
+                      isIllustrative={illustrativeOverride}
+                    />
+                  </div>
+                </div>
+
+                {/* C. Recent Tasks Card */}
+                <RecentTasksCard tasks={recentTasks} />
               </div>
 
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <span className="text-[11px] text-zinc-400">
-                  {task.assignee?.name || 'Unassigned'}
-                </span>
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                    task.status === 'DONE'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                      : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                  }`}
-                >
-                  {task.status}
-                </span>
+              {/* RIGHT COLUMN (1/3 width) */}
+              <div className="space-y-6">
+                {/* D. Team Leaderboard Card (Inspired by Image 4) */}
+                <TeamLeaderboardCard
+                  members={teamWorkload?.members || []}
+                  onViewAll={() => setActiveTab('workload')}
+                />
+
+                {/* E. Development Activity Feed */}
+                <ProjectActivityFeed activities={activity} />
+
+                {/* F. Upcoming Deadlines */}
+                <UpcomingDeadlinesCard deadlines={deadlines} />
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+          </motion.div>
+        )}
+
+        {/* Tab 2: Roadmap & Gantt */}
+        {activeTab === 'roadmap' && (
+          <motion.div
+            key="tab-roadmap"
+            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+          >
+            <ProjectRoadmapView roadmap={roadmap} />
+          </motion.div>
+        )}
+
+        {/* Tab 3: Health & Risks */}
+        {activeTab === 'health' && (
+          <motion.div
+            key="tab-health"
+            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+          >
+            <ProjectHealthPanel
+              health={healthIntelligence}
+              projectId={project.id}
+            />
+          </motion.div>
+        )}
+
+        {/* Tab 4: Team Workload */}
+        {activeTab === 'workload' && (
+          <motion.div
+            key="tab-workload"
+            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+          >
+            <TeamWorkloadView workload={teamWorkload} />
+          </motion.div>
+        )}
+
+        {/* Tab 5: Traceability & QA */}
+        {activeTab === 'traceability' && (
+          <motion.div
+            key="tab-traceability"
+            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+          >
+            <RequirementTraceabilityView
+              traceability={traceability}
+              projectId={project.id}
+            />
+          </motion.div>
+        )}
+
+        {/* Tab 6: Release Readiness */}
+        {activeTab === 'release' && (
+          <motion.div
+            key="tab-release"
+            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+          >
+            <ReleaseReadinessPanel
+              readiness={releaseReadiness}
+              projectId={project.id}
+              stats={stats}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -10,6 +10,11 @@ import { OverviewView } from './views/OverviewView';
 import { InboxView } from './views/InboxView';
 import { MyIssuesView } from './views/MyIssuesView';
 import { ProjectDetailView } from './views/ProjectDetailView';
+import { RequirementsDashboardView } from './views/requirements/RequirementsDashboardView';
+import { CreateRequirementWizard } from './views/requirements/CreateRequirementWizard';
+import { RequirementDetailView } from './views/requirements/RequirementDetailView';
+import { RequirementReviewView } from './views/requirements/RequirementReviewView';
+import { RequirementsTraceabilityView } from './views/requirements/RequirementsTraceabilityView';
 import { ProjectSettingsView } from './views/project/ProjectSettingsView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
@@ -152,6 +157,13 @@ export const App: React.FC = () => {
                             {/* 3. Projects - Scoped to organization */}
                             <Route path="/projects" element={<ProjectsRedirectRoute />} />
 
+                            {/* Requirements - Global Dashboard & Creation */}
+                            <Route path="/requirements" element={<RequirementsDashboardView />} />
+                            <Route path="/requirements/new" element={<CreateRequirementWizard />} />
+                            <Route path="/requirements/traceability" element={<RequirementsTraceabilityView />} />
+                            <Route path="/requirements/:reqId" element={<RequirementDetailView />} />
+                            <Route path="/requirements/:reqId/review" element={<RequirementReviewView />} />
+
                             {/* 4. My Tasks - Tasks assigned to me */}
                             <Route path="/my-tasks" element={<MyIssuesView />} />
                             <Route path="/my-issues" element={<MyIssuesView />} />
@@ -178,6 +190,11 @@ export const App: React.FC = () => {
                             <Route path="/help" element={<SettingsView />} />
 
                             {/* Project Context Mode Routes */}
+                            <Route path="/projects/:id/requirements/new" element={<CreateRequirementWizard />} />
+                            <Route path="/projects/:id/requirements/traceability" element={<RequirementsTraceabilityView />} />
+                            <Route path="/projects/:id/requirements/:reqId" element={<RequirementDetailView />} />
+                            <Route path="/projects/:id/requirements/:reqId/review" element={<RequirementReviewView />} />
+                            <Route path="/projects/:id/requirements" element={<RequirementsDashboardView />} />
                             <Route path="/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id" element={<ProjectDetailView />} />

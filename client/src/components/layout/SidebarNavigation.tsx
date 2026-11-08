@@ -17,6 +17,7 @@ import {
   Activity as ActivityIcon,
   HelpCircle,
   Users as UsersIcon,
+  FileText,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useOrganization } from '../../context/OrganizationContext';
@@ -96,6 +97,19 @@ export const SidebarNavigation: React.FC = () => {
                 icon={Inbox}
               />
               <NavigationItem
+                title="Requirements"
+                path="/requirements"
+                icon={FileText}
+                onClick={(e: React.MouseEvent) => {
+                  // Dispatch drawer toggle event; fallback to routing only if drawer failed to mount
+                  const isDrawerMounted = (window as any).__devflow_requirements_drawer_mounted !== false;
+                  if (isDrawerMounted) {
+                    e.preventDefault();
+                    window.dispatchEvent(new CustomEvent('devflow:toggle-requirements-drawer'));
+                  }
+                }}
+              />
+              <NavigationItem
                 title="My Tasks"
                 path="/my-tasks"
                 icon={CheckSquare}
@@ -121,6 +135,17 @@ export const SidebarNavigation: React.FC = () => {
                   icon={item.icon}
                   badge={item.badge}
                   badgeVariant={item.badgeVariant}
+                  onClick={
+                    item.id === 'requirements'
+                      ? (e: React.MouseEvent) => {
+                          const isDrawerMounted = (window as any).__devflow_requirements_drawer_mounted !== false;
+                          if (isDrawerMounted) {
+                            e.preventDefault();
+                            window.dispatchEvent(new CustomEvent('devflow:toggle-requirements-drawer'));
+                          }
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </div>

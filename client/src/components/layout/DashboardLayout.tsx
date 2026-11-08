@@ -9,6 +9,7 @@ import { useNavigation } from '../../context/NavigationContext';
 import { useOrganization } from '../../context/OrganizationContext';
 import { CreateOrganizationModal } from '../organization/CreateOrganizationModal';
 import { JoinOrganizationModal } from '../organization/JoinOrganizationModal';
+import { RequirementsSlideOver } from '../requirements/RequirementsSlideOver';
 
 interface DashboardLayoutProps {
   children?: React.ReactNode;
@@ -75,6 +76,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         isOpen={isJoinModalOpen}
         onClose={() => setIsJoinModalOpen(false)}
       />
+
+      {/* Global Requirements Slide-Over Drawer (Trigger: 'g r' or Ctrl+Shift+R) */}
+      <RequirementsSlideOver />
     </div>
   );
 };

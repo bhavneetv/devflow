@@ -24,6 +24,7 @@ import {
   HelpCircle,
   UserCheck,
   Users as UsersIcon,
+  FileText,
 } from 'lucide-react';
 
 export const SidebarNavigation: React.FC = () => {
@@ -75,6 +76,12 @@ export const SidebarNavigation: React.FC = () => {
           title: 'Projects',
           path: `/organizations/${orgSlug}/projects`,
           icon: FolderKanban,
+        },
+        {
+          id: 'requirements',
+          title: 'Requirements',
+          path: '/requirements',
+          icon: FileText,
         },
         {
           id: 'my-tasks',
@@ -134,6 +141,18 @@ export const SidebarNavigation: React.FC = () => {
                 icon={item.icon}
                 badge={item.badge}
                 badgeVariant={item.badgeVariant}
+                onClick={
+                  item.id === 'requirements'
+                    ? (e) => {
+                        // Dispatch drawer toggle event; fallback to routing only if drawer failed to mount
+                        const isDrawerMounted = (window as any).__devflow_requirements_drawer_mounted !== false;
+                        if (isDrawerMounted) {
+                          e.preventDefault();
+                          window.dispatchEvent(new CustomEvent('devflow:toggle-requirements-drawer'));
+                        }
+                      }
+                    : undefined
+                }
               />
             ))}
           </div>

@@ -13,7 +13,7 @@ interface NavigationItemProps {
   level?: number;
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent) => void;
 }
 
 export const NavigationItem: React.FC<NavigationItemProps> = ({
@@ -33,8 +33,8 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
   // Active match check: either exact path or starting with path for deep sub-routes
   const isActive = location.pathname === path || (path !== '/' && location.pathname.startsWith(path + '/'));
 
-  const handleClick = () => {
-    if (onClick) onClick();
+  const handleClick = (e: React.MouseEvent) => {
+    if (onClick) onClick(e);
     setIsMobileOpen(false);
   };
 

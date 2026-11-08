@@ -9,6 +9,7 @@ import {
   Activity,
   BarChart3,
   GitMerge,
+  GitBranch,
   AlertTriangle,
   CheckCircle,
   TrendingUp,
@@ -16,17 +17,11 @@ import {
   Gauge,
   HeartPulse,
   Clock,
-  Code2,
-  GitCommitHorizontal,
   ExternalLink,
-  ShieldAlert,
   Users,
   Settings,
-  Layers,
-  Kanban,
-  FileCode,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { gitService } from '../../services/git.service';
 import { useNavigation } from '../../context/NavigationContext';
 import { GitActivityFeed } from './GitActivityFeed';
@@ -71,7 +66,7 @@ type Category = 'commits' | 'mrs' | 'issues' | 'other';
 const categorize = (e: any): Category => {
   const t = String(e?.type || e?.action || e?.event || '').toLowerCase();
   if (/issue/.test(t)) return 'issues';
-  if (/merge|pull|review|\\bmr\\b|\\bpr\\b/.test(t)) return 'mrs';
+  if (/merge|pull|review|\bmr\b|\bpr\b/.test(t)) return 'mrs';
   if (/commit|push/.test(t)) return 'commits';
   return 'other';
 };
@@ -97,7 +92,7 @@ const smoothPath = (pts: Array<{ x: number; y: number }>) => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Presentational building blocks (same design system as ProjectOverviewView)
+// Presentational building blocks (same design system as OrganizationOverviewView)
 // ═════════════════════════════════════════════════════════════════════════════
 
 const Panel: React.FC<{
@@ -214,17 +209,90 @@ const StackBar: React.FC<{ parts: Array<{ key: string; label: string; value: num
   );
 };
 
+// ═════════════════════════════════════════════════════════════════════════════
+// Skeleton Loading Screen (matches OrganizationOverviewView 8-col left / 4-col right)
+// ═════════════════════════════════════════════════════════════════════════════
+
 const GitOverviewSkeleton: React.FC = () => (
-  <div className="space-y-5 animate-pulse">
-    <div className="h-14 rounded-2xl bg-zinc-800/50 border border-[#27272A]" />
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-      {[...Array(4)].map((_, i) => (
-        <div key={i} className="h-28 rounded-2xl bg-zinc-800/40 border border-[#27272A]" />
-      ))}
+  <div className="space-y-5 animate-pulse text-left">
+    {/* Header Skeleton */}
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-[#27272A]/70">
+      <div className="min-w-0 space-y-2">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="w-48 h-7 rounded-lg bg-zinc-800/80" />
+          <div className="w-24 h-5 rounded-md bg-zinc-800/60" />
+          <div className="w-20 h-5 rounded-md bg-zinc-800/60" />
+        </div>
+        <div className="w-80 h-4 rounded bg-zinc-800/50" />
+      </div>
+      <div className="flex items-center gap-2.5 shrink-0">
+        <div className="w-32 h-6 rounded bg-zinc-800/40 hidden sm:block" />
+        <div className="w-8 h-8 rounded-lg bg-zinc-800/80" />
+        <div className="w-28 h-8 rounded-lg bg-zinc-800/80" />
+        <div className="w-28 h-8 rounded-lg bg-zinc-800/80" />
+      </div>
     </div>
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      <div className="lg:col-span-8 h-96 rounded-2xl bg-zinc-800/40 border border-[#27272A]" />
-      <div className="lg:col-span-4 h-96 rounded-2xl bg-zinc-800/40 border border-[#27272A]" />
+
+    {/* Upper Dashboard Grid: Left 8-cols (Summary Cards + Trend) | Right 4-cols (Identity + Feed) */}
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      {/* Left Column (8 cols) */}
+      <div className="lg:col-span-8 space-y-5">
+        {/* 4 Summary Cards Skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] p-4 space-y-3">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1.5">
+                  <div className="w-16 h-3 rounded bg-zinc-800/70" />
+                  <div className="w-12 h-7 rounded bg-zinc-800/90" />
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-zinc-800/70" />
+              </div>
+              <div className="w-full h-2 rounded-full bg-zinc-800/50" />
+              <div className="w-28 h-3 rounded bg-zinc-800/40" />
+            </div>
+          ))}
+        </div>
+
+        {/* Chart Panel Skeleton */}
+        <div className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[#27272A]/70">
+            <div className="space-y-1">
+              <div className="w-36 h-4 rounded bg-zinc-800/80" />
+              <div className="w-56 h-3 rounded bg-zinc-800/50" />
+            </div>
+            <div className="w-28 h-7 rounded-lg bg-zinc-800/60" />
+          </div>
+          <div className="h-52 w-full rounded-xl bg-zinc-800/30" />
+        </div>
+      </div>
+
+      {/* Right Column (4 cols) */}
+      <div className="lg:col-span-4 space-y-5">
+        <div className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-zinc-800/80 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="w-28 h-4 rounded bg-zinc-800/80" />
+              <div className="w-20 h-3 rounded bg-zinc-800/50" />
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-14 rounded-xl bg-zinc-800/50" />
+            ))}
+          </div>
+          <div className="space-y-2.5 pt-3 border-t border-[#27272A]/70">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex justify-between items-center">
+                <div className="w-20 h-3 rounded bg-zinc-800/60" />
+                <div className="w-24 h-3 rounded bg-zinc-800/70" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="h-60 rounded-2xl bg-[#0E0F14]/95 border border-[#27272A]" />
+      </div>
     </div>
   </div>
 );
@@ -500,27 +568,40 @@ export const GitOverview: React.FC<GitOverviewProps> = ({ projectId, onNavigateT
 
   return (
     <div className="space-y-5 text-left">
-      {/* ═══ HEADER RIBBON ═══════════════════════════════════════════════════ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#27272A]/70">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 shadow-lg shadow-indigo-500/5">
-            <GitMerge size={20} />
+      {/* ═══ HEADER (No left icon, text-side badges, page path on right side just like OrganizationOverviewView) ═══ */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-[#27272A]/70">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-2xl sm:text-[28px] font-extrabold text-white tracking-tight leading-tight truncate">
+              Git Overview
+            </h1>
+            <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-semibold border bg-indigo-500/10 border-indigo-500/30 text-indigo-400">
+              /git-overview
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider font-mono border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Live Sync
+            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider font-mono bg-zinc-800 text-zinc-300 border border-zinc-700">
+              <GitFork size={11} className="text-indigo-400" />
+              {stats.totalRepositories} {stats.totalRepositories === 1 ? 'Repo' : 'Repos'}
+            </span>
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl font-extrabold text-white tracking-tight leading-tight">Git Overview</h2>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10.5px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live Sync
-              </span>
-            </div>
-            <p className="text-[12px] text-zinc-500 truncate mt-0.5">
-              Live intelligence across ${stats.totalRepositories} connected ${stats.totalRepositories === 1 ? 'repository' : 'repositories'}
-            </p>
-          </div>
+          <p className="text-[13.5px] text-zinc-400 mt-1 truncate">
+            Live repository intelligence, merge request pipelines, and unified cross-repo activity stream.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Right side: Page Path + Actions */}
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs text-zinc-400 font-mono mr-1 hidden sm:flex">
+            <Link to={`/projects/${projectId}`} className="hover:text-white transition-colors">
+              {activeProject?.title || 'Project'}
+            </Link>
+            <span className="text-zinc-600">/</span>
+            <span className="text-zinc-200 font-medium">git-overview</span>
+          </div>
+
           <button
             type="button"
             onClick={fetchOverview}
@@ -549,136 +630,135 @@ export const GitOverview: React.FC<GitOverviewProps> = ({ projectId, onNavigateT
         </div>
       </div>
 
-      {/* ═══ 4 TOP SUMMARY CARDS (Exact match to Project Overview) ══════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* Card 1: Git Health */}
-        <div className="rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] p-4 flex items-center gap-4 shadow-xl">
-          <Ring pct={healthScore} color={healthColor} size={68} stroke={7}>
-            <span className="text-sm font-bold font-mono text-white">{healthScore}</span>
-          </Ring>
-          <div className="min-w-0">
-            <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-              <HeartPulse size={12} style={{ color: healthColor }} /> Git Health
-            </div>
-            <div className="text-[13px] font-semibold mt-1" style={{ color: healthColor }}>
-              {healthLabel}
-            </div>
-            <div className="text-[10.5px] font-mono text-zinc-500 mt-0.5">
-              ${stats.mrsWithConflicts} conflicts · ${stats.mrsAwaitingReview} in review
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Merge Requests */}
-        <div
-          onClick={() => goTo('git.merge_requests', 'pulls')}
-          className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-indigo-500/40 p-4 transition-colors cursor-pointer text-left shadow-xl"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">
-                Merge Requests
-              </div>
-              <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">
-                {mergeRate}
-                <span className="text-base text-zinc-500">%</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform">
-              <GitPullRequest size={17} />
-            </div>
-          </div>
-          <div className="mt-3 space-y-1.5">
-            <StackBar
-              parts={[
-                { key: 'open', label: 'Open', value: stats.openMergeRequests, color: '#6366F1' },
-                { key: 'review', label: 'Awaiting Review', value: stats.mrsAwaitingReview, color: '#F59E0B' },
-                { key: 'approved', label: 'Approved', value: stats.approvedMrs, color: '#06B6D4' },
-                { key: 'merged', label: 'Merged', value: stats.mergedMrs, color: '#10B981' },
-              ]}
-            />
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-              <span>${stats.openMergeRequests} open</span>
-              <span>${stats.mergedMrs} merged</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Git Issues */}
-        <div
-          onClick={() => goTo('git.issues', 'issues', { state: 'open' })}
-          className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-amber-500/40 p-4 transition-colors cursor-pointer text-left shadow-xl"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">
-                Git Issues
-              </div>
-              <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">
-                {stats.openIssues}
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
-              <CircleDot size={17} />
-            </div>
-          </div>
-          <div className="mt-3 space-y-1.5">
-            <StackBar
-              parts={[
-                { key: 'open', label: 'Open', value: stats.openIssues, color: '#F59E0B' },
-                { key: 'closed', label: 'Closed', value: stats.closedIssues, color: '#10B981' },
-              ]}
-            />
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-              <span>${stats.closedIssues} closed</span>
-              <span>${issueCloseRate}% resolution</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Repositories & Sync */}
-        <div
-          onClick={() => goTo('git.repositories', 'repositories')}
-          className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-cyan-500/40 p-4 transition-colors cursor-pointer text-left shadow-xl"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">
-                Repositories
-              </div>
-              <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">
-                {stats.totalRepositories}
-                <span className="text-base text-zinc-500 font-normal"> connected</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform">
-              <GitFork size={17} />
-            </div>
-          </div>
-          <div className="mt-3 space-y-1.5">
-            <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-              <motion.div
-                className="h-full rounded-full bg-cyan-500"
-                initial={{ width: 0 }}
-                animate={{ width: `${clamp(stats.recentCommitsCount * 4, 20, 100)}%` }}
-                transition={{ duration: 0.6, ease: 'easeOut' }}
-              />
-            </div>
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-              <span>${stats.recentCommitsCount} recent commits</span>
-              <span className="flex items-center gap-1 text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ MAIN BODY: 8-COL CONTENT + 4-COL SIDEBAR ═════════════════════════ */}
+      {/* ═══ UPPER DASHBOARD GRID: LEFT (8-COL: SUMMARY CARDS + TREND) | RIGHT (4-COL: HUB + ATTENTION) ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* ─── LEFT COLUMN (lg:col-span-8) ──────────────────────────────────── */}
         <div className="lg:col-span-8 space-y-5 min-w-0">
+          {/* 4 Summary Cards (Inside left column, exactly matching OrganizationOverviewView) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {/* Card 1: Repositories & Sync */}
+            <div
+              onClick={() => goTo('git.repositories', 'repositories')}
+              className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-cyan-500/40 p-4 transition-colors cursor-pointer text-left shadow-xl"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">
+                    Repositories
+                  </div>
+                  <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">
+                    {stats.totalRepositories}
+                  </div>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition-transform">
+                  <GitFork size={17} />
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full bg-cyan-500"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${clamp(stats.recentCommitsCount * 4, 20, 100)}%` }}
+                    transition={{ duration: 0.6, ease: 'easeOut' }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                  <span>{stats.recentCommitsCount} commits</span>
+                  <span className="flex items-center gap-1 text-emerald-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Live
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Merge Requests */}
+            <div
+              onClick={() => goTo('git.merge_requests', 'pulls')}
+              className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-indigo-500/40 p-4 transition-colors cursor-pointer text-left shadow-xl"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">
+                    Merge Requests
+                  </div>
+                  <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">
+                    {mergeRate}
+                    <span className="text-base text-zinc-500 font-normal">%</span>
+                  </div>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform">
+                  <GitPullRequest size={17} />
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <StackBar
+                  parts={[
+                    { key: 'open', label: 'Open', value: stats.openMergeRequests, color: '#6366F1' },
+                    { key: 'review', label: 'Awaiting Review', value: stats.mrsAwaitingReview, color: '#F59E0B' },
+                    { key: 'approved', label: 'Approved', value: stats.approvedMrs, color: '#06B6D4' },
+                    { key: 'merged', label: 'Merged', value: stats.mergedMrs, color: '#10B981' },
+                  ]}
+                />
+                <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                  <span>{stats.openMergeRequests} open</span>
+                  <span>{stats.mergedMrs} merged</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Git Issues */}
+            <div
+              onClick={() => goTo('git.issues', 'issues', { state: 'open' })}
+              className="group rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] hover:border-amber-500/40 p-4 transition-colors cursor-pointer text-left shadow-xl"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500">
+                    Git Issues
+                  </div>
+                  <div className="text-3xl font-extrabold text-white font-mono tracking-tight mt-1">
+                    {stats.openIssues}
+                  </div>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+                  <CircleDot size={17} />
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <StackBar
+                  parts={[
+                    { key: 'open', label: 'Open', value: stats.openIssues, color: '#F59E0B' },
+                    { key: 'closed', label: 'Closed', value: stats.closedIssues, color: '#10B981' },
+                  ]}
+                />
+                <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                  <span>{stats.closedIssues} closed</span>
+                  <span>{issueCloseRate}% rate</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Git Health (Ring Gauge matching Organization Completion card) */}
+            <div className="rounded-2xl bg-[#0E0F14]/90 border border-[#27272A] p-4 flex items-center gap-4 shadow-xl">
+              <Ring pct={healthScore} color={healthColor} size={68} stroke={7}>
+                <span className="text-sm font-bold font-mono text-white">{healthScore}</span>
+              </Ring>
+              <div className="min-w-0">
+                <div className="text-[10.5px] font-mono font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+                  <HeartPulse size={12} style={{ color: healthColor }} /> Health
+                </div>
+                <div className="text-[13px] font-semibold mt-1" style={{ color: healthColor }}>
+                  {healthLabel}
+                </div>
+                <div className="text-[10.5px] font-mono text-zinc-500 mt-0.5 truncate">
+                  {stats.mrsWithConflicts} conflicts · {stats.mrsAwaitingReview} review
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Graph 1: Activity trend */}
           <Panel
             icon={<BarChart3 size={16} className="text-indigo-400" />}

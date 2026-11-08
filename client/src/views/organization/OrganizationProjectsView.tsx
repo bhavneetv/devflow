@@ -29,13 +29,21 @@ import {
   ExternalLink,
   Flame,
   Zap,
+  PauseCircle,
+  Tag,
+  Crown,
+  Building2,
+  Star,
 } from 'lucide-react';
 import { useOrganization } from '../../context/OrganizationContext';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { organizationService } from '../../services/organization.service';
+import { useNavigation } from '../../context/NavigationContext';
 import { useToast } from '../../context/ToastContext';
 import { apiUrl } from '../../config/api';
 import { authService } from '../../services/auth.service';
+import { CreateProjectModal } from '../../components/project/CreateProjectModal';
+import { AVATAR_ICON_COMPONENTS } from '../../components/onboarding/StepProfile';
 
 // ─── Status Filter Tabs ──────────────────────────────────────────────────────
 
@@ -43,6 +51,7 @@ const STATUS_TABS = [
   { id: 'ALL', label: 'All Projects', icon: FolderKanban },
   { id: 'IN_PROGRESS', label: 'In Progress', icon: Zap },
   { id: 'PLANNING', label: 'Planning', icon: Clock },
+  { id: 'PENDING', label: 'Pending', icon: PauseCircle },
   { id: 'COMPLETED', label: 'Completed', icon: CheckCircle2 },
   { id: 'ARCHIVED', label: 'Archived', icon: Layers },
 ];
@@ -68,10 +77,17 @@ const getStatusBadge = (status: string) => {
         dot: '#10B981',
       };
     case 'PLANNING':
+    case 'BACKLOG':
       return {
         label: 'Planning',
         color: 'bg-amber-500/10 text-amber-400 border-amber-500/25',
         dot: '#F59E0B',
+      };
+    case 'PENDING':
+      return {
+        label: 'Pending',
+        color: 'bg-sky-500/10 text-sky-400 border-sky-500/25',
+        dot: '#38BDF8',
       };
     case 'ARCHIVED':
       return {
@@ -171,6 +187,7 @@ export const OrganizationProjectsView: React.FC = () => {
   const { currentOrganization } = useOrganization();
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
+  const { isResourceFavorite, toggleFavoriteResource } = useNavigation();
 
   const targetSlug = organizationSlug || currentOrganization?.slug;
 
@@ -191,10 +208,6 @@ export const OrganizationProjectsView: React.FC = () => {
 
   // Create Project Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [newStatus, setNewStatus] = useState<'PLANNING' | 'IN_PROGRESS'>('IN_PROGRESS');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Close filter popover on outside click
   useEffect(() => {
@@ -231,53 +244,6 @@ export const OrganizationProjectsView: React.FC = () => {
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
-
-  // Create Project Submit Handler
-  const handleCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) {
-      toast.error('Project title required', 'Please provide a title for the new project.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const user = authService.getUser();
-      const payload = {
-        title: newTitle.trim(),
-        description: newDescription.trim() || undefined,
-        status: newStatus,
-        ownerId: user?.id || 1,
-        organizationId: currentOrganization?.id,
-        organizationSlug: targetSlug,
-      };
-
-      const res = await fetch(apiUrl('/projects'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authService.getToken() ? { Authorization: `Bearer ${authService.getToken()}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Project created', `"${newTitle}" has been initiated.`);
-        setNewTitle('');
-        setNewDescription('');
-        setNewStatus('IN_PROGRESS');
-        setIsCreateModalOpen(false);
-        loadProjects();
-      } else {
-        toast.error('Failed to create project', data.error || 'Unknown error occurred.');
-      }
-    } catch (err: any) {
-      toast.error('Network error', err.message || 'Could not connect to server.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // Format Date Helper
   const formatDate = (isoString?: string) => {
@@ -858,20 +824,86 @@ export const OrganizationProjectsView: React.FC = () => {
                         className="p-5 rounded-2xl bg-[#0E0F14] border border-[#27272A] hover:border-zinc-600/80 transition-all flex flex-col justify-between shadow-sm text-left h-full space-y-4 cursor-pointer block"
                       >
                         <div className="space-y-3">
-                          {/* Top Row: Title + Status Badge */}
+                          {/* Top Row: Icon + Title + Status Badge */}
                           <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <h3 className="text-sm sm:text-[15px] font-bold text-white group-hover:text-emerald-300 transition-colors truncate">
-                                  {title}
-                                </h3>
-                                <span className="text-[10px] font-mono text-zinc-500 shrink-0">
-                                  #PRJ-{proj.id}
-                                </span>
+                            <div className="flex items-start gap-3 min-w-0 flex-1">
+                              {/* Star / Favorite Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  toggleFavoriteResource('PROJECT', proj.id, currentOrganization?.id, {
+                                    name: title,
+                                    color: proj.avatarColor,
+                                  });
+                                }}
+                                className={`p-2 rounded-xl border transition-all shrink-0 cursor-pointer mt-0.5 ${
+                                  isResourceFavorite('PROJECT', proj.id)
+                                    ? 'text-amber-400 bg-amber-400/15 border-amber-400/35'
+                                    : 'text-zinc-500 bg-white/[0.03] border-white/[0.08] hover:text-amber-400 hover:border-amber-400/30'
+                                }`}
+                                title={isResourceFavorite('PROJECT', proj.id) ? 'Remove from favorites' : 'Mark as favorite'}
+                              >
+                                <Star size={15} fill={isResourceFavorite('PROJECT', proj.id) ? 'currentColor' : 'none'} />
+                              </button>
+
+                              {/* Project Avatar Icon */}
+                              {(() => {
+                                const pColor = proj.avatarColor || '#8B5CF6';
+                                const IconComp = proj.avatarIcon && AVATAR_ICON_COMPONENTS[proj.avatarIcon]
+                                  ? AVATAR_ICON_COMPONENTS[proj.avatarIcon]
+                                  : FolderKanban;
+                                return (
+                                  <div
+                                    className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md"
+                                    style={{
+                                      backgroundColor: pColor,
+                                      boxShadow: `0 4px 14px ${pColor}35`,
+                                    }}
+                                  >
+                                    <IconComp size={18} strokeWidth={2.2} />
+                                  </div>
+                                );
+                              })()}
+
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h3 className="text-sm sm:text-[15px] font-bold text-white group-hover:text-emerald-300 transition-colors truncate">
+                                    {title}
+                                  </h3>
+                                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                                    #{proj.identifier || `PRJ-${proj.id}`}
+                                  </span>
+                                  {proj.category && (
+                                    <span
+                                      className="text-[10px] font-mono px-1.5 py-0.5 rounded font-medium"
+                                      style={{
+                                        backgroundColor: `${proj.avatarColor || '#8B5CF6'}18`,
+                                        color: proj.avatarColor || '#A78BFA',
+                                      }}
+                                    >
+                                      {proj.category}
+                                    </span>
+                                  )}
+                                  {proj.priority && proj.priority !== 'MEDIUM' && (
+                                    <span
+                                      className={`text-[9.5px] font-mono uppercase px-1.5 py-0.2 rounded font-bold border ${
+                                        proj.priority === 'URGENT'
+                                          ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                                          : proj.priority === 'HIGH'
+                                          ? 'bg-orange-500/15 text-orange-400 border-orange-500/30'
+                                          : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                      }`}
+                                    >
+                                      {proj.priority}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
+                                  {proj.description || 'No project description recorded.'}
+                                </p>
                               </div>
-                              <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
-                                {proj.description || 'No project description recorded.'}
-                              </p>
                             </div>
 
                             <span
@@ -909,10 +941,17 @@ export const OrganizationProjectsView: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Card Footer: Collaborator Avatars & Open Link */}
+                        {/* Card Footer: Team / Lead / Collaborators & Dates */}
                         <div className="pt-3.5 border-t border-[#1C1D24] flex items-center justify-between text-xs">
-                          {/* Avatars Stack */}
+                          {/* Left: Lead / Squad / Avatars */}
                           <div className="flex items-center gap-2 min-w-0">
+                            {proj.team ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-300 px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08]">
+                                <Building2 size={11} className="text-blue-400" />
+                                <span className="truncate max-w-[100px]">{proj.team.name}</span>
+                              </span>
+                            ) : null}
+
                             {collaborators.length > 0 ? (
                               <div className="flex items-center -space-x-1.5 overflow-hidden">
                                 {collaborators.slice(0, 4).map((c: any) => (
@@ -938,21 +977,30 @@ export const OrganizationProjectsView: React.FC = () => {
                                   </div>
                                 )}
                               </div>
-                            ) : proj.owner ? (
+                            ) : (proj.lead || proj.owner) ? (
                               <div className="flex items-center gap-1.5 text-zinc-400 text-[11px] truncate">
-                                <span className="text-zinc-500">Lead:</span>
-                                <span className="text-zinc-200 font-medium truncate">{proj.owner.name}</span>
+                                <Crown size={11} className="text-amber-400 shrink-0" />
+                                <span className="text-zinc-200 font-medium truncate">
+                                  {proj.lead?.name || proj.owner?.name}
+                                </span>
                               </div>
                             ) : (
                               <span className="text-[11px] font-mono text-zinc-500">No assignees</span>
                             )}
                           </div>
 
-                          {/* Open Project CTA */}
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 group-hover:translate-x-0.5 transition-transform shrink-0">
-                            <span>Open</span>
-                            <ArrowRight size={13} />
-                          </span>
+                          {/* Right: Dates or Open CTA */}
+                          <div className="flex items-center gap-3">
+                            {proj.startDate && (
+                              <span className="text-[10.5px] font-mono text-zinc-500 hidden sm:inline">
+                                {formatDate(proj.startDate)}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 group-hover:translate-x-0.5 transition-transform shrink-0">
+                              <span>Open</span>
+                              <ArrowRight size={13} />
+                            </span>
+                          </div>
                         </div>
                       </Link>
                     </motion.div>
@@ -993,15 +1041,66 @@ export const OrganizationProjectsView: React.FC = () => {
                             key={proj.id}
                             className="hover:bg-white/[0.03] transition-colors group cursor-pointer"
                           >
-                            <td className="py-3 px-4 min-w-[220px]">
-                              <Link to={`/projects/${proj.id}`} className="block">
-                                <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors">
-                                  {title}
-                                </p>
-                                <span className="text-[10px] font-mono text-zinc-500">
-                                  #PRJ-{proj.id} {proj.description ? `· ${proj.description}` : ''}
-                                </span>
+                            <td className="py-3 px-4 min-w-[240px]">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    toggleFavoriteResource('PROJECT', proj.id, currentOrganization?.id, {
+                                      name: title,
+                                      color: proj.avatarColor,
+                                    });
+                                  }}
+                                  className={`p-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                                    isResourceFavorite('PROJECT', proj.id)
+                                      ? 'text-amber-400 bg-amber-400/15 border-amber-400/35'
+                                      : 'text-zinc-600 border-transparent hover:text-amber-400 hover:border-white/10'
+                                  }`}
+                                  title={isResourceFavorite('PROJECT', proj.id) ? 'Remove from favorites' : 'Mark as favorite'}
+                                >
+                                  <Star size={13} fill={isResourceFavorite('PROJECT', proj.id) ? 'currentColor' : 'none'} />
+                                </button>
+
+                                <Link to={`/projects/${proj.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                                {(() => {
+                                  const pColor = proj.avatarColor || '#8B5CF6';
+                                  const IconComp = proj.avatarIcon && AVATAR_ICON_COMPONENTS[proj.avatarIcon]
+                                    ? AVATAR_ICON_COMPONENTS[proj.avatarIcon]
+                                    : FolderKanban;
+                                  return (
+                                    <div
+                                      className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm"
+                                      style={{ backgroundColor: pColor }}
+                                    >
+                                      <IconComp size={13} strokeWidth={2.2} />
+                                    </div>
+                                  );
+                                })()}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <p className="font-semibold text-white group-hover:text-emerald-300 transition-colors truncate">
+                                      {title}
+                                    </p>
+                                    {proj.category && (
+                                      <span
+                                        className="text-[9.5px] font-mono px-1 py-0.2 rounded font-medium"
+                                        style={{
+                                          backgroundColor: `${proj.avatarColor || '#8B5CF6'}18`,
+                                          color: proj.avatarColor || '#A78BFA',
+                                        }}
+                                      >
+                                        {proj.category}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] font-mono text-zinc-500">
+                                    #{proj.identifier || `PRJ-${proj.id}`} {proj.description ? `· ${proj.description}` : ''}
+                                  </span>
+                                </div>
                               </Link>
+                              </div>
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
                               <span
@@ -1035,9 +1134,16 @@ export const OrganizationProjectsView: React.FC = () => {
                               </div>
                             </td>
                             <td className="py-3 px-4 text-zinc-300 whitespace-nowrap">
-                              <span className="text-xs font-medium text-zinc-200">
-                                {proj.owner?.name || 'Unassigned'}
-                              </span>
+                              <div className="space-y-0.5">
+                                <span className="text-xs font-medium text-zinc-200 block">
+                                  {proj.lead?.name || proj.owner?.name || 'Unassigned'}
+                                </span>
+                                {proj.team && (
+                                  <span className="text-[10px] font-mono text-blue-400 block">
+                                    {proj.team.name}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3 px-4 text-[11px] font-mono text-zinc-400 whitespace-nowrap">
                               {formatDate(proj.updatedAt || proj.createdAt)}
@@ -1250,145 +1356,16 @@ export const OrganizationProjectsView: React.FC = () => {
         </div>
       )}
 
-      {/* ─── MODAL: Create New Project ─────────────────────────────────────── */}
-      <AnimatePresence>
-        {isCreateModalOpen && (
-          <div
-            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
-            onClick={() => setIsCreateModalOpen(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="bg-[#0E0F14] border border-[#27272A] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 text-left"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-xl flex items-center justify-center text-[#0A0B10]"
-                    style={{ backgroundColor: accentColor }}
-                  >
-                    <FolderKanban size={16} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white tracking-tight">Create Project</h3>
-                    <p className="text-[11px] text-zinc-400">Initiate a new roadmap or sprint initiative</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-white/[0.05]"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              {/* Form */}
-              <form onSubmit={handleCreateProject} className="space-y-4">
-                {/* Field 1: Project Title */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-zinc-300">
-                    Project Title <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder="e.g. NextGen API Gateway"
-                    className="w-full h-10 px-3 bg-[#111216] border border-[#27272A] rounded-xl text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-colors focus:border-zinc-400"
-                  />
-                </div>
-
-                {/* Field 2: Description */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-zinc-300">Description</label>
-                  <textarea
-                    rows={3}
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                    placeholder="What are the key goals, objectives, and deliverables of this project?"
-                    className="w-full p-3 bg-[#111216] border border-[#27272A] rounded-xl text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-colors focus:border-zinc-400 resize-none"
-                  />
-                </div>
-
-                {/* Field 3: Status Selector */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-zinc-300">Initial Status</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setNewStatus('IN_PROGRESS')}
-                      className={`p-2.5 rounded-xl border text-xs font-medium transition-all flex items-center justify-between cursor-pointer ${
-                        newStatus === 'IN_PROGRESS'
-                          ? 'bg-indigo-500/15 border-indigo-500/40 text-white'
-                          : 'bg-[#111216] border-[#27272A] text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Zap size={14} className="text-indigo-400" />
-                        <span>In Progress</span>
-                      </div>
-                      {newStatus === 'IN_PROGRESS' && <Check size={13} className="text-indigo-400" />}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setNewStatus('PLANNING')}
-                      className={`p-2.5 rounded-xl border text-xs font-medium transition-all flex items-center justify-between cursor-pointer ${
-                        newStatus === 'PLANNING'
-                          ? 'bg-amber-500/15 border-amber-500/40 text-white'
-                          : 'bg-[#111216] border-[#27272A] text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Clock size={14} className="text-amber-400" />
-                        <span>Planning</span>
-                      </div>
-                      {newStatus === 'PLANNING' && <Check size={13} className="text-amber-400" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Submit Actions */}
-                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#27272A]">
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateModalOpen(false)}
-                    className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-white transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || !newTitle.trim()}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-[#0A0B10] disabled:opacity-50 shadow-md hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer"
-                    style={{ backgroundColor: accentColor }}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <RefreshCw size={13} className="animate-spin" />
-                        <span>Creating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Plus size={14} strokeWidth={2.5} />
-                        <span>Initiate Project</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* ─── Proper Create Project Modal (3 Tabs: Identity, Workflow, Team & Timeline) ─── */}
+      <CreateProjectModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreated={() => {
+          loadProjects();
+        }}
+        organizationSlug={targetSlug}
+        organizationId={currentOrganization?.id}
+      />
     </div>
   );
 };

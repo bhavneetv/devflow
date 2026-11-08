@@ -11,6 +11,8 @@ import { authRouter } from './routes/auth.routes.js';
 import { teamsRouter } from './routes/teams.routes.js';
 import { organizationsRouter } from './routes/organizations.routes.js';
 import { requirementsRouter } from './routes/requirements.routes.js';
+import { favoritesRouter } from './routes/favorites.routes.js';
+import { notificationsRouter } from './routes/notifications.routes.js';
 import { initSocketIO } from './lib/socket.js';
 
 dotenv.config();
@@ -77,6 +79,8 @@ app.use('/api/seed', seedRouter);
 app.use('/api/teams', teamsRouter);
 app.use('/api/organizations', organizationsRouter);
 app.use('/api/requirements', requirementsRouter);
+app.use('/api/favorites', favoritesRouter);
+app.use('/api/notifications', notificationsRouter);
 
 // Root route
 app.get('/', (_req: Request, res: Response) => {

@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { getUserIdFromToken } from '../lib/auth.js';
 import { sendTeamInvitationEmail, sendInvitationDecisionEmail } from '../lib/email.service.js';
 import { emitToTeam, emitToUser } from '../lib/socket.js';
+import { createNotification } from './notifications.routes.js';
 
 export const teamsRouter = Router();
 
@@ -304,7 +305,7 @@ teamsRouter.post('/', async (req: Request, res: Response) => {
         if (targetUser && targetUser.email) {
           const token = crypto.randomBytes(32).toString('hex');
           const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-          await prisma.teamInvitation.create({
+          const invRecord = await prisma.teamInvitation.create({
             data: {
               teamId: team.id,
               invitedById: userId,
@@ -323,6 +324,23 @@ teamsRouter.post('/', async (req: Request, res: Response) => {
             assignedRole: entry.role,
             inviteLink,
           }).catch((err) => console.warn('Background creation invite email error:', err));
+
+          createNotification({
+            recipientId: targetUser.id,
+            type: 'TEAM_INVITATION',
+            title: `Invitation to join ${team.name}`,
+            message: `${user.name || 'An owner'} invited you to join ${team.name} as a ${entry.role}.`,
+            data: {
+              token,
+              invitationId: invRecord.id,
+              teamId: team.id,
+              teamName: team.name,
+              role: entry.role,
+              inviterName: user.name || user.email,
+            },
+            relatedInvitationId: invRecord.id,
+            relatedTeamId: team.id,
+          }).catch((err) => console.warn('Notification create error:', err));
         }
       }
     }
@@ -808,6 +826,26 @@ teamsRouter.post('/:id/invite', async (req: Request, res: Response) => {
       message: parsed.data.message,
     }).catch((err) => console.warn('Background sendTeamInvitationEmail error:', err));
 
+    // If invited user already has an account, immediately create in-app notification
+    if (existingUser) {
+      createNotification({
+        recipientId: existingUser.id,
+        type: 'TEAM_INVITATION',
+        title: `Invitation to join ${invitation.team.name}`,
+        message: `${invitation.invitedBy.name} invited you to join ${invitation.team.name} as a ${role}.`,
+        data: {
+          token,
+          invitationId: invitation.id,
+          teamId: invitation.team.id,
+          teamName: invitation.team.name,
+          role,
+          inviterName: invitation.invitedBy.name,
+        },
+        relatedInvitationId: invitation.id,
+        relatedTeamId: invitation.team.id,
+      }).catch((err) => console.warn('Notification create error:', err));
+    }
+
     emitToTeam(teamId, 'invitation_created', invitation);
 
     res.status(201).json({
@@ -994,7 +1032,7 @@ teamsRouter.post('/invitations/:token/accept', async (req: Request, res: Respons
     }
 
     // Add to team and mark accepted transactionally
-    const [newMember] = await prisma.$transaction([
+    const txOps: any[] = [
       prisma.teamMember.create({
         data: { teamId: invitation.teamId, userId, role: invitation.assignedRole },
         include: { user: { select: USER_SELECT_FIELDS } },
@@ -1003,14 +1041,44 @@ teamsRouter.post('/invitations/:token/accept', async (req: Request, res: Respons
         where: { id: invitation.id },
         data: { status: 'ACCEPTED', acceptedAt: new Date() },
       }),
-    ]);
+      prisma.notification.updateMany({
+        where: {
+          recipientId: userId,
+          type: 'TEAM_INVITATION',
+          relatedInvitationId: invitation.id,
+        },
+        data: { isRead: true },
+      }),
+    ];
+
+    if (invitation.team.organizationId) {
+      txOps.push(
+        prisma.organizationMember.upsert({
+          where: {
+            organizationId_userId: {
+              organizationId: invitation.team.organizationId,
+              userId,
+            },
+          },
+          update: {},
+          create: {
+            organizationId: invitation.team.organizationId,
+            userId,
+            role: 'MEMBER',
+          },
+        })
+      );
+    }
+
+    const [newMember] = await prisma.$transaction(txOps);
 
     // Send notification email to the inviter
     if (invitation.invitedBy?.email) {
       sendInvitationDecisionEmail({
         toEmail: invitation.invitedBy.email,
         userName: user.name || user.email,
-        teamName: invitation.team.name,
+        targetName: invitation.team.name,
+        type: 'TEAM',
         decision: 'ACCEPTED',
         role: invitation.assignedRole,
       }).catch((err) => console.warn('Background sendInvitationDecisionEmail error:', err));
@@ -1049,13 +1117,24 @@ teamsRouter.post('/invitations/:token/decline', async (req: Request, res: Respon
       return res.status(403).json({ success: false, error: 'Email mismatch' });
     }
 
-    await prisma.teamInvitation.update({ where: { id: invitation.id }, data: { status: 'DECLINED' } });
+    await prisma.$transaction([
+      prisma.teamInvitation.update({ where: { id: invitation.id }, data: { status: 'DECLINED' } }),
+      prisma.notification.updateMany({
+        where: {
+          recipientId: userId,
+          type: 'TEAM_INVITATION',
+          relatedInvitationId: invitation.id,
+        },
+        data: { isRead: true },
+      }),
+    ]);
 
     if (invitation.invitedBy?.email) {
       sendInvitationDecisionEmail({
         toEmail: invitation.invitedBy.email,
         userName: user.name || user.email,
-        teamName: invitation.team.name,
+        targetName: invitation.team.name,
+        type: 'TEAM',
         decision: 'DECLINED',
       }).catch((err) => console.warn('Background sendInvitationDecisionEmail error:', err));
     }

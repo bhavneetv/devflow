@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { initialFavorites, FavoriteItem } from '../config/navigation';
+import { favoriteService, FavoriteProject, FavoriteTeam } from '../services/favorite.service';
 
 export interface ActiveProject {
   id: number;
@@ -31,6 +32,17 @@ interface NavigationContextType {
   addFavorite: (item: FavoriteItem) => void;
   removeFavorite: (id: string) => void;
 
+  favoriteProjects: FavoriteProject[];
+  favoriteTeams: FavoriteTeam[];
+  isResourceFavorite: (type: 'PROJECT' | 'TEAM', id: number) => boolean;
+  toggleFavoriteResource: (
+    type: 'PROJECT' | 'TEAM',
+    id: number,
+    orgId?: number,
+    meta?: { name: string; color?: string; icon?: string; slug?: string; key?: string }
+  ) => Promise<boolean>;
+  refreshFavorites: (orgSlugOrId?: string | number) => Promise<void>;
+
   collapsedGroups: Record<string, boolean>;
   toggleGroup: (groupId: string) => void;
   isGroupExpanded: (groupId: string, defaultExpanded?: boolean) => boolean;
@@ -53,7 +65,103 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [favorites, setFavorites] = useState<FavoriteItem[]>(initialFavorites);
+  const [favoriteProjects, setFavoriteProjects] = useState<FavoriteProject[]>([]);
+  const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  const refreshFavorites = useCallback(async (orgSlugOrId?: string | number) => {
+    try {
+      const res = await favoriteService.getFavorites(
+        orgSlugOrId
+          ? typeof orgSlugOrId === 'number'
+            ? { organizationId: orgSlugOrId }
+            : { organizationSlug: orgSlugOrId }
+          : undefined
+      );
+      if (res.success && res.data) {
+        setFavoriteProjects(res.data.projects || []);
+        setFavoriteTeams(res.data.teams || []);
+      }
+    } catch (err) {
+      console.error('Failed to load favorites:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshFavorites();
+  }, [refreshFavorites]);
+
+  const isResourceFavorite = useCallback(
+    (type: 'PROJECT' | 'TEAM', id: number) => {
+      if (type === 'PROJECT') {
+        return favoriteProjects.some((p) => p.id === id);
+      }
+      return favoriteTeams.some((t) => t.id === id);
+    },
+    [favoriteProjects, favoriteTeams]
+  );
+
+  const toggleFavoriteResource = async (
+    type: 'PROJECT' | 'TEAM',
+    id: number,
+    orgId?: number,
+    meta?: { name: string; color?: string; icon?: string; slug?: string; key?: string }
+  ): Promise<boolean> => {
+    const isCurrentlyFav = isResourceFavorite(type, id);
+
+    // Optimistic state update
+    if (type === 'PROJECT') {
+      if (isCurrentlyFav) {
+        setFavoriteProjects((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        setFavoriteProjects((prev) => [
+          ...prev,
+          {
+            id,
+            name: meta?.name || 'Project',
+            slug: meta?.slug,
+            color: meta?.color,
+            icon: meta?.icon,
+            organizationId: orgId,
+          },
+        ]);
+      }
+    } else {
+      if (isCurrentlyFav) {
+        setFavoriteTeams((prev) => prev.filter((t) => t.id !== id));
+      } else {
+        setFavoriteTeams((prev) => [
+          ...prev,
+          {
+            id,
+            name: meta?.name || 'Team',
+            key: meta?.key,
+            color: meta?.color,
+            icon: meta?.icon,
+            organizationId: orgId,
+          },
+        ]);
+      }
+    }
+
+    try {
+      const res = await favoriteService.toggleFavorite({
+        resourceType: type,
+        resourceId: id,
+        organizationId: orgId,
+      });
+
+      if (!res.success) {
+        // Rollback
+        await refreshFavorites();
+        return false;
+      }
+      return true;
+    } catch {
+      await refreshFavorites();
+      return false;
+    }
+  };
 
   // Global Ctrl+K / Cmd+K keyboard shortcut
   useEffect(() => {
@@ -129,6 +237,11 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         favorites,
         addFavorite,
         removeFavorite,
+        favoriteProjects,
+        favoriteTeams,
+        isResourceFavorite,
+        toggleFavoriteResource,
+        refreshFavorites,
         collapsedGroups,
         toggleGroup,
         isGroupExpanded,

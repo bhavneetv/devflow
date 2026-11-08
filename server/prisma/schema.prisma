@@ -28,6 +28,8 @@ enum ProjectStatus {
   IN_PROGRESS
   COMPLETED
   ARCHIVED
+  BACKLOG
+  PENDING
 }
 
 enum TaskStatus {
@@ -168,6 +170,8 @@ model User {
   linkedinUrl             String?
   websiteUrl              String?
   projects                Project[]                @relation("ProjectOwner")
+  ledProjects             Project[]                @relation("ProjectLead")
+  projectMemberships      ProjectMember[]
   assignedTasks           Task[]                   @relation("TaskAssignee")
   createdTeams            Team[]                   @relation("TeamCreator")
   teamMemberships         TeamMember[]             @relation("TeamMemberships")
@@ -186,6 +190,8 @@ model User {
   requirementReviews      RequirementReview[]      @relation("ReviewReviewer")
   requirementVersions     RequirementVersion[]     @relation("VersionChangedBy")
   requirementComments     RequirementComment[]     @relation("CommentAuthor")
+  favorites               UserFavorite[]
+  notifications           Notification[]           @relation("UserNotifications")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -269,14 +275,26 @@ model OrganizationActivity {
 }
 
 model Project {
-  id             Int           @id @default(autoincrement())
+  id             Int             @id @default(autoincrement())
   title          String
-  description    String?       @db.Text
-  status         ProjectStatus @default(IN_PROGRESS)
+  identifier     String?
+  description    String?         @db.Text
+  status         ProjectStatus   @default(IN_PROGRESS)
+  priority       Priority        @default(MEDIUM)
+  category       String?         @default("General")
+  avatarColor    String?         @default("#8B5CF6")
+  avatarIcon     String?         @default("folder")
+  startDate      DateTime?
+  endDate        DateTime?
   ownerId        Int
-  owner          User          @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner          User            @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  leadId         Int?
+  lead           User?           @relation("ProjectLead", fields: [leadId], references: [id], onDelete: SetNull)
   organizationId Int?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  teamId         Int?
+  team           Team?           @relation("TeamProjects", fields: [teamId], references: [id], onDelete: SetNull)
+  members        ProjectMember[]
   tasks          Task[]
   requirements   Requirement[]
   requirementCategories RequirementCategory[] @relation("ProjectCategories")
@@ -285,8 +303,25 @@ model Project {
   updatedAt      DateTime      @updatedAt
 
   @@index([ownerId])
+  @@index([leadId])
   @@index([organizationId])
+  @@index([teamId])
   @@map("projects")
+}
+
+model ProjectMember {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("COLLABORATOR")
+  joinedAt  DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+  @@map("project_members")
 }
 
 model Task {
@@ -318,6 +353,7 @@ model Team {
   createdBy      User                    @relation("TeamCreator", fields: [createdById], references: [id], onDelete: Cascade)
   organizationId Int?
   organization   Organization?           @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  projects       Project[]               @relation("TeamProjects")
   members        TeamMember[]
   invitations    TeamInvitation[]
   permissions    TeamMemberPermission[]
@@ -664,4 +700,49 @@ model RequirementLink {
   @@map("requirement_links")
 }
 
+enum FavoriteResourceType {
+  PROJECT
+  TEAM
+}
 
+model UserFavorite {
+  id             Int                  @id @default(autoincrement())
+  userId         Int
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceType   FavoriteResourceType
+  resourceId     Int
+  organizationId Int?
+  createdAt      DateTime             @default(now())
+
+  @@unique([userId, resourceType, resourceId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("user_favorites")
+}
+
+enum NotificationType {
+  ORGANIZATION_INVITATION
+  TEAM_INVITATION
+  SYSTEM
+}
+
+model Notification {
+  id                    Int              @id @default(autoincrement())
+  recipientId           Int
+  recipient             User             @relation("UserNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  type                  NotificationType
+  title                 String
+  message               String           @db.Text
+  data                  String?          @db.Text // JSON metadata: { token, invitationId, orgId, orgName, orgSlug, teamId, teamName, role, inviterName }
+  isRead                Boolean          @default(false)
+  relatedInvitationId   Int?
+  relatedOrganizationId Int?
+  relatedTeamId         Int?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([recipientId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}

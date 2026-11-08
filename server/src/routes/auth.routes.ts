@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { syncPendingInvitationsForUser } from './notifications.routes.js';
 
 export const authRouter = Router();
 
@@ -102,6 +103,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       });
 
       const token = `devflow_session_${newUser.id}_${Date.now()}`;
+      syncPendingInvitationsForUser(newUser.id, newUser.email).catch((e) => console.error(e));
 
       return res.json({
         success: true,
@@ -125,6 +127,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     const token = `devflow_session_${user.id}_${Date.now()}`;
     const isNewUser = !user.onboardingCompleted;
+
+    syncPendingInvitationsForUser(user.id, user.email).catch((e) => console.error(e));
 
     res.json({
       success: true,
@@ -195,6 +199,8 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     });
 
     const token = `devflow_session_${user.id}_${Date.now()}`;
+
+    syncPendingInvitationsForUser(user.id, user.email).catch((e) => console.error(e));
 
     res.status(201).json({
       success: true,

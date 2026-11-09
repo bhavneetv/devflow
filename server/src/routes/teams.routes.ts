@@ -40,6 +40,34 @@ async function getCallerMembership(teamId: number, userId: number) {
   });
 }
 
+async function ensureCallerTeamAccess(teamId: number, userId: number) {
+  let membership = await getCallerMembership(teamId, userId);
+  if (membership) return membership;
+
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { organizationId: true },
+  });
+
+  if (team?.organizationId) {
+    const orgMember = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: team.organizationId, userId } },
+    });
+    if (orgMember) {
+      try {
+        membership = await prisma.teamMember.create({
+          data: { teamId, userId, role: 'DEVELOPER' },
+          include: { permissions: true },
+        });
+        return membership;
+      } catch {
+        return getCallerMembership(teamId, userId);
+      }
+    }
+  }
+  return null;
+}
+
 export type TeamPermissionKey =
   | 'manageTeamMembers'
   | 'removeTeamMembers'
@@ -146,6 +174,47 @@ teamsRouter.get('/', async (req: Request, res: Response) => {
       });
 
       if (orgMember) {
+        // Ensure Organization-level Chat team exists
+        const orgInfo = await prisma.organization.findUnique({
+          where: { id: orgFilterId },
+          select: { id: true, name: true, createdById: true },
+        });
+
+        if (orgInfo) {
+          const orgTeamName = `${orgInfo.name} (Organisation)`;
+          const existingOrgTeam = await prisma.team.findFirst({
+            where: { organizationId: orgFilterId, name: orgTeamName },
+          });
+
+          if (!existingOrgTeam) {
+            const newOrgTeam = await prisma.team.create({
+              data: {
+                name: orgTeamName,
+                description: `Organisation-wide announcements and team discussions for ${orgInfo.name}.`,
+                color: '#8B5CF6',
+                createdById: orgInfo.createdById || userId,
+                organizationId: orgFilterId,
+                members: {
+                  create: {
+                    userId,
+                    role: 'OWNER',
+                  },
+                },
+              },
+            });
+
+            for (const ch of ['announcements', 'general', 'all-hands', 'random']) {
+              await prisma.teamConversation.create({
+                data: {
+                  teamId: newOrgTeam.id,
+                  type: 'GROUP',
+                  name: ch,
+                },
+              });
+            }
+          }
+        }
+
         const orgTeams = await prisma.team.findMany({
           where: { organizationId: orgFilterId },
           include: {
@@ -1158,17 +1227,31 @@ teamsRouter.get('/:id/conversations', async (req: Request, res: Response) => {
   if (isNaN(teamId)) return res.status(400).json({ success: false, error: 'Invalid team ID' });
 
   try {
-    const membership = await getCallerMembership(teamId, callerId);
+    const membership = await ensureCallerTeamAccess(teamId, callerId);
     if (!membership) return res.status(403).json({ success: false, error: 'Not a member of this team' });
 
-    // Ensure general channel exists
-    let generalChannel = await prisma.teamConversation.findFirst({
-      where: { teamId, type: 'GROUP', name: 'General' },
+    // Check if this is an Organisation-level team
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { name: true },
     });
-    if (!generalChannel) {
-      generalChannel = await prisma.teamConversation.create({
-        data: { teamId, type: 'GROUP', name: 'General' },
-      });
+    const isOrgTeam = team?.name.includes('(Organisation)') || team?.name.includes('Workspace');
+    const defaultChannelNames = isOrgTeam
+      ? ['announcements', 'general', 'all-hands', 'random']
+      : ['general', 'development', 'design', 'testing', 'announcements'];
+
+    const existingGroups = await prisma.teamConversation.findMany({
+      where: { teamId, type: 'GROUP' },
+      select: { name: true },
+    });
+    const existingNames = new Set(existingGroups.map((g) => g.name?.toLowerCase()));
+
+    for (const chName of defaultChannelNames) {
+      if (!existingNames.has(chName.toLowerCase())) {
+        await prisma.teamConversation.create({
+          data: { teamId, type: 'GROUP', name: chName },
+        });
+      }
     }
 
     // Fetch all conversations for this team
@@ -1247,25 +1330,41 @@ teamsRouter.get('/:id/conversations', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/teams/:id/conversations/direct — create or get 1-on-1 direct conversation
+// POST /api/teams/:id/conversations/direct — create or get direct conversation (1:1 or group)
 teamsRouter.post('/:id/conversations/direct', async (req: Request, res: Response) => {
   const callerId = getUserIdFromToken(req);
   if (!callerId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
   const teamId = parseId(req.params.id);
-  const targetUserId = parseId(req.body.targetUserId);
-  if (isNaN(teamId) || isNaN(targetUserId)) {
-    return res.status(400).json({ success: false, error: 'Invalid parameters' });
+  if (isNaN(teamId)) return res.status(400).json({ success: false, error: 'Invalid team ID' });
+
+  let targetIds: number[] = [];
+  if (Array.isArray(req.body.targetUserIds)) {
+    targetIds = req.body.targetUserIds.map((id: any) => Number(id)).filter((id: number) => !isNaN(id) && id > 0);
+  } else if (req.body.targetUserId) {
+    const singleId = Number(req.body.targetUserId);
+    if (!isNaN(singleId) && singleId > 0) targetIds = [singleId];
+  }
+
+  if (targetIds.length === 0) {
+    return res.status(400).json({ success: false, error: 'Target user(s) required' });
   }
 
   try {
-    const callerMembership = await getCallerMembership(teamId, callerId);
-    if (!callerMembership) return res.status(403).json({ success: false, error: 'Not a member of this team' });
+    const callerMembership = await ensureCallerTeamAccess(teamId, callerId);
+    if (!callerMembership) return res.status(403).json({ success: false, error: 'Not authorized to chat in this workspace' });
 
-    const targetMembership = await getCallerMembership(teamId, targetUserId);
-    if (!targetMembership) return res.status(404).json({ success: false, error: 'Target user is not a team member' });
+    for (const tId of targetIds) {
+      let targetMembership = await getCallerMembership(teamId, tId);
+      if (!targetMembership) {
+        targetMembership = await ensureCallerTeamAccess(teamId, tId);
+      }
+      if (!targetMembership) {
+        return res.status(404).json({ success: false, error: `User #${tId} is not a member of this workspace` });
+      }
+    }
 
-    const sortedIds = [callerId, targetUserId].sort((a, b) => a - b);
+    const sortedIds = Array.from(new Set([callerId, ...targetIds])).sort((a, b) => a - b);
     const participantIdsStr = JSON.stringify(sortedIds);
 
     let conversation = await prisma.teamConversation.findFirst({
@@ -1277,26 +1376,35 @@ teamsRouter.post('/:id/conversations/direct', async (req: Request, res: Response
     });
 
     if (!conversation) {
+      const isGroup = sortedIds.length > 2;
       conversation = await prisma.teamConversation.create({
         data: {
           teamId,
           type: 'DIRECT',
+          name: isGroup ? req.body.name || 'Group Conversation' : null,
           participantIds: participantIdsStr,
         },
       });
     }
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: targetUserId },
+    const otherIds = sortedIds.filter((id) => id !== callerId);
+    const otherUsers = await prisma.user.findMany({
+      where: { id: { in: otherIds } },
       select: USER_SELECT_FIELDS,
     });
+
+    const isGroup = sortedIds.length > 2;
+    const computedName = isGroup
+      ? conversation.name || otherUsers.map((u) => u.name).join(', ')
+      : otherUsers[0]?.name || 'Direct Message';
 
     res.json({
       success: true,
       data: {
         ...conversation,
-        name: targetUser?.name || 'Direct Message',
-        otherUser: targetUser,
+        name: computedName,
+        otherUser: otherUsers[0] || null,
+        otherUsers,
         unreadCount: 0,
       },
     });
@@ -1315,7 +1423,7 @@ teamsRouter.get('/:id/conversations/:convId/messages', async (req: Request, res:
   if (isNaN(teamId) || isNaN(convId)) return res.status(400).json({ success: false, error: 'Invalid parameters' });
 
   try {
-    const membership = await getCallerMembership(teamId, callerId);
+    const membership = await ensureCallerTeamAccess(teamId, callerId);
     if (!membership) return res.status(403).json({ success: false, error: 'Not a member of this team' });
 
     const conversation = await prisma.teamConversation.findFirst({
@@ -1350,7 +1458,7 @@ teamsRouter.post('/:id/conversations/:convId/messages', async (req: Request, res
   if (!content) return res.status(400).json({ success: false, error: 'Message content cannot be empty' });
 
   try {
-    const callerMembership = await getCallerMembership(teamId, callerId);
+    const callerMembership = await ensureCallerTeamAccess(teamId, callerId);
     if (!callerMembership) return res.status(403).json({ success: false, error: 'Not a member of this team' });
 
     const conversation = await prisma.teamConversation.findFirst({
@@ -1380,6 +1488,10 @@ teamsRouter.post('/:id/conversations/:convId/messages', async (req: Request, res
       });
     }
 
+    const attachments = req.body.attachments ? JSON.stringify(req.body.attachments) : null;
+    const sharedEntity = req.body.sharedEntity ? JSON.stringify(req.body.sharedEntity) : null;
+    const replyToId = req.body.replyToId ? Number(req.body.replyToId) : null;
+
     const message = await prisma.teamMessage.create({
       data: {
         teamId,
@@ -1388,6 +1500,9 @@ teamsRouter.post('/:id/conversations/:convId/messages', async (req: Request, res
         content,
         mentions: mentionUserIds.length > 0 ? JSON.stringify(mentionUserIds) : null,
         readBy: JSON.stringify([callerId]),
+        attachments,
+        sharedEntity,
+        replyToId,
       },
       include: {
         sender: { select: USER_SELECT_FIELDS },
@@ -1420,6 +1535,118 @@ teamsRouter.post('/:id/conversations/:convId/messages', async (req: Request, res
     }
 
     res.status(201).json({ success: true, data: message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PATCH /api/teams/:id/conversations/:convId/messages/:messageId — edit message
+teamsRouter.patch('/:id/conversations/:convId/messages/:messageId', async (req: Request, res: Response) => {
+  const callerId = getUserIdFromToken(req);
+  if (!callerId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  const teamId = parseId(req.params.id);
+  const convId = parseId(req.params.convId);
+  const messageId = parseId(req.params.messageId);
+  const content = (req.body.content || '').trim();
+  if (!content) return res.status(400).json({ success: false, error: 'Content cannot be empty' });
+
+  try {
+    const existing = await prisma.teamMessage.findFirst({
+      where: { id: messageId, conversationId: convId, teamId },
+    });
+    if (!existing) return res.status(404).json({ success: false, error: 'Message not found' });
+    if (existing.senderId !== callerId) return res.status(403).json({ success: false, error: 'Can only edit your own messages' });
+
+    const updated = await prisma.teamMessage.update({
+      where: { id: messageId },
+      data: { content, isEdited: true },
+      include: { sender: { select: USER_SELECT_FIELDS } },
+    });
+
+    emitToTeam(teamId, 'message_edited', { conversationId: convId, message: updated });
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/teams/:id/conversations/:convId/messages/:messageId — delete message
+teamsRouter.delete('/:id/conversations/:convId/messages/:messageId', async (req: Request, res: Response) => {
+  const callerId = getUserIdFromToken(req);
+  if (!callerId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  const teamId = parseId(req.params.id);
+  const convId = parseId(req.params.convId);
+  const messageId = parseId(req.params.messageId);
+
+  try {
+    const existing = await prisma.teamMessage.findFirst({
+      where: { id: messageId, conversationId: convId, teamId },
+    });
+    if (!existing) return res.status(404).json({ success: false, error: 'Message not found' });
+    if (existing.senderId !== callerId) return res.status(403).json({ success: false, error: 'Can only delete your own messages' });
+
+    await prisma.teamMessage.update({
+      where: { id: messageId },
+      data: { isDeleted: true, content: 'This message was deleted' },
+    });
+
+    emitToTeam(teamId, 'message_deleted', { conversationId: convId, messageId });
+    res.json({ success: true, message: 'Message deleted' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PATCH /api/teams/:id/conversations/:convId/messages/:messageId/pin — toggle message pin
+teamsRouter.patch('/:id/conversations/:convId/messages/:messageId/pin', async (req: Request, res: Response) => {
+  const callerId = getUserIdFromToken(req);
+  if (!callerId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  const teamId = parseId(req.params.id);
+  const convId = parseId(req.params.convId);
+  const messageId = parseId(req.params.messageId);
+
+  try {
+    const existing = await prisma.teamMessage.findFirst({
+      where: { id: messageId, conversationId: convId, teamId },
+    });
+    if (!existing) return res.status(404).json({ success: false, error: 'Message not found' });
+
+    const updated = await prisma.teamMessage.update({
+      where: { id: messageId },
+      data: { isPinned: !existing.isPinned },
+      include: { sender: { select: USER_SELECT_FIELDS } },
+    });
+
+    emitToTeam(teamId, 'message_pinned', { conversationId: convId, message: updated });
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PATCH /api/teams/:id/conversations/:convId/pin — toggle conversation pin
+teamsRouter.patch('/:id/conversations/:convId/pin', async (req: Request, res: Response) => {
+  const callerId = getUserIdFromToken(req);
+  if (!callerId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  const teamId = parseId(req.params.id);
+  const convId = parseId(req.params.convId);
+
+  try {
+    const existing = await prisma.teamConversation.findFirst({
+      where: { id: convId, teamId },
+    });
+    if (!existing) return res.status(404).json({ success: false, error: 'Conversation not found' });
+
+    const updated = await prisma.teamConversation.update({
+      where: { id: convId },
+      data: { isPinned: !existing.isPinned },
+    });
+
+    res.json({ success: true, data: updated });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

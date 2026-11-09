@@ -29,6 +29,15 @@ export function initSocketIO(server: http.Server, corsOrigins: string[]) {
     socket.on('join_user', (userId: number | string) => {
       socket.join(`user_${userId}`);
     });
+
+    // Real-time typing indicators
+    socket.on('typing_start', (payload: { teamId: number | string; conversationId: number | string; userId: number; userName: string }) => {
+      socket.to(`team_${payload.teamId}`).emit('user_typing', { ...payload, isTyping: true });
+    });
+
+    socket.on('typing_stop', (payload: { teamId: number | string; conversationId: number | string; userId: number; userName: string }) => {
+      socket.to(`team_${payload.teamId}`).emit('user_typing', { ...payload, isTyping: false });
+    });
   });
 
   return io;

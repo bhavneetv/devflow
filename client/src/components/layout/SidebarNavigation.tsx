@@ -18,8 +18,10 @@ import {
   HelpCircle,
   Users as UsersIcon,
   FileText,
+  MessageSquare,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useChat } from '../../context/ChatContext';
 import { useOrganization } from '../../context/OrganizationContext';
 import { organizationService } from '../../services/organization.service';
 import { teamService } from '../../services/team.service';
@@ -49,6 +51,7 @@ export const SidebarNavigation: React.FC = () => {
     toggleFavoriteResource,
   } = useNavigation();
   const { currentOrganization } = useOrganization();
+  const { toggleChat, unreadTotal } = useChat();
   const navigate = useNavigate();
 
   const orgSlug = currentOrganization?.slug;
@@ -129,6 +132,17 @@ export const SidebarNavigation: React.FC = () => {
                     e.preventDefault();
                     window.dispatchEvent(new CustomEvent('devflow:toggle-requirements-drawer'));
                   }
+                }}
+              />
+              <NavigationItem
+                title="Chat"
+                path="#"
+                icon={MessageSquare}
+                badge={unreadTotal > 0 ? unreadTotal : undefined}
+                badgeVariant="accent"
+                onClick={(e: React.MouseEvent) => {
+                  e.preventDefault();
+                  toggleChat();
                 }}
               />
               <NavigationItem
@@ -522,6 +536,17 @@ export const SidebarNavigation: React.FC = () => {
 
           {/* Project Bottom Quick Links */}
           <div className="mt-3 pt-2.5 border-t border-sidebar-border/60 space-y-0.5">
+            <NavigationItem
+              title="Chat"
+              path="#"
+              icon={MessageSquare}
+              badge={unreadTotal > 0 ? unreadTotal : undefined}
+              badgeVariant="accent"
+              onClick={(e: React.MouseEvent) => {
+                e.preventDefault();
+                toggleChat();
+              }}
+            />
             <NavigationItem
               title="Project Settings"
               path={`/projects/${activeProject?.id || 1}/settings`}

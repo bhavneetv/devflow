@@ -10,6 +10,8 @@ import { useNavigation } from '../../context/NavigationContext';
 import { useOrganization } from '../../context/OrganizationContext';
 import { CreateOrganizationModal } from '../organization/CreateOrganizationModal';
 import { JoinOrganizationModal } from '../organization/JoinOrganizationModal';
+import { CreateProjectModal } from '../project/CreateProjectModal';
+import { CreateTeamModal } from '../team/CreateTeamModal';
 import { RequirementsSlideOver } from '../requirements/RequirementsSlideOver';
 import { GlobalChatSlideOver } from '../chat/GlobalChatSlideOver';
 
@@ -28,8 +30,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const currentOrgSlug = projectSettingsMatch ? projectSettingsMatch[1] : undefined;
 
   const isSettingsActive = isAccountSettingsRoute || isProjectSettingsRoute;
-  const { isMobileOpen, setIsMobileOpen } = useNavigation();
-  const { isCreateModalOpen, setIsCreateModalOpen, isJoinModalOpen, setIsJoinModalOpen } = useOrganization();
+  const {
+    isMobileOpen,
+    setIsMobileOpen,
+    isCreateProjectOpen,
+    setIsCreateProjectOpen,
+    isCreateTeamOpen,
+    setIsCreateTeamOpen,
+  } = useNavigation();
+  const {
+    isCreateModalOpen,
+    setIsCreateModalOpen,
+    isJoinModalOpen,
+    setIsJoinModalOpen,
+    currentOrganization,
+  } = useOrganization();
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-[var(--app-bg)] text-[var(--sidebar-text-active)] font-sans antialiased transition-colors duration-200">
@@ -100,6 +115,28 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
 
       {/* Quick Issue Creator Modal */}
       <CreateModal />
+
+      {/* Create Project Modal (Trigger: Ctrl+Shift+P) */}
+      <CreateProjectModal
+        isOpen={isCreateProjectOpen}
+        onClose={() => setIsCreateProjectOpen(false)}
+        organizationSlug={currentOrgSlug || currentOrganization?.slug}
+        onCreated={() => {
+          setIsCreateProjectOpen(false);
+          window.dispatchEvent(new CustomEvent('devflow:project-created'));
+        }}
+      />
+
+      {/* Create Team Modal (Trigger: Ctrl+Shift+T) */}
+      {isCreateTeamOpen && (
+        <CreateTeamModal
+          onClose={() => setIsCreateTeamOpen(false)}
+          onCreated={() => {
+            setIsCreateTeamOpen(false);
+            window.dispatchEvent(new CustomEvent('devflow:team-created'));
+          }}
+        />
+      )}
 
       {/* Create Organization Modal */}
       <CreateOrganizationModal

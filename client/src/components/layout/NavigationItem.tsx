@@ -15,6 +15,7 @@ interface NavigationItemProps {
   onToggleFavorite?: () => void;
   starPosition?: 'left' | 'right';
   customIcon?: React.ReactNode;
+  shortcut?: string;
   onClick?: (e: React.MouseEvent) => void;
   className?: string;
 }
@@ -30,6 +31,7 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
   onToggleFavorite,
   starPosition = 'right',
   customIcon,
+  shortcut,
   onClick,
   className,
 }) => {
@@ -65,7 +67,7 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
     >
       <div
         className={cn(
-          'flex items-center gap-2 min-w-0 transition-all duration-200',
+          'flex items-center gap-2 min-w-0 flex-1 transition-all duration-200',
           isCollapsed && 'justify-center'
         )}
       >
@@ -107,12 +109,18 @@ export const NavigationItem: React.FC<NavigationItemProps> = ({
           </div>
         )}
         {!isCollapsed && (
-          <span className="truncate tracking-[-0.01em] transition-opacity duration-200">{title}</span>
+          <span className="truncate tracking-[-0.01em] transition-opacity duration-200">{title || 'Untitled'}</span>
         )}
       </div>
 
       {!isCollapsed && (
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-1.5">
+          {shortcut && (
+            <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono font-medium text-zinc-500 bg-white/[0.04] border border-white/[0.08] group-hover:text-zinc-300 group-hover:border-white/15 transition-colors">
+              {shortcut}
+            </kbd>
+          )}
+
           {badge !== undefined && (
             <span
               className={cn(

@@ -41,6 +41,12 @@ interface NavigationContextType {
   isCreateOpen: boolean;
   setIsCreateOpen: (open: boolean) => void;
 
+  isCreateProjectOpen: boolean;
+  setIsCreateProjectOpen: (open: boolean) => void;
+
+  isCreateTeamOpen: boolean;
+  setIsCreateTeamOpen: (open: boolean) => void;
+
   favorites: FavoriteItem[];
   addFavorite: (item: FavoriteItem) => void;
   removeFavorite: (id: string) => void;
@@ -52,7 +58,17 @@ interface NavigationContextType {
     type: 'PROJECT' | 'TEAM',
     id: number,
     orgId?: number,
-    meta?: { name: string; color?: string; icon?: string; slug?: string; key?: string }
+    meta?: {
+      name?: string;
+      title?: string;
+      color?: string;
+      icon?: string;
+      avatarColor?: string;
+      avatarIcon?: string;
+      slug?: string;
+      key?: string;
+      description?: string | null;
+    }
   ) => Promise<boolean>;
   refreshFavorites: (orgSlugOrId?: string | number) => Promise<void>;
 
@@ -83,6 +99,8 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
+  const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [favorites, setFavorites] = useState<FavoriteItem[]>(initialFavorites);
   const [favoriteProjects, setFavoriteProjects] = useState<FavoriteProject[]>([]);
   const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
@@ -141,21 +159,34 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const refreshFavorites = useCallback(async (orgSlugOrId?: string | number) => {
     try {
+      const slugOrId = orgSlugOrId ?? currentOrganization?.slug;
       const res = await favoriteService.getFavorites(
-        orgSlugOrId
-          ? typeof orgSlugOrId === 'number'
-            ? { organizationId: orgSlugOrId }
-            : { organizationSlug: orgSlugOrId }
+        slugOrId
+          ? typeof slugOrId === 'number'
+            ? { organizationId: slugOrId }
+            : { organizationSlug: slugOrId }
           : undefined
       );
       if (res.success && res.data) {
-        setFavoriteProjects(res.data.projects || []);
-        setFavoriteTeams(res.data.teams || []);
+        setFavoriteProjects(
+          (res.data.projects || []).map((p: any) => ({
+            ...p,
+            name: p.name || p.title || 'Untitled Project',
+            title: p.title || p.name || 'Untitled Project',
+          }))
+        );
+        setFavoriteTeams(
+          (res.data.teams || []).map((t: any) => ({
+            ...t,
+            name: t.name || t.title || 'Untitled Team',
+            title: t.title || t.name || 'Untitled Team',
+          }))
+        );
       }
     } catch (err) {
       console.error('Failed to load favorites:', err);
     }
-  }, []);
+  }, [currentOrganization?.slug]);
 
   useEffect(() => {
     refreshFavorites();
@@ -175,7 +206,17 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     type: 'PROJECT' | 'TEAM',
     id: number,
     orgId?: number,
-    meta?: { name: string; color?: string; icon?: string; slug?: string; key?: string }
+    meta?: {
+      name?: string;
+      title?: string;
+      color?: string;
+      icon?: string;
+      avatarColor?: string;
+      avatarIcon?: string;
+      slug?: string;
+      key?: string;
+      description?: string | null;
+    }
   ): Promise<boolean> => {
     const isCurrentlyFav = isResourceFavorite(type, id);
 
@@ -184,14 +225,18 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (isCurrentlyFav) {
         setFavoriteProjects((prev) => prev.filter((p) => p.id !== id));
       } else {
+        const resolvedName = meta?.name || meta?.title || 'Project';
         setFavoriteProjects((prev) => [
           ...prev,
           {
             id,
-            name: meta?.name || 'Project',
+            name: resolvedName,
+            title: resolvedName,
             slug: meta?.slug,
             color: meta?.color,
             icon: meta?.icon,
+            avatarColor: meta?.avatarColor,
+            avatarIcon: meta?.avatarIcon,
             organizationId: orgId,
           },
         ]);
@@ -200,14 +245,17 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (isCurrentlyFav) {
         setFavoriteTeams((prev) => prev.filter((t) => t.id !== id));
       } else {
+        const resolvedName = meta?.name || meta?.title || 'Team';
         setFavoriteTeams((prev) => [
           ...prev,
           {
             id,
-            name: meta?.name || 'Team',
+            name: resolvedName,
+            title: resolvedName,
             key: meta?.key,
             color: meta?.color,
             icon: meta?.icon,
+            description: meta?.description,
             organizationId: orgId,
           },
         ]);
@@ -233,22 +281,59 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  // Global Ctrl+K / Cmd+K keyboard shortcut
+  // Keyboard shortcuts scoped to sidebar and quick actions
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+
+      // Search: Ctrl+K or Cmd+K
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsSearchOpen((prev) => !prev);
+        return;
       }
-      if (e.key === 'c' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-        // Quick create with 'c' key shortcut (Linear style)
+
+      // If user is currently typing in an input field, do not trigger other shortcuts
+      if (isInput) return;
+
+      // Create Project: Ctrl+Shift+P or Cmd+Shift+P
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setIsCreateProjectOpen(true);
+        return;
+      }
+
+      // Create Team: Ctrl+Shift+T or Cmd+Shift+T
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        setIsCreateTeamOpen(true);
+        return;
+      }
+
+      // Quick Create Issue: 'c' key shortcut (Linear style)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'c') {
         e.preventDefault();
         setIsCreateOpen(true);
+        return;
+      }
+
+      // Inbox: Ctrl+Shift+I or Cmd+Shift+I
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        navigate('/inbox');
+        return;
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [navigate]);
 
   const selectProject = useCallback((project: ActiveProject) => {
     setActiveProject(project);
@@ -347,6 +432,10 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setIsSearchOpen,
         isCreateOpen,
         setIsCreateOpen,
+        isCreateProjectOpen,
+        setIsCreateProjectOpen,
+        isCreateTeamOpen,
+        setIsCreateTeamOpen,
         favorites,
         addFavorite,
         removeFavorite,

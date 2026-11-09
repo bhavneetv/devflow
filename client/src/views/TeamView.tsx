@@ -17,7 +17,6 @@ import { teamService } from '../services/team.service';
 import { authService } from '../services/auth.service';
 import { accountSettingsService } from '../services/accountSettings.service';
 import { CreateTeamModal } from '../components/team/CreateTeamModal';
-import { TeamPermissionsModal } from '../components/team/TeamPermissionsModal';
 import { ProfileAvatarEditor } from '../components/settings/ProfileAvatarEditor';
 import { AVATAR_ICON_COMPONENTS } from '../components/onboarding/StepProfile';
 import { AnimatedSelect, SelectOption } from '../components/settings/AnimatedSelect';
@@ -4329,8 +4328,6 @@ export const TeamView: React.FC = () => {
     });
   }, [currentRemovedMembers, searchQuery, roleFilter]);
 
-  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
-
   const myRole = selectedTeam?.myRole ?? 'VIEWER';
   const isOwner = myRole === 'OWNER';
   const myPerms = selectedTeam?.myPermissions;
@@ -4742,13 +4739,6 @@ export const TeamView: React.FC = () => {
             onConfirm={handleRemoveMember}
             onCancel={() => setMemberToRemove(null)}
             loading={removeLoading}
-          />
-        )}
-        {showPermissionsModal && selectedTeam && (
-          <TeamPermissionsModal
-            isOpen={showPermissionsModal}
-            onClose={() => setShowPermissionsModal(false)}
-            team={selectedTeam}
           />
         )}
       </AnimatePresence>
@@ -5180,18 +5170,6 @@ export const TeamView: React.FC = () => {
                   title="Team settings"
                 >
                   <Settings size={14} className="text-zinc-400" />
-                </button>
-              )}
-
-              {isOwner && (
-                <button
-                  type="button"
-                  onClick={() => setShowPermissionsModal(true)}
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 text-[12px] font-semibold transition-all cursor-pointer shadow-sm"
-                  title="Configure team roles and permissions (RBAC)"
-                >
-                  <ShieldCheck size={14} className="text-purple-400" />
-                  <span>Permissions</span>
                 </button>
               )}
 

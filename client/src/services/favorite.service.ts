@@ -4,6 +4,10 @@ import { authService } from './auth.service';
 export interface FavoriteProject {
   id: number;
   name: string;
+  title?: string;
+  identifier?: string;
+  avatarColor?: string;
+  avatarIcon?: string;
   slug?: string;
   color?: string;
   icon?: string;
@@ -14,9 +18,11 @@ export interface FavoriteProject {
 export interface FavoriteTeam {
   id: number;
   name: string;
+  title?: string;
   key?: string;
   color?: string;
   icon?: string;
+  description?: string | null;
   organizationId?: number;
 }
 

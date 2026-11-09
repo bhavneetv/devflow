@@ -9,8 +9,10 @@ import {
   Sun,
   ExternalLink,
   FileText,
+  MessageSquare,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useChat } from '../../context/ChatContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Breadcrumbs } from './Breadcrumbs';
 import { NotificationMenu } from './NotificationMenu';
@@ -32,6 +34,7 @@ export const Header: React.FC = () => {
 
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
+  const { toggleChat, unreadTotal, isOpen: isChatOpen } = useChat();
 
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
@@ -88,6 +91,34 @@ export const Header: React.FC = () => {
           <kbd className="px-1 py-0.2 rounded bg-[var(--sidebar-border)] text-[9.5px] font-mono text-[var(--sidebar-text-muted)]">
             g r
           </kbd>
+        </button>
+
+        {/* Unified Chat Overlay Launcher */}
+        <button
+          type="button"
+          onClick={toggleChat}
+          className={`relative flex items-center gap-1.5 h-[34px] px-2.5 rounded-lg text-xs font-medium transition-all cursor-pointer shadow-sm group ${
+            isChatOpen
+              ? 'bg-purple-600/25 text-purple-200 border border-purple-500/60 ring-1 ring-purple-500/30'
+              : 'text-[var(--sidebar-text-muted)] hover:text-[var(--sidebar-text-active)] bg-[var(--input-bg)] hover:bg-[var(--sidebar-hover)] border border-[var(--header-border)] hover:border-purple-500/50'
+          }`}
+          title="DevFlow Unified Chat (Shortcut: Ctrl + Shift + M)"
+        >
+          <MessageSquare
+            size={14}
+            className={`shrink-0 transition-transform group-hover:scale-110 ${
+              isChatOpen ? 'text-purple-300' : 'text-purple-400'
+            }`}
+          />
+          <span className="hidden md:inline font-medium">Chat</span>
+          <kbd className="hidden lg:inline px-1 py-0.2 rounded bg-[var(--sidebar-border)] text-[9.5px] font-mono text-[var(--sidebar-text-muted)]">
+            ⌘⇧M
+          </kbd>
+          {unreadTotal > 0 && (
+            <span className="flex items-center justify-center min-w-[17px] h-[17px] px-1 rounded-full bg-purple-600 text-white text-[9.5px] font-bold shadow-xs">
+              {unreadTotal > 99 ? '99+' : unreadTotal}
+            </span>
+          )}
         </button>
 
         {/* Search Bar placed directly left to the Dark Mode button */}

@@ -65,9 +65,12 @@ export interface TeamConversation {
   type: 'GROUP' | 'DIRECT';
   name: string;
   participantIds?: string | null;
+  isPinned?: boolean;
   otherUser?: TeamUser | null;
+  otherUsers?: TeamUser[];
   lastMessage?: TeamMessage | null;
   unreadCount: number;
+  createdAt?: string;
   updatedAt: string;
 }
 
@@ -79,6 +82,12 @@ export interface TeamMessage {
   content: string;
   mentions?: string | null;
   readBy?: string | null;
+  replyToId?: number | null;
+  isPinned?: boolean;
+  isEdited?: boolean;
+  isDeleted?: boolean;
+  attachments?: string | null;
+  sharedEntity?: string | null;
   createdAt: string;
   updatedAt: string;
   sender: TeamUser;

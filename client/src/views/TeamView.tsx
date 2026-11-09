@@ -17,7 +17,6 @@ import { teamService } from '../services/team.service';
 import { authService } from '../services/auth.service';
 import { accountSettingsService } from '../services/accountSettings.service';
 import { CreateTeamModal } from '../components/team/CreateTeamModal';
-import { TeamChat } from '../components/team/TeamChat';
 import { TeamPermissionsModal } from '../components/team/TeamPermissionsModal';
 import { ProfileAvatarEditor } from '../components/settings/ProfileAvatarEditor';
 import { AVATAR_ICON_COMPONENTS } from '../components/onboarding/StepProfile';
@@ -4331,7 +4330,6 @@ export const TeamView: React.FC = () => {
   }, [currentRemovedMembers, searchQuery, roleFilter]);
 
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
-  const [activeDetailTab, setActiveDetailTab] = useState<'members' | 'chat'>('members');
 
   const myRole = selectedTeam?.myRole ?? 'VIEWER';
   const isOwner = myRole === 'OWNER';
@@ -5242,41 +5240,6 @@ export const TeamView: React.FC = () => {
             </div>
           )}
 
-          {/* ── Detail Navigation Tabs: Members & Overview vs Team Chat ── */}
-          <div className="flex items-center gap-2 border-b border-[#27272A] pb-px">
-            <button
-              type="button"
-              onClick={() => setActiveDetailTab('members')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer ${
-                activeDetailTab === 'members'
-                  ? 'text-white border-purple-500 bg-purple-500/10'
-                  : 'text-zinc-400 hover:text-zinc-200 border-transparent hover:bg-white/[0.03]'
-              }`}
-            >
-              <Users size={14} className={activeDetailTab === 'members' ? 'text-purple-400' : 'text-zinc-500'} />
-              <span>Team Members & Overview</span>
-              {selectedTeam && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 text-zinc-300">
-                  {selectedTeam.members.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveDetailTab('chat')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer ${
-                activeDetailTab === 'chat'
-                  ? 'text-white border-purple-500 bg-purple-500/10'
-                  : 'text-zinc-400 hover:text-zinc-200 border-transparent hover:bg-white/[0.03]'
-              }`}
-            >
-              <MessageSquare size={14} className={activeDetailTab === 'chat' ? 'text-purple-400' : 'text-zinc-500'} />
-              <span>Team Chat</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            </button>
-          </div>
-
           {teamLoading ? (
             <div className="bg-[#0E0E10] border border-[#27272A] rounded-xl overflow-hidden">
               {[...Array(4)].map((_, i) => <SkeletonRow key={i} />)}
@@ -5296,9 +5259,6 @@ export const TeamView: React.FC = () => {
               }
             />
           ) : selectedTeam ? (
-            activeDetailTab === 'chat' ? (
-              <TeamChat team={selectedTeam} currentUserId={user?.id} />
-            ) : (
             <div className="flex flex-col lg:flex-row items-start gap-6 w-full">
               {/* Left Column: Members & Search (covers 65-70% of screen) */}
               <div className="w-full lg:w-[68%] xl:w-[72%] min-w-0 space-y-4">
@@ -5526,7 +5486,6 @@ export const TeamView: React.FC = () => {
               />
             </div>
           </div>
-            )
         ) : null}
         </div>
       )}

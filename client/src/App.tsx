@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NavigationProvider } from './context/NavigationContext';
+import { ChatProvider } from './context/ChatContext';
 import { OrganizationProvider, useOrganization } from './context/OrganizationContext';
 import { ToastProvider } from './context/ToastContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
@@ -132,8 +133,9 @@ export const App: React.FC = () => {
                   element={
                     <ProtectedRoute>
                       <NavigationProvider>
-                        <DashboardLayout>
-                          <Routes>
+                        <ChatProvider>
+                          <DashboardLayout>
+                            <Routes>
                             {/* Root & Workspace Dashboard: Redirect to active organization */}
                             <Route path="/" element={<RootOrganizationRoute />} />
                             <Route path="/workspace/overview" element={<RootOrganizationRoute />} />
@@ -209,7 +211,8 @@ export const App: React.FC = () => {
                             <Route path="*" element={<Navigate to="/" replace />} />
                           </Routes>
                         </DashboardLayout>
-                      </NavigationProvider>
+                      </ChatProvider>
+                    </NavigationProvider>
                     </ProtectedRoute>
                   }
                 />

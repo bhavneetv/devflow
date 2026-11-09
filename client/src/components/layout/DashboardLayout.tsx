@@ -11,6 +11,7 @@ import { useOrganization } from '../../context/OrganizationContext';
 import { CreateOrganizationModal } from '../organization/CreateOrganizationModal';
 import { JoinOrganizationModal } from '../organization/JoinOrganizationModal';
 import { RequirementsSlideOver } from '../requirements/RequirementsSlideOver';
+import { GlobalChatSlideOver } from '../chat/GlobalChatSlideOver';
 
 interface DashboardLayoutProps {
   children?: React.ReactNode;
@@ -114,6 +115,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
 
       {/* Global Requirements Slide-Over Drawer (Trigger: 'g r' or Ctrl+Shift+R) */}
       <RequirementsSlideOver />
+
+      {/* Global Floating Team Chat Slide-Over Drawer (Trigger: Ctrl+Shift+C) */}
+      <GlobalChatSlideOver />
     </div>
   );
 };

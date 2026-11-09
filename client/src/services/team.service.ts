@@ -247,13 +247,18 @@ export const teamService = {
 
   async getOrCreateDirectConversation(
     teamId: number,
-    targetUserId: number
+    targetUserIdOrIds: number | number[],
+    name?: string
   ): Promise<{ success: boolean; data?: TeamConversation; error?: string }> {
     try {
+      const payload = Array.isArray(targetUserIdOrIds)
+        ? { targetUserIds: targetUserIdOrIds, name }
+        : { targetUserId: targetUserIdOrIds, name };
+
       const res = await fetch(apiUrl(`/teams/${teamId}/conversations/direct`), {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ targetUserId }),
+        body: JSON.stringify(payload),
       });
       return handleResponse(res);
     } catch (err: any) {
@@ -279,17 +284,93 @@ export const teamService = {
     teamId: number,
     convId: number,
     content: string,
-    mentions?: number[]
+    options?: {
+      mentions?: number[];
+      attachments?: any[];
+      sharedEntity?: any;
+      replyToId?: number;
+    }
   ): Promise<{ success: boolean; data?: TeamMessage; error?: string }> {
     try {
       const res = await fetch(apiUrl(`/teams/${teamId}/conversations/${convId}/messages`), {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ content, mentions }),
+        body: JSON.stringify({
+          content,
+          mentions: options?.mentions,
+          attachments: options?.attachments,
+          sharedEntity: options?.sharedEntity,
+          replyToId: options?.replyToId,
+        }),
       });
       return handleResponse(res);
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to send message' };
+    }
+  },
+
+  async editMessage(
+    teamId: number,
+    convId: number,
+    messageId: number,
+    content: string
+  ): Promise<{ success: boolean; data?: TeamMessage; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations/${convId}/messages/${messageId}`), {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ content }),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to edit message' };
+    }
+  },
+
+  async deleteMessage(
+    teamId: number,
+    convId: number,
+    messageId: number
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations/${convId}/messages/${messageId}`), {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to delete message' };
+    }
+  },
+
+  async togglePinMessage(
+    teamId: number,
+    convId: number,
+    messageId: number
+  ): Promise<{ success: boolean; data?: TeamMessage; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations/${convId}/messages/${messageId}/pin`), {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to toggle pin' };
+    }
+  },
+
+  async togglePinConversation(
+    teamId: number,
+    convId: number
+  ): Promise<{ success: boolean; data?: TeamConversation; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations/${convId}/pin`), {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to toggle conversation pin' };
     }
   },
 

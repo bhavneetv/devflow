@@ -422,6 +422,7 @@ model TeamConversation {
   name           String?
   // For DIRECT chats: participantUserIds stores sorted JSON string like "[1,2]"
   participantIds String?          @db.Text
+  isPinned       Boolean          @default(false)
   messages       TeamMessage[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
@@ -444,6 +445,12 @@ model TeamMessage {
   mentions       String?          @db.Text
   // JSON array of user IDs who have read the message like [1, 2]
   readBy         String?          @db.Text
+  replyToId      Int?
+  isPinned       Boolean          @default(false)
+  isEdited       Boolean          @default(false)
+  isDeleted      Boolean          @default(false)
+  attachments    String?          @db.Text
+  sharedEntity   String?          @db.Text
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 

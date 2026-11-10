@@ -17,6 +17,13 @@ export interface Point {
   y: number;
 }
 
+export type FlowEdge = 'top' | 'right' | 'bottom' | 'left' | 'center';
+
+export interface ElementBinding {
+  elementId: string;
+  edge: FlowEdge;
+}
+
 export interface WhiteboardElement {
   id: string;
   type: ElementType;
@@ -33,6 +40,8 @@ export interface WhiteboardElement {
   text?: string;
   fontSize?: number;
   noteColor?: string;
+  startBinding?: ElementBinding;
+  endBinding?: ElementBinding;
   createdAt: number;
   updatedAt: number;
 }

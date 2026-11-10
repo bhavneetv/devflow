@@ -44,19 +44,26 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
   );
   const sortedModules = [...pinnedModules, ...regularModules];
 
+  const orgMatch = location.pathname.match(/^\/organizations\/([^/]+)/);
+  const orgSlug = orgMatch ? orgMatch[1] : undefined;
+  const projectBase = orgSlug ? `/organizations/${orgSlug}/projects/${projectId}` : `/projects/${projectId}`;
+
   const getSubmodulePath = (sub: ProjectSubmodule) => {
     if (sub.type === 'built_in' && sub.builtInKey) {
       if (sub.builtInKey === 'overview') {
-        return `/projects/${projectId}`;
+        return projectBase;
       }
-      return `/projects/${projectId}/${sub.builtInKey}`;
+      if (sub.builtInKey === 'whiteboard') {
+        return `${projectBase}/whiteboard/${sub.id}`;
+      }
+      return `${projectBase}/${sub.builtInKey}`;
     }
-    return `/projects/${projectId}/submodules/${sub.id}`;
+    return `${projectBase}/submodules/${sub.id}`;
   };
 
   const isPathActive = (targetPath: string) => {
-    if (targetPath === `/projects/${projectId}`) {
-      return location.pathname === `/projects/${projectId}` || location.pathname === `/projects/${projectId}/`;
+    if (targetPath === projectBase) {
+      return location.pathname === projectBase || location.pathname === `${projectBase}/`;
     }
     return location.pathname === targetPath || location.pathname.startsWith(`${targetPath}/`);
   };
@@ -135,8 +142,10 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
         const visibleSubmodules = allSubmodules.filter((sub) => {
           if (!sub.isVisible) return false;
           if (sub.type === 'built_in' && sub.builtInKey) {
-            if (seenBuiltInKeys.has(sub.builtInKey)) return false;
-            seenBuiltInKeys.add(sub.builtInKey);
+            if (sub.builtInKey !== 'whiteboard') {
+              if (seenBuiltInKeys.has(sub.builtInKey)) return false;
+              seenBuiltInKeys.add(sub.builtInKey);
+            }
           }
           return true;
         });
@@ -146,7 +155,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
 
         if (isIndependentModule) {
           const ModIcon = resolveModuleIcon(mod.icon, Folder);
-          const targetPath = `/projects/${projectId}/modules/${mod.id}`;
+          const targetPath = `${projectBase}/modules/${mod.id}`;
           const isActive = isPathActive(targetPath);
 
           if (isCollapsed) {

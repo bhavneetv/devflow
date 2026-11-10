@@ -1,26 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   PenTool,
   Plus,
   HelpCircle,
-  FolderKanban,
-  Check,
-  ChevronRight,
   Maximize2,
   Minimize2,
   Copy,
   Trash2,
   Edit2,
-  ChevronDown,
-  Layers,
-  Sparkles,
-  ExternalLink,
+  Check,
 } from 'lucide-react';
 import { WhiteboardCanvas } from '../../components/whiteboard/WhiteboardCanvas';
 import {
   loadBoardsMeta,
-  saveBoardsMeta,
   loadActiveBoardId,
   saveActiveBoardId,
   createNewBoard,
@@ -29,8 +22,8 @@ import {
   renameExistingBoard,
 } from '../../components/whiteboard/whiteboard.storage';
 import { WhiteboardBoardMeta } from '../../components/whiteboard/whiteboard.types';
-import { useNavigation } from '../../context/NavigationContext';
 import { useAccentTheme } from '../../services/accentTheme.service';
+import { useNavigation } from '../../context/NavigationContext';
 import { cn } from '../../lib/utils';
 
 export interface WhiteboardViewProps {
@@ -52,12 +45,23 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
   const effectiveSubmoduleId = submoduleId ?? paramSubmoduleId;
   const scopeKey = effectiveSubmoduleId ? `submodule_${effectiveSubmoduleId}` : 'main';
 
-  const { activeProject } = useNavigation();
   const { accentColor } = useAccentTheme();
+  const { projectModules } = useNavigation();
+
+  const resolvedSubmoduleName = useMemo(() => {
+    if (submoduleName) return submoduleName;
+    if (!effectiveSubmoduleId || !projectModules) return undefined;
+    const subIdNum = parseInt(String(effectiveSubmoduleId), 10);
+    for (const mod of projectModules) {
+      const found = mod.submodules?.find((s) => s.id === subIdNum);
+      if (found) return found.name;
+    }
+    return undefined;
+  }, [submoduleName, effectiveSubmoduleId, projectModules]);
 
   // Multi-Board State
   const [boards, setBoards] = useState<WhiteboardBoardMeta[]>(() =>
-    loadBoardsMeta(projectId, scopeKey, submoduleName)
+    loadBoardsMeta(projectId, scopeKey, resolvedSubmoduleName)
   );
   const [activeBoardId, setActiveBoardId] = useState<string>(() =>
     loadActiveBoardId(projectId, scopeKey, boards)
@@ -69,25 +73,38 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   // UI States
-  const [showDropdown, setShowDropdown] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Sync boards when scope changes
+  // Sync boards when scope changes (e.g. switching between different whiteboard submodules)
+  const prevScopeRef = useRef(`${projectId}:${scopeKey}`);
   useEffect(() => {
-    const list = loadBoardsMeta(projectId, scopeKey, submoduleName);
-    setBoards(list);
-    const active = loadActiveBoardId(projectId, scopeKey, list);
-    setActiveBoardId(active);
-  }, [projectId, scopeKey, submoduleName]);
+    const currentScope = `${projectId}:${scopeKey}`;
+    if (prevScopeRef.current !== currentScope) {
+      prevScopeRef.current = currentScope;
+      const list = loadBoardsMeta(projectId, scopeKey, resolvedSubmoduleName);
+      setBoards(list);
+      const active = loadActiveBoardId(projectId, scopeKey, list);
+      setActiveBoardId(active);
+    }
+  }, [projectId, scopeKey, resolvedSubmoduleName]);
 
-  const activeBoard = boards.find((b) => b.id === activeBoardId) || boards[0];
+  // Stable callback for element count updates to prevent render loops
+  const handleElementsCountChange = React.useCallback(
+    (count: number) => {
+      setBoards((prev) => {
+        const target = prev.find((b) => b.id === activeBoardId);
+        if (target && target.elementCount === count) return prev;
+        return prev.map((b) => (b.id === activeBoardId ? { ...b, elementCount: count } : b));
+      });
+    },
+    [activeBoardId]
+  );
 
   // Switch Active Board
   const handleSelectBoard = (boardId: string) => {
     setActiveBoardId(boardId);
     saveActiveBoardId(projectId, scopeKey, boardId);
-    setShowDropdown(false);
   };
 
   // Create New Board
@@ -95,8 +112,6 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
     const result = createNewBoard(projectId, scopeKey);
     setBoards(result.updatedList);
     setActiveBoardId(result.meta.id);
-    setShowDropdown(false);
-    // Start renaming immediately
     setEditingBoardId(result.meta.id);
     setEditingTitle(result.meta.title);
     setTimeout(() => renameInputRef.current?.select(), 50);
@@ -108,7 +123,6 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
     const result = duplicateExistingBoard(projectId, scopeKey, boardIdToDup);
     setBoards(result.updatedList);
     setActiveBoardId(result.meta.id);
-    setShowDropdown(false);
   };
 
   // Delete Board
@@ -151,60 +165,45 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
   };
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
-    }
+    setIsFullscreen((prev) => !prev);
   };
 
+  // Keyboard shortcut to exit in-app fullscreen on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showShortcutsModal) {
+          setShowShortcutsModal(false);
+          return;
+        }
+        if (isFullscreen) {
+          setIsFullscreen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen, showShortcutsModal]);
+
   return (
-    <div className="relative w-full h-[calc(100vh-48px)] flex flex-col bg-[#0A0B0E] overflow-hidden select-none">
-      {/* ─── Top Navigation Header (Matching DevFlow Dark Glass Theme) ─────────── */}
-      <header className="h-12 px-4 border-b border-[#27272A]/70 bg-[#0E0F14]/90 backdrop-blur-md flex items-center justify-between z-30 shrink-0 gap-3">
-        {/* Left Side: Project Breadcrumb + Submodule Pill */}
-        <div className="flex items-center gap-2 min-w-0">
-          <Link
-            to={`/projects/${projectId}`}
-            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors truncate shrink-0"
-          >
-            <FolderKanban size={13} style={{ color: accentColor }} />
-            <span className="truncate max-w-[120px] sm:max-w-[180px]">
-              {activeProject?.title || `Project #${projectId}`}
-            </span>
-          </Link>
-
-          <ChevronRight size={12} className="text-zinc-600 shrink-0" />
-
-          {submoduleName && (
-            <>
-              <span className="px-2 py-0.5 rounded-md bg-[#18191E] border border-[#27272A] text-xs font-medium text-zinc-300 truncate max-w-[140px]">
-                {submoduleName}
-              </span>
-              <ChevronRight size={12} className="text-zinc-600 shrink-0" />
-            </>
-          )}
-
-          {/* Module Tag */}
-          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-            <span
-              className="px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wider uppercase border"
-              style={{
-                backgroundColor: `${accentColor}18`,
-                borderColor: `${accentColor}40`,
-                color: accentColor,
-              }}
-            >
-              Whiteboard
+    <div
+      className={cn(
+        'w-full h-full flex flex-col bg-[#0A0B0E] overflow-hidden select-none',
+        isFullscreen ? 'fixed inset-0 z-50 w-screen h-screen' : 'relative'
+      )}
+    >
+      {/* ─── Top Whiteboard Header: Clean board tabs, no redundant project path ─── */}
+      <header className="h-10 sm:h-11 px-2 sm:px-3 border-b border-[#27272A]/70 bg-[#0E0F14]/90 backdrop-blur-md flex items-center justify-between z-30 shrink-0 gap-2 sm:gap-3">
+        {/* Left Side: Whiteboard Icon + Boards Tab Bar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0 py-0.5">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#14151A] border border-[#27272A] shrink-0 text-zinc-300 mr-1">
+            <PenTool size={13} style={{ color: accentColor }} />
+            <span className="text-[11px] font-bold tracking-wide uppercase text-zinc-300">
+              {resolvedSubmoduleName || 'Whiteboard'}
             </span>
           </div>
-        </div>
 
-        {/* Center: Multi-Board Tabs / Switcher */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[55%]">
-          {/* Quick Tabs for all boards */}
+          {/* Board Tabs */}
           {boards.map((b) => {
             const isActive = b.id === activeBoardId;
             const isEditing = editingBoardId === b.id;
@@ -213,7 +212,7 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
               return (
                 <div
                   key={b.id}
-                  className="flex items-center gap-1 h-8 px-2 rounded-xl bg-[#18191E] border border-zinc-600 shrink-0"
+                  className="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#18191E] border border-zinc-600 shrink-0"
                 >
                   <input
                     ref={renameInputRef}
@@ -225,7 +224,7 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
                       if (e.key === 'Enter') handleSaveRename();
                       if (e.key === 'Escape') setEditingBoardId(null);
                     }}
-                    className="w-28 sm:w-36 bg-transparent text-xs text-white font-medium outline-none"
+                    className="w-24 sm:w-32 bg-transparent text-xs text-white font-medium outline-none"
                     autoFocus
                   />
                   <button
@@ -233,7 +232,7 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
                     onClick={handleSaveRename}
                     className="text-emerald-400 hover:text-emerald-300 cursor-pointer"
                   >
-                    <Check size={12} />
+                    <Check size={11} />
                   </button>
                 </div>
               );
@@ -244,30 +243,24 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
                 key={b.id}
                 onClick={() => handleSelectBoard(b.id)}
                 className={cn(
-                  'group flex items-center gap-1.5 h-8 px-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer shrink-0 border select-none',
+                  'group flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium cursor-pointer shrink-0 border select-none',
                   isActive
                     ? 'text-white border'
-                    : 'text-zinc-400 hover:text-zinc-200 bg-[#121316]/60 hover:bg-[#18191E] border-[#27272A]/70'
+                    : 'text-zinc-400 hover:text-zinc-200 bg-[#14151A] hover:bg-[#1A1B22] border-[#27272A]/70'
                 )}
                 style={
                   isActive
                     ? {
                         backgroundColor: `${accentColor}18`,
                         borderColor: `${accentColor}55`,
-                        boxShadow: `0 0 12px ${accentColor}20`,
+                        boxShadow: `0 0 10px ${accentColor}20`,
                       }
                     : undefined
                 }
-                title="Click to view whiteboard, double click to rename"
+                title="Click to view board, double click to rename"
                 onDoubleClick={(e) => handleStartRename(b, e)}
               >
-                <PenTool
-                  size={12}
-                  style={{ color: isActive ? accentColor : '#71717A' }}
-                  className="shrink-0"
-                />
-
-                <span className="truncate max-w-[90px] sm:max-w-[140px] font-semibold">
+                <span className="truncate max-w-[100px] sm:max-w-[160px] font-semibold text-[11px]">
                   {b.title}
                 </span>
 
@@ -283,9 +276,9 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
                     type="button"
                     onClick={(e) => handleStartRename(b, e)}
                     className="p-0.5 text-zinc-400 hover:text-white rounded"
-                    title="Rename"
+                    title="Rename board"
                   >
-                    <Edit2 size={10} />
+                    <Edit2 size={9} />
                   </button>
                   <button
                     type="button"
@@ -293,7 +286,7 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
                     className="p-0.5 text-zinc-400 hover:text-white rounded"
                     title="Duplicate board"
                   >
-                    <Copy size={10} />
+                    <Copy size={9} />
                   </button>
                   {boards.length > 1 && (
                     <button
@@ -302,7 +295,7 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
                       className="p-0.5 text-zinc-400 hover:text-rose-400 rounded"
                       title="Delete board"
                     >
-                      <Trash2 size={10} />
+                      <Trash2 size={9} />
                     </button>
                   )}
                 </div>
@@ -310,38 +303,55 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
             );
           })}
 
-          {/* Add New Whiteboard Button */}
+          {/* Add New Whiteboard Button - Static and clean, no animated hover bounce */}
           <button
             type="button"
             onClick={handleCreateBoard}
-            className="flex items-center gap-1 h-8 px-2.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-white bg-[#121316] hover:bg-[#18191E] border border-[#27272A] hover:border-zinc-700 transition-all cursor-pointer shrink-0"
+            className="flex items-center gap-1 h-7 px-2 rounded-lg text-xs font-medium text-zinc-300 hover:text-white bg-[#14151A] hover:bg-[#1C1D24] border border-[#27272A] cursor-pointer shrink-0"
             title="Create another separate whiteboard"
           >
-            <Plus size={13} style={{ color: accentColor }} />
-            <span className="hidden sm:inline">New Board</span>
+            <Plus size={12} style={{ color: accentColor }} />
+            <span className="hidden sm:inline text-[11px]">New Board</span>
+            <span className="inline sm:hidden text-[11px]">New</span>
           </button>
         </div>
 
         {/* Right Side: Header Controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setShowShortcutsModal(true)}
-            className="flex items-center gap-1 h-8 px-2.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-xs cursor-pointer"
+            className="hidden sm:flex items-center gap-1 h-7 px-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 text-xs cursor-pointer"
             title="Keyboard Shortcuts"
           >
-            <HelpCircle size={14} />
-            <span className="hidden md:inline">Shortcuts</span>
+            <HelpCircle size={13} />
+            <span className="hidden md:inline text-[11px]">Shortcuts</span>
           </button>
 
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="w-8 h-8 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Canvas'}
-          >
-            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
+          {isFullscreen ? (
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(false)}
+              className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-600 text-xs font-medium cursor-pointer shadow-lg transition-all"
+              title="Minimize / Exit Fullscreen (Esc)"
+            >
+              <Minimize2 size={13} style={{ color: accentColor }} />
+              <span className="text-[11px] font-semibold">Minimize</span>
+              <kbd className="px-1 py-0.2 rounded bg-black/50 text-[9px] font-mono text-zinc-400 border border-zinc-600">
+                Esc
+              </kbd>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(true)}
+              className="flex items-center gap-1 h-7 px-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 text-xs cursor-pointer transition-colors"
+              title="Expand Whiteboard to Fullscreen"
+            >
+              <Maximize2 size={13} />
+              <span className="hidden sm:inline text-[11px]">Fullscreen</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -349,15 +359,11 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
       <div className="flex-1 relative w-full h-full overflow-hidden">
         {activeBoardId && (
           <WhiteboardCanvas
-            key={activeBoardId}
+            key={`${projectId}_${scopeKey}_${activeBoardId}`}
             projectId={projectId}
             scopeKey={scopeKey}
             boardId={activeBoardId}
-            onElementsCountChange={(count) => {
-              setBoards((prev) =>
-                prev.map((b) => (b.id === activeBoardId ? { ...b, elementCount: count } : b))
-              );
-            }}
+            onElementsCountChange={handleElementsCountChange}
           />
         )}
       </div>
@@ -433,7 +439,7 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowShortcutsModal(false)}
-                className="w-full py-2.5 rounded-xl text-white font-medium text-xs transition-colors cursor-pointer shadow-lg"
+                className="w-full py-2.5 rounded-xl text-white font-medium text-xs cursor-pointer shadow-lg"
                 style={{ backgroundColor: accentColor }}
               >
                 Close Shortcuts

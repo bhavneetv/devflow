@@ -75,9 +75,24 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
   ];
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 p-1.5 bg-[#121316]/95 backdrop-blur-md border border-[#27272A] rounded-2xl shadow-2xl select-none">
-      {/* Primary Tools */}
-      <div className="flex items-center gap-1">
+    <>
+      {/* Outside click dismissal overlay for open dropdowns */}
+      {(showTemplates || showExportMenu) && (
+        <div
+          className="fixed inset-0 z-30 bg-transparent"
+          onPointerDown={() => {
+            setShowTemplates(false);
+            setShowExportMenu(false);
+          }}
+        />
+      )}
+
+      <div
+        onPointerDown={(e) => e.stopPropagation()}
+        className="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 bg-[#121316]/95 backdrop-blur-md border border-[#27272A] rounded-2xl shadow-2xl select-none max-w-[calc(100vw-16px)] overflow-visible"
+      >
+        {/* Primary Tools - Horizontally scrollable on small screens */}
+        <div className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto no-scrollbar max-w-[calc(100vw-230px)] sm:max-w-none shrink">
         {mainTools.map((t) => {
           const IconComp = t.icon;
           const isActive = tool === t.id;
@@ -87,7 +102,7 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
               type="button"
               onClick={() => setTool(t.id)}
               className={cn(
-                'relative flex items-center justify-center w-8 h-8 rounded-xl transition-all duration-150 cursor-pointer',
+                'relative flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-xl transition-all duration-150 cursor-pointer shrink-0',
                 isActive
                   ? 'text-white shadow-md'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
@@ -102,9 +117,9 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
               }
               title={t.label}
             >
-              <IconComp size={16} />
+              <IconComp size={15} />
               {t.shortcut && !isActive && (
-                <span className="absolute bottom-0.5 right-1 text-[8px] font-mono text-zinc-500 hidden sm:inline">
+                <span className="absolute bottom-0.5 right-1 text-[8px] font-mono text-zinc-500 hidden md:inline">
                   {t.shortcut}
                 </span>
               )}
@@ -113,60 +128,60 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
         })}
       </div>
 
-      <div className="w-[1px] h-5 bg-zinc-700/60 mx-1" />
+      <div className="w-[1px] h-4 sm:h-5 bg-zinc-700/60 mx-0.5 sm:mx-1 shrink-0" />
 
       {/* Undo / Redo */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 shrink-0">
         <button
           type="button"
           onClick={onUndo}
           disabled={!canUndo}
           className={cn(
-            'flex items-center justify-center w-8 h-8 rounded-xl transition-colors',
+            'flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-xl transition-colors shrink-0',
             canUndo
               ? 'text-zinc-300 hover:text-white hover:bg-zinc-800/80 cursor-pointer'
               : 'text-zinc-600 cursor-not-allowed'
           )}
           title="Undo (Ctrl+Z)"
         >
-          <Undo2 size={15} />
+          <Undo2 size={14} />
         </button>
         <button
           type="button"
           onClick={onRedo}
           disabled={!canRedo}
           className={cn(
-            'flex items-center justify-center w-8 h-8 rounded-xl transition-colors',
+            'flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-xl transition-colors shrink-0',
             canRedo
               ? 'text-zinc-300 hover:text-white hover:bg-zinc-800/80 cursor-pointer'
               : 'text-zinc-600 cursor-not-allowed'
           )}
           title="Redo (Ctrl+Y)"
         >
-          <Redo2 size={15} />
+          <Redo2 size={14} />
         </button>
       </div>
 
-      <div className="w-[1px] h-5 bg-zinc-700/60 mx-1" />
+      <div className="w-[1px] h-4 sm:h-5 bg-zinc-700/60 mx-0.5 sm:mx-1 shrink-0" />
 
       {/* Templates Dropdown */}
-      <div className="relative">
+      <div className="relative shrink-0">
         <button
           type="button"
           onClick={() => {
             setShowTemplates(!showTemplates);
             setShowExportMenu(false);
           }}
-          className="flex items-center gap-1.5 h-8 px-2.5 rounded-xl text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors cursor-pointer"
+          className="flex items-center gap-1 sm:gap-1.5 h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors cursor-pointer shrink-0"
           title="Insert Pre-built Template"
         >
-          <Sparkles size={14} style={{ color: accentColor }} />
+          <Sparkles size={13} style={{ color: accentColor }} />
           <span className="hidden sm:inline">Templates</span>
           <ChevronDown size={11} className="text-zinc-500" />
         </button>
 
         {showTemplates && (
-          <div className="absolute top-full left-0 mt-2 w-64 p-2 bg-[#121316] border border-[#27272A] rounded-2xl shadow-2xl z-50 space-y-1">
+          <div className="absolute top-full left-0 sm:left-auto right-auto sm:right-0 mt-2 w-64 max-w-[calc(100vw-32px)] p-2 bg-[#121316] border border-[#27272A] rounded-2xl shadow-2xl z-50 space-y-1">
             <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
               Canvas Templates
             </div>
@@ -194,23 +209,23 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
       </div>
 
       {/* Export Dropdown */}
-      <div className="relative">
+      <div className="relative shrink-0">
         <button
           type="button"
           onClick={() => {
             setShowExportMenu(!showExportMenu);
             setShowTemplates(false);
           }}
-          className="flex items-center gap-1.5 h-8 px-2.5 rounded-xl text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors cursor-pointer"
+          className="flex items-center gap-1 sm:gap-1.5 h-7 sm:h-8 px-2 sm:px-2.5 rounded-xl text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors cursor-pointer shrink-0"
           title="Export Board"
         >
-          <Download size={14} style={{ color: accentColor }} />
+          <Download size={13} style={{ color: accentColor }} />
           <span className="hidden sm:inline">Export</span>
           <ChevronDown size={11} className="text-zinc-500" />
         </button>
 
         {showExportMenu && (
-          <div className="absolute top-full right-0 mt-2 w-52 p-2 bg-[#121316] border border-[#27272A] rounded-2xl shadow-2xl z-50 space-y-1">
+          <div className="absolute top-full right-0 mt-2 w-52 max-w-[calc(100vw-32px)] p-2 bg-[#121316] border border-[#27272A] rounded-2xl shadow-2xl z-50 space-y-1">
             <button
               type="button"
               onClick={() => {
@@ -237,17 +252,18 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
         )}
       </div>
 
-      <div className="w-[1px] h-5 bg-zinc-700/60 mx-1" />
+      <div className="w-[1px] h-4 sm:h-5 bg-zinc-700/60 mx-0.5 sm:mx-1 shrink-0" />
 
       {/* Clear Board */}
       <button
         type="button"
         onClick={onClear}
-        className="flex items-center justify-center w-8 h-8 rounded-xl text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+        className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-xl text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
         title="Clear entire canvas"
       >
         <Trash2 size={14} />
       </button>
     </div>
+    </>
   );
 };

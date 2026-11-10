@@ -2,23 +2,34 @@ import { StickyColorConfig, WhiteboardTemplate } from './whiteboard.types';
 
 export const STROKE_COLORS = [
   '#FFFFFF', // White
-  '#94A3B8', // Slate
-  '#818CF8', // Indigo
-  '#38BDF8', // Sky
-  '#34D399', // Emerald
-  '#FBBF24', // Amber
-  '#FB7185', // Rose
-  '#A855F7', // Purple
-  '#F97316', // Orange
+  '#94A3B8', // Slate Gray
+  '#1E293B', // Dark Charcoal
+  '#EF4444', // Coral Red
+  '#F43F5E', // Hot Rose
+  '#F97316', // Sunset Orange
+  '#F59E0B', // Golden Amber
+  '#84CC16', // Neon Lime
+  '#10B981', // Mint Emerald
+  '#14B8A6', // Vibrant Teal
+  '#06B6D4', // Electric Cyan
+  '#38BDF8', // Sky Blue
+  '#6366F1', // Cosmic Indigo
+  '#8B5CF6', // Royal Violet
+  '#A855F7', // Lavender Purple
+  '#D946EF', // Fuchsia Pink
 ];
 
 export const STICKY_COLORS: Record<string, StickyColorConfig> = {
   yellow: { id: 'yellow', name: 'Yellow', bg: '#FEF08A', border: '#FACC15', text: '#713F12' },
-  green: { id: 'green', name: 'Green', bg: '#BBF7D0', border: '#4ADE80', text: '#14532D' },
-  blue: { id: 'blue', name: 'Blue', bg: '#BAE6FD', border: '#38BDF8', text: '#0C4A6E' },
-  pink: { id: 'pink', name: 'Pink', bg: '#FBCFE8', border: '#F472B6', text: '#701A75' },
-  purple: { id: 'purple', name: 'Purple', bg: '#E9D5FF', border: '#C084FC', text: '#581C87' },
-  orange: { id: 'orange', name: 'Orange', bg: '#FED7AA', border: '#FB923C', text: '#7C2D12' },
+  green: { id: 'green', name: 'Emerald', bg: '#BBF7D0', border: '#4ADE80', text: '#14532D' },
+  blue: { id: 'blue', name: 'Sky', bg: '#BAE6FD', border: '#38BDF8', text: '#0C4A6E' },
+  pink: { id: 'pink', name: 'Rose', bg: '#FBCFE8', border: '#F472B6', text: '#701A75' },
+  purple: { id: 'purple', name: 'Violet', bg: '#E9D5FF', border: '#C084FC', text: '#581C87' },
+  orange: { id: 'orange', name: 'Peach', bg: '#FED7AA', border: '#FB923C', text: '#7C2D12' },
+  teal: { id: 'teal', name: 'Teal', bg: '#99F6E4', border: '#2DD4BF', text: '#115E59' },
+  coral: { id: 'coral', name: 'Coral', bg: '#FECDD3', border: '#FB7185', text: '#881337' },
+  lavender: { id: 'lavender', name: 'Lilac', bg: '#DDD6FE', border: '#A78BFA', text: '#4C1D95' },
+  carbon: { id: 'carbon', name: 'Carbon Dark', bg: '#18191E', border: '#3F3F46', text: '#E4E4E7' },
 };
 
 export const STROKE_WIDTHS = [

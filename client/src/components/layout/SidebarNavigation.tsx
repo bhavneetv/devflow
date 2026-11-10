@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Layers,
@@ -169,7 +169,17 @@ export const SidebarNavigation: React.FC = () => {
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const modKey = isMac ? '⌘' : 'Ctrl';
 
+  const location = useLocation();
   const orgSlug = currentOrganization?.slug;
+
+  const urlProjectMatch = location.pathname.match(/\/projects\/(\d+)/);
+  const currentProjectId = activeProject?.id || (urlProjectMatch ? parseInt(urlProjectMatch[1], 10) : 1);
+  const projectSettingsPath = orgSlug
+    ? `/organizations/${orgSlug}/projects/${currentProjectId}/settings`
+    : `/projects/${currentProjectId}/settings`;
+  const projectOverviewPath = orgSlug
+    ? `/organizations/${orgSlug}/projects/${currentProjectId}`
+    : `/projects/${currentProjectId}`;
 
   const [orgProjects, setOrgProjects] = useState<any[]>([]);
   const [orgTeams, setOrgTeams] = useState<any[]>([]);
@@ -608,7 +618,7 @@ export const SidebarNavigation: React.FC = () => {
                     <div className="space-y-0.5 mb-2.5">
                       <NavigationItem
                         title="Overview"
-                        path={`/projects/${activeProject.id}`}
+                        path={projectOverviewPath}
                         icon={LayoutDashboard}
                       />
                     </div>
@@ -654,7 +664,7 @@ export const SidebarNavigation: React.FC = () => {
             />
             <NavigationItem
               title="Project Settings"
-              path={`/projects/${activeProject?.id || 1}/settings`}
+              path={projectSettingsPath}
               icon={Settings}
             />
             <button

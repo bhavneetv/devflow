@@ -204,7 +204,7 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
     const keys = new Map<string, { moduleId: number; moduleName: string; submoduleName: string }>();
     modules.forEach((mod) => {
       (mod.submodules || []).forEach((sub) => {
-        if (sub.type === 'built_in' && sub.builtInKey) {
+        if (sub.type === 'built_in' && sub.builtInKey && sub.builtInKey !== 'whiteboard') {
           keys.set(sub.builtInKey, {
             moduleId: mod.id,
             moduleName: mod.name,

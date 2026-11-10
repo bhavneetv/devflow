@@ -276,7 +276,7 @@ export const WhiteboardPropertiesBar: React.FC<WhiteboardPropertiesBarProps> = (
               <svg width="14" height="14" viewBox="0 0 14 14" className="stroke-current fill-none">
                 <rect x="2" y="2" width="10" height="10" rx="2" strokeWidth="1.5" strokeDasharray="2.5 2" />
               </svg>
-              <span className="text-[10px] font-medium hidden md:inline">Outline</span>
+              <span className=" font-medium hidden md:inline"></span>
             </button>
 
             {/* Tinted Fill */}
@@ -303,7 +303,7 @@ export const WhiteboardPropertiesBar: React.FC<WhiteboardPropertiesBarProps> = (
               <svg width="14" height="14" viewBox="0 0 14 14" className="stroke-current">
                 <rect x="2" y="2" width="10" height="10" rx="2" strokeWidth="1.5" fill="currentColor" fillOpacity="0.35" />
               </svg>
-              <span className="text-[10px] font-medium hidden md:inline">Tint</span>
+              <span className="text-[10px] font-medium hidden md:inline"> </span>
             </button>
           </div>
         </>

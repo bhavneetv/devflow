@@ -20,6 +20,7 @@ import { ProjectSettingsView } from './views/project/ProjectSettingsView';
 import { SubmodulePlaceholderView } from './views/project/SubmodulePlaceholderView';
 import { ProjectOverviewView } from './views/project/ProjectOverviewView';
 import { WhiteboardView } from './views/project/WhiteboardView';
+import { PublicWhiteboardView } from './views/public/PublicWhiteboardView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
 import { LoginPage } from './pages/LoginPage';
@@ -138,6 +139,7 @@ export const App: React.FC = () => {
                 <Route path="/invite/org/:token" element={<OrgInviteAcceptPage />} />
                 <Route path="/join/org/:token" element={<OrgInviteAcceptPage />} />
                 <Route path="/git/callback" element={<GitOAuthCallbackView />} />
+                <Route path="/whiteboard/share/:token" element={<PublicWhiteboardView />} />
 
                 {/* Authenticated Workspace Application */}
                 <Route

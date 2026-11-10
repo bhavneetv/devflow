@@ -80,3 +80,38 @@ export interface WhiteboardBoardContent {
   viewport?: CanvasViewport;
 }
 
+export interface WhiteboardAuditLogEntry {
+  id: string;
+  timestamp: number;
+  userId?: string | number;
+  userName: string;
+  userEmail?: string;
+  userAvatar?: string | null;
+  userColor?: string | null;
+  action:
+    | 'created'
+    | 'modified'
+    | 'template_applied'
+    | 'renamed'
+    | 'cleared'
+    | 'duplicated'
+    | 'guest_edit';
+  description: string;
+  elementCount: number;
+}
+
+export type WhiteboardSharePermission = 'view' | 'edit';
+export type WhiteboardShareStatus = 'private' | 'public_view' | 'public_edit';
+
+export interface WhiteboardShareConfig {
+  token: string;
+  projectId: string | number;
+  scopeKey: string;
+  boardId: string;
+  boardTitle: string;
+  permission: WhiteboardSharePermission;
+  enabled?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+

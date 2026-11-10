@@ -10,7 +10,13 @@ import {
   Trash2,
   Edit2,
   Check,
+  Clock,
+  Share2,
+  Lock,
+  Globe,
+  Edit3,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { WhiteboardCanvas } from '../../components/whiteboard/WhiteboardCanvas';
 import {
   loadBoardsMeta,
@@ -20,8 +26,17 @@ import {
   duplicateExistingBoard,
   deleteExistingBoard,
   renameExistingBoard,
+  loadBoardAuditLogs,
+  recordBoardAuditLog,
+  getBoardShareStatus,
 } from '../../components/whiteboard/whiteboard.storage';
-import { WhiteboardBoardMeta } from '../../components/whiteboard/whiteboard.types';
+import {
+  WhiteboardBoardMeta,
+  WhiteboardAuditLogEntry,
+  WhiteboardShareStatus,
+} from '../../components/whiteboard/whiteboard.types';
+import { WhiteboardHistoryModal } from '../../components/whiteboard/WhiteboardHistoryModal';
+import { WhiteboardShareModal } from '../../components/whiteboard/WhiteboardShareModal';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { useNavigation } from '../../context/NavigationContext';
 import { cn } from '../../lib/utils';
@@ -59,6 +74,8 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
     return undefined;
   }, [submoduleName, effectiveSubmoduleId, projectModules]);
 
+  const { user } = useAuth();
+
   // Multi-Board State
   const [boards, setBoards] = useState<WhiteboardBoardMeta[]>(() =>
     loadBoardsMeta(projectId, scopeKey, resolvedSubmoduleName)
@@ -72,9 +89,30 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
   const [editingTitle, setEditingTitle] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // UI States
+  // UI States (Shortcuts, History, Share, Fullscreen)
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<WhiteboardAuditLogEntry[]>([]);
+
+  // Sync audit logs when active board changes
+  useEffect(() => {
+    if (activeBoardId) {
+      const logs = loadBoardAuditLogs(projectId, scopeKey, activeBoardId, {
+        name: user?.name,
+        email: user?.email,
+        avatarUrl: user?.avatarUrl,
+        avatarColor: user?.avatarColor,
+      });
+      setAuditLogs(logs);
+      setShareStatus(getBoardShareStatus(projectId, scopeKey, activeBoardId));
+    }
+  }, [projectId, scopeKey, activeBoardId, user]);
+
+  const [shareStatus, setShareStatus] = useState<WhiteboardShareStatus>(() =>
+    activeBoardId ? getBoardShareStatus(projectId, scopeKey, activeBoardId) : 'private'
+  );
 
   // Sync boards when scope changes (e.g. switching between different whiteboard submodules)
   const prevScopeRef = useRef(`${projectId}:${scopeKey}`);
@@ -115,14 +153,39 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
     setEditingBoardId(result.meta.id);
     setEditingTitle(result.meta.title);
     setTimeout(() => renameInputRef.current?.select(), 50);
+
+    const logs = recordBoardAuditLog(projectId, scopeKey, result.meta.id, {
+      userId: user?.id,
+      userName: user?.name || 'Workspace Member',
+      userEmail: user?.email,
+      userAvatar: user?.avatarUrl,
+      userColor: user?.avatarColor,
+      action: 'created',
+      description: `Created whiteboard "${result.meta.title}"`,
+      elementCount: 0,
+    });
+    setAuditLogs(logs);
   };
 
   // Duplicate Current Board
   const handleDuplicateBoard = (boardIdToDup: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    const sourceBoard = boards.find((b) => b.id === boardIdToDup);
     const result = duplicateExistingBoard(projectId, scopeKey, boardIdToDup);
     setBoards(result.updatedList);
     setActiveBoardId(result.meta.id);
+
+    const logs = recordBoardAuditLog(projectId, scopeKey, result.meta.id, {
+      userId: user?.id,
+      userName: user?.name || 'Workspace Member',
+      userEmail: user?.email,
+      userAvatar: user?.avatarUrl,
+      userColor: user?.avatarColor,
+      action: 'duplicated',
+      description: `Duplicated from "${sourceBoard?.title || 'Whiteboard'}"`,
+      elementCount: result.meta.elementCount,
+    });
+    setAuditLogs(logs);
   };
 
   // Delete Board
@@ -145,6 +208,18 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
       );
       setBoards(remainingList);
       setActiveBoardId(nextActiveId);
+
+      const logs = recordBoardAuditLog(projectId, scopeKey, nextActiveId, {
+        userId: user?.id,
+        userName: user?.name || 'Workspace Member',
+        userEmail: user?.email,
+        userAvatar: user?.avatarUrl,
+        userColor: user?.avatarColor,
+        action: 'cleared',
+        description: `Deleted whiteboard "${targetBoard?.title || 'Untitled'}"`,
+        elementCount: remainingList.find((b) => b.id === nextActiveId)?.elementCount || 0,
+      });
+      setAuditLogs(logs);
     }
   };
 
@@ -159,9 +234,47 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
   // Commit Rename
   const handleSaveRename = () => {
     if (!editingBoardId) return;
+    const oldTitle = boards.find((b) => b.id === editingBoardId)?.title;
+    const newTitle = editingTitle.trim();
     const updated = renameExistingBoard(projectId, scopeKey, editingBoardId, editingTitle);
     setBoards(updated);
     setEditingBoardId(null);
+
+    if (newTitle && newTitle !== oldTitle) {
+      const logs = recordBoardAuditLog(projectId, scopeKey, editingBoardId, {
+        userId: user?.id,
+        userName: user?.name || 'Workspace Member',
+        userEmail: user?.email,
+        userAvatar: user?.avatarUrl,
+        userColor: user?.avatarColor,
+        action: 'renamed',
+        description: `Renamed board from "${oldTitle}" to "${newTitle}"`,
+        elementCount: updated.find((b) => b.id === editingBoardId)?.elementCount || 0,
+      });
+      if (editingBoardId === activeBoardId) {
+        setAuditLogs(logs);
+      }
+    }
+  };
+
+  // Debounced canvas content modification logger
+  const lastContentSaveLogRef = useRef<number>(0);
+  const handleCanvasContentSaved = (elements: any[]) => {
+    const now = Date.now();
+    if (now - lastContentSaveLogRef.current > 15000) {
+      lastContentSaveLogRef.current = now;
+      const logs = recordBoardAuditLog(projectId, scopeKey, activeBoardId, {
+        userId: user?.id,
+        userName: user?.name || 'Workspace Member',
+        userEmail: user?.email,
+        userAvatar: user?.avatarUrl,
+        userColor: user?.avatarColor,
+        action: 'modified',
+        description: `Updated canvas (${elements.length} elements)`,
+        elementCount: elements.length,
+      });
+      setAuditLogs(logs);
+    }
   };
 
   const toggleFullscreen = () => {
@@ -318,6 +431,28 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
 
         {/* Right Side: Header Controls */}
         <div className="flex items-center gap-1 shrink-0">
+          {/* Whiteboard History Button (Icon only) */}
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 active:bg-zinc-700/80 transition-colors cursor-pointer"
+            title="Whiteboard History"
+          >
+            <Clock size={14} />
+          </button>
+
+          {/* Share Button (Icon only) */}
+          <button
+            type="button"
+            onClick={() => setShowShareModal(true)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 active:bg-zinc-700/80 transition-colors cursor-pointer"
+            title="Share Whiteboard"
+          >
+            <Share2 size={14} />
+          </button>
+
+          <div className="w-[1px] h-4 bg-zinc-800 hidden sm:block mx-0.5" />
+
           <button
             type="button"
             onClick={() => setShowShortcutsModal(true)}
@@ -364,6 +499,7 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
             scopeKey={scopeKey}
             boardId={activeBoardId}
             onElementsCountChange={handleElementsCountChange}
+            onSaveContent={handleCanvasContentSaved}
           />
         )}
       </div>
@@ -448,6 +584,24 @@ export const WhiteboardView: React.FC<WhiteboardViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ─── Whiteboard History & Audit Log Modal ────────────────────── */}
+      <WhiteboardHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        boardTitle={boards.find((b) => b.id === activeBoardId)?.title || 'Whiteboard'}
+        history={auditLogs}
+      />
+
+      {/* ─── Whiteboard Share Modal ───────────────────────────────────── */}
+      <WhiteboardShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        boardTitle={boards.find((b) => b.id === activeBoardId)?.title || 'Whiteboard'}
+        projectId={projectId}
+        scopeKey={scopeKey}
+        boardId={activeBoardId}
+      />
     </div>
   );
 };

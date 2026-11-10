@@ -35,11 +35,13 @@ import { loadBoardContent, saveBoardContent } from './whiteboard.storage';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { cn } from '../../lib/utils';
 
-interface WhiteboardCanvasProps {
+export interface WhiteboardCanvasProps {
   projectId: number | string;
   scopeKey?: string;
   boardId: string;
   onElementsCountChange?: (count: number) => void;
+  readOnly?: boolean;
+  onSaveContent?: (elements: WhiteboardElement[]) => void;
 }
 
 type DragAction =
@@ -74,6 +76,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   scopeKey = 'main',
   boardId,
   onElementsCountChange,
+  readOnly = false,
+  onSaveContent,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { accentColor } = useAccentTheme();
@@ -127,8 +131,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
 
   // Stable references for auto-save and count notifications without render loops
   const onCountChangeRef = useRef(onElementsCountChange);
+  const onSaveContentRef = useRef(onSaveContent);
   useEffect(() => {
     onCountChangeRef.current = onElementsCountChange;
+    onSaveContentRef.current = onSaveContent;
   });
 
   const lastCountRef = useRef<number>(-1);
@@ -140,12 +146,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
       isInitialMount.current = false;
       return;
     }
-    saveBoardContent(projectId, scopeKey, boardId, { elements, viewport });
+    if (!readOnly) {
+      saveBoardContent(projectId, scopeKey, boardId, { elements, viewport });
+      onSaveContentRef.current?.(elements);
+    }
     if (elements.length !== lastCountRef.current) {
       lastCountRef.current = elements.length;
       onCountChangeRef.current?.(elements.length);
     }
-  }, [elements, viewport, projectId, scopeKey, boardId]);
+  }, [elements, viewport, projectId, scopeKey, boardId, readOnly]);
 
   // Persist on unmount
   const elementsRef = useRef(elements);
@@ -157,12 +166,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
 
   useEffect(() => {
     return () => {
-      saveBoardContent(projectId, scopeKey, boardId, {
-        elements: elementsRef.current,
-        viewport: viewportRef.current,
-      });
+      if (!readOnly) {
+        saveBoardContent(projectId, scopeKey, boardId, {
+          elements: elementsRef.current,
+          viewport: viewportRef.current,
+        });
+      }
     };
-  }, [projectId, scopeKey, boardId]);
+  }, [projectId, scopeKey, boardId, readOnly]);
 
   // Global window pointerup so mouse release outside canvas never traps clicks
   useEffect(() => {
@@ -641,6 +652,8 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
         setIsSpacePressed(true);
       }
 
+      if (readOnly) return;
+
       // Tool shortcuts
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         const k = e.key.toLowerCase();
@@ -709,6 +722,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [
+    readOnly,
     editingId,
     isSpacePressed,
     selectedIds,
@@ -722,6 +736,19 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   // Pointer Down Handler
   const handlePointerDown = (e: React.PointerEvent) => {
     if (editingId) setEditingId(null);
+
+    // In readOnly mode, any mouse button or touch pans the canvas!
+    if (readOnly) {
+      setDragAction({
+        type: 'pan',
+        startX: e.clientX,
+        startY: e.clientY,
+        initVpX: viewport.x,
+        initVpY: viewport.y,
+      });
+      setIsPointerDown(true);
+      return;
+    }
 
     // Pan with middle mouse, spacebar, or hand tool
     if (e.button === 1 || isSpacePressed || tool === 'hand') {
@@ -1291,53 +1318,69 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
       }}
       className={cn(
         'relative w-full h-full bg-[#0A0B0E] overflow-hidden select-none touch-none',
-        tool === 'hand' || isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'
+        readOnly
+          ? 'cursor-grab active:cursor-grabbing'
+          : tool === 'hand' || isSpacePressed
+          ? 'cursor-grab active:cursor-grabbing'
+          : 'cursor-crosshair'
       )}
     >
-      {/* ─── Top Floating Toolbar ─────────────────────────────────────────────── */}
-      <WhiteboardToolbar
-        tool={tool}
-        setTool={setTool}
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        onClear={handleClearCanvas}
-        zoom={viewport.zoom}
-        onZoomIn={() =>
-          setViewport((prev) => ({ ...prev, zoom: Math.min(5, prev.zoom * 1.2) }))
-        }
-        onZoomOut={() =>
-          setViewport((prev) => ({ ...prev, zoom: Math.max(0.1, prev.zoom / 1.2) }))
-        }
-        onZoomReset={() => setViewport({ x: 0, y: 0, zoom: 1 })}
-        onApplyTemplate={handleApplyTemplate}
-        onExportPng={handleExportPng}
-        onExportJson={handleExportJson}
-      />
+      {/* ─── Top Floating Toolbar & Properties Bar (Hidden in Read-Only Mode) ─── */}
+      {!readOnly && (
+        <>
+          <WhiteboardToolbar
+            tool={tool}
+            setTool={setTool}
+            canUndo={undoStack.length > 0}
+            canRedo={redoStack.length > 0}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onClear={handleClearCanvas}
+            zoom={viewport.zoom}
+            onZoomIn={() =>
+              setViewport((prev) => ({ ...prev, zoom: Math.min(5, prev.zoom * 1.2) }))
+            }
+            onZoomOut={() =>
+              setViewport((prev) => ({ ...prev, zoom: Math.max(0.1, prev.zoom / 1.2) }))
+            }
+            onZoomReset={() => setViewport({ x: 0, y: 0, zoom: 1 })}
+            onApplyTemplate={handleApplyTemplate}
+            onExportPng={handleExportPng}
+            onExportJson={handleExportJson}
+          />
 
-      {/* ─── Floating Properties Inspector Bar ─────────────────────────────────── */}
-      <WhiteboardPropertiesBar
-        selectedElement={selectedElement}
-        selectedCount={selectedIds.length}
-        tool={tool}
-        currentColor={currentColor}
-        setCurrentColor={handleColorChange}
-        currentWidth={currentWidth}
-        setCurrentWidth={handleStrokeWidthChange}
-        currentStyle={currentStyle}
-        setCurrentStyle={handleStrokeStyleChange}
-        currentFill={currentFill}
-        setCurrentFill={handleFillChange}
-        currentNoteColor={currentNoteColor}
-        setCurrentNoteColor={handleNoteColorChange}
-        currentFontSize={currentFontSize}
-        setCurrentFontSize={handleFontSizeChange}
-        onDuplicate={handleDuplicate}
-        onDelete={handleDeleteSelected}
-        onBringToFront={handleBringToFront}
-        onSendToBack={handleSendToBack}
-      />
+          <WhiteboardPropertiesBar
+            selectedElement={selectedElement}
+            selectedCount={selectedIds.length}
+            tool={tool}
+            currentColor={currentColor}
+            setCurrentColor={handleColorChange}
+            currentWidth={currentWidth}
+            setCurrentWidth={handleStrokeWidthChange}
+            currentStyle={currentStyle}
+            setCurrentStyle={handleStrokeStyleChange}
+            currentFill={currentFill}
+            setCurrentFill={handleFillChange}
+            currentNoteColor={currentNoteColor}
+            setCurrentNoteColor={handleNoteColorChange}
+            currentFontSize={currentFontSize}
+            setCurrentFontSize={handleFontSizeChange}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDeleteSelected}
+            onBringToFront={handleBringToFront}
+            onSendToBack={handleSendToBack}
+          />
+        </>
+      )}
+
+      {/* ─── View-Only Mode Floating Badge ─── */}
+      {readOnly && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#121316]/95 border border-[#27272A] shadow-2xl backdrop-blur-md pointer-events-auto">
+          <div className="w-2 h-2 rounded-full bg-cyan-400" />
+          <span className="text-xs font-semibold text-zinc-200">View Only</span>
+          <span className="text-[11px] text-zinc-500 font-medium">· Drag or scroll to explore canvas</span>
+        </div>
+      )}
 
       {/* ─── Interactive SVG Canvas Layer ─────────────────────────────────────── */}
       <svg className="w-full h-full absolute inset-0 pointer-events-none overflow-visible">
@@ -1734,7 +1777,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
             })}
 
           {/* ─── Multi-Selection Group Outline & Count Badge ──────────────────── */}
-          {selectedIds.length > 1 && (() => {
+          {selectedIds.length > 1 && !readOnly && (() => {
             let minX = Infinity;
             let minY = Infinity;
             let maxX = -Infinity;
@@ -1785,7 +1828,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
           })()}
 
           {/* ─── Single Selected Element: Interactive Resize Handles & Flow Connector Dots ── */}
-          {selectedIds.length === 1 && selectedElement && (() => {
+          {selectedIds.length === 1 && selectedElement && !readOnly && (() => {
             const isLineOrArrow = selectedElement.type === 'line' || selectedElement.type === 'arrow';
             if (isLineOrArrow) {
               return (
@@ -2047,7 +2090,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
           })()}
 
           {/* ─── Magnetic Snapping Anchor Target Ring ───────────────────────── */}
-          {snappingAnchor && (
+          {snappingAnchor && !readOnly && (
             <g className="pointer-events-none">
               <circle
                 cx={snappingAnchor.pt.x}
@@ -2068,7 +2111,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
           )}
 
           {/* ─── Marquee Drag Selection Box ──────────────────────────────────── */}
-          {dragAction?.type === 'box_select' && (
+          {dragAction?.type === 'box_select' && !readOnly && (
             <rect
               x={Math.min(dragAction.startX, dragAction.currentX)}
               y={Math.min(dragAction.startY, dragAction.currentY)}

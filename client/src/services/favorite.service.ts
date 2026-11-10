@@ -5,6 +5,7 @@ export interface FavoriteProject {
   id: number;
   name: string;
   title?: string;
+  key?: string;
   identifier?: string;
   avatarColor?: string;
   avatarIcon?: string;

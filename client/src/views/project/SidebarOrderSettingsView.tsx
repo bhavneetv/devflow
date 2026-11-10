@@ -149,9 +149,17 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
       setLoading(true);
       const res = await projectModuleService.getModules(projectId);
       if (res.success && Array.isArray(res.data)) {
-        setModules(res.data);
+        const sorted = [...res.data]
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+          .map((m) => ({
+            ...m,
+            submodules: [...(m.submodules || [])].sort(
+              (a, b) => (a.position ?? 0) - (b.position ?? 0)
+            ),
+          }));
+        setModules(sorted);
         const expands: Record<number, boolean> = {};
-        res.data.forEach((m) => {
+        sorted.forEach((m) => {
           expands[m.id] = true;
         });
         setExpandedVirtualIds(expands);
@@ -196,7 +204,7 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
     const keys = new Map<string, { moduleId: number; moduleName: string; submoduleName: string }>();
     modules.forEach((mod) => {
       (mod.submodules || []).forEach((sub) => {
-        if (sub.type === 'built_in' && sub.builtInKey) {
+        if (sub.type === 'built_in' && sub.builtInKey && sub.builtInKey !== 'whiteboard') {
           keys.set(sub.builtInKey, {
             moduleId: mod.id,
             moduleName: mod.name,
@@ -339,7 +347,8 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
     const [moved] = reordered.splice(currentIndex, 1);
     reordered.splice(targetIndex, 0, moved);
 
-    setModules(reordered);
+    const withUpdatedPositions = reordered.map((m, idx) => ({ ...m, position: idx }));
+    setModules(withUpdatedPositions);
 
     try {
       await projectModuleService.reorderModules(
@@ -383,7 +392,8 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
     const [removed] = reordered.splice(currentIdx, 1);
     reordered.splice(targetIdx, 0, removed);
 
-    setModules(reordered);
+    const withUpdatedPositions = reordered.map((m, idx) => ({ ...m, position: idx }));
+    setModules(withUpdatedPositions);
     setDraggingModuleId(null);
 
     try {
@@ -417,8 +427,9 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
     const [moved] = subList.splice(currentIndex, 1);
     subList.splice(targetIndex, 0, moved);
 
+    const withUpdatedSubPositions = subList.map((s, idx) => ({ ...s, position: idx }));
     setModules((prev) =>
-      prev.map((m) => (m.id === moduleId ? { ...m, submodules: subList } : m))
+      prev.map((m) => (m.id === moduleId ? { ...m, submodules: withUpdatedSubPositions } : m))
     );
 
     try {
@@ -483,8 +494,9 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
       const [moved] = subList.splice(currentIdx, 1);
       subList.splice(targetIdx, 0, moved);
 
+      const withUpdatedSubPositions = subList.map((s, idx) => ({ ...s, position: idx }));
       setModules((prev) =>
-        prev.map((m) => (m.id === targetModuleId ? { ...m, submodules: subList } : m))
+        prev.map((m) => (m.id === targetModuleId ? { ...m, submodules: withUpdatedSubPositions } : m))
       );
       setDraggingSubmoduleId(null);
       setDragSourceModuleId(null);

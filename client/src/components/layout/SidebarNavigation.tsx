@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Layers,
@@ -17,8 +17,16 @@ import {
   Activity as ActivityIcon,
   HelpCircle,
   Users as UsersIcon,
+  Users,
   FileText,
   MessageSquare,
+  Kanban,
+  RotateCcw,
+  GanttChartSquare,
+  GitFork,
+  Rocket,
+  AlertCircle,
+  PenTool,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useChat } from '../../context/ChatContext';
@@ -30,6 +38,10 @@ import {
   bottomWorkspaceNavItems,
   getProjectNavGroups,
 } from '../../config/navigation';
+import {
+  useProjectSidebarItems,
+  SidebarItemId,
+} from '../../services/projectLayout.service';
 import { NavigationItem } from './NavigationItem';
 import { NavigationGroup } from './NavigationGroup';
 import { SidebarProjectModules } from './SidebarProjectModules';
@@ -110,6 +122,26 @@ const renderTeamSidebarAvatar = (team: any) => {
   );
 };
 
+const PROJECT_SIDEBAR_ICONS: Record<SidebarItemId, any> = {
+  overview: LayoutDashboard,
+  board: Kanban,
+  backlog: Layers,
+  sprints: RotateCcw,
+  timeline: GanttChartSquare,
+  whiteboard: PenTool,
+  requirements: FileText,
+  issues: CircleDot,
+  defects: AlertCircle,
+  repository: GitFork,
+  releases: Rocket,
+  team: Users,
+  settings: Settings,
+};
+
+const PROJECT_SIDEBAR_BADGES: Partial<Record<SidebarItemId, number | string>> = {
+  issues: 8,
+};
+
 export const SidebarNavigation: React.FC = () => {
   const {
     mode,
@@ -118,6 +150,7 @@ export const SidebarNavigation: React.FC = () => {
     isProjectLoading,
     setIsProjectLoading,
     projectModules,
+    isLoadingModules,
     isCollapsed,
     favoriteProjects,
     favoriteTeams,
@@ -131,10 +164,22 @@ export const SidebarNavigation: React.FC = () => {
   const { toggleChat, unreadTotal } = useChat();
   const navigate = useNavigate();
 
+  const projectSidebarItems = useProjectSidebarItems(activeProject?.id || 0);
+
   const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const modKey = isMac ? '⌘' : 'Ctrl';
 
+  const location = useLocation();
   const orgSlug = currentOrganization?.slug;
+
+  const urlProjectMatch = location.pathname.match(/\/projects\/(\d+)/);
+  const currentProjectId = activeProject?.id || (urlProjectMatch ? parseInt(urlProjectMatch[1], 10) : 1);
+  const projectSettingsPath = orgSlug
+    ? `/organizations/${orgSlug}/projects/${currentProjectId}/settings`
+    : `/projects/${currentProjectId}/settings`;
+  const projectOverviewPath = orgSlug
+    ? `/organizations/${orgSlug}/projects/${currentProjectId}`
+    : `/projects/${currentProjectId}`;
 
   const [orgProjects, setOrgProjects] = useState<any[]>([]);
   const [orgTeams, setOrgTeams] = useState<any[]>([]);
@@ -509,7 +554,7 @@ export const SidebarNavigation: React.FC = () => {
             />
           </div>
         </>
-      ) : isProjectLoading ? (
+      ) : isProjectLoading || (isLoadingModules && projectModules.length === 0) ? (
         /* Skeleton Effect in Project Sidebar */
         <div className="space-y-5 px-1 py-1 animate-in fade-in duration-200 select-none">
           {/* Skeleton Group 1 */}
@@ -565,49 +610,41 @@ export const SidebarNavigation: React.FC = () => {
         <>
           {activeProject && (
             <>
-              {/* Preserved Project Overview at Top (if not hidden and not placed inside custom modules) */}
-              {isOverviewVisible && !hasOverviewSubmodule && (
-                <div className="space-y-0.5 mb-2.5">
-                  <NavigationItem
-                    title="Overview"
-                    path={`/projects/${activeProject.id}`}
-                    icon={LayoutDashboard}
-                  />
-                </div>
-              )}
-
-              {/* Dynamic Project Modules & Submodules */}
+              {/* Dynamic Project Modules & Submodules OR Custom Reordered Sidebar Items */}
               {projectModules && projectModules.length > 0 ? (
-                <SidebarProjectModules projectId={activeProject.id} />
+                <>
+                  {/* Preserved Project Overview at Top if not hidden and not placed inside custom modules */}
+                  {isOverviewVisible && !hasOverviewSubmodule && (
+                    <div className="space-y-0.5 mb-2.5">
+                      <NavigationItem
+                        title="Overview"
+                        path={projectOverviewPath}
+                        icon={LayoutDashboard}
+                      />
+                    </div>
+                  )}
+                  <SidebarProjectModules projectId={activeProject.id} />
+                </>
               ) : (
-                /* Fallback to default project navigation groups if no custom modules created */
-                getProjectNavGroups(activeProject.id).map((group) => (
-                  <NavigationGroup
-                    key={group.id}
-                    id={group.id}
-                    title={group.title}
-                    collapsible={group.collapsible}
-                    defaultExpanded={group.defaultExpanded}
-                  >
-                    <div
-                      className={cn(
-                        'space-y-0.5',
-                        !isCollapsed && 'pl-3'
-                      )}
-                    >
-                      {group.items.map((item) => (
+                /* Custom Reordered Navigation Items from Project Layout */
+                <div className="space-y-0.5">
+                  {projectSidebarItems
+                    .filter((item) => item.id !== 'settings')
+                    .map((item) => {
+                      const IconComp = PROJECT_SIDEBAR_ICONS[item.id as SidebarItemId] || CircleDot;
+                      const badge = PROJECT_SIDEBAR_BADGES[item.id as SidebarItemId];
+                      return (
                         <NavigationItem
                           key={item.id}
-                          title={item.title}
-                          path={item.path}
-                          icon={item.icon}
-                          badge={item.badge}
-                          level={1}
+                          title={item.label}
+                          path={item.to}
+                          icon={IconComp}
+                          badge={badge}
+                          badgeVariant={item.id === 'issues' ? 'accent' : 'subtle'}
                         />
-                      ))}
-                    </div>
-                  </NavigationGroup>
-                ))
+                      );
+                    })}
+                </div>
               )}
             </>
           )}
@@ -627,7 +664,7 @@ export const SidebarNavigation: React.FC = () => {
             />
             <NavigationItem
               title="Project Settings"
-              path={`/projects/${activeProject?.id || 1}/settings`}
+              path={projectSettingsPath}
               icon={Settings}
             />
             <button

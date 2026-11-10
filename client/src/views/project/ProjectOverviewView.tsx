@@ -175,6 +175,7 @@ export interface ProjectOverviewData {
     branchCount?: number;
     currentVersion?: string;
     color?: string;
+    icon?: string;
   };
   sprint?: { id: string | number; name: string; goal?: string; startDate: DateLike; endDate: DateLike };
   tasks?: WorkItem[];
@@ -211,6 +212,7 @@ const fetchProjectOverview = async (projectId: string): Promise<ProjectOverviewD
           role: d.project.userRole,
           startDate: d.project.createdAt,
           color: d.project.avatarColor,
+          icon: d.project.avatarIcon,
         } : undefined,
         sprint: d.stats?.activeSprint ? {
           id: d.stats.activeSprint.id || 1,
@@ -1051,7 +1053,19 @@ export const ProjectOverviewView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      setData(await fetchProjectOverview(projectId));
+      const resData = await fetchProjectOverview(projectId);
+      setData(resData);
+      if (resData.project && projectId) {
+        selectProject({
+          id: Number(projectId),
+          title: resData.project.name || `Project #${projectId}`,
+          key: resData.project.key,
+          identifier: resData.project.key,
+          status: resData.project.status,
+          avatarColor: resData.project.color,
+          avatarIcon: resData.project.icon,
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error connecting to project service');
     } finally {

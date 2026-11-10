@@ -23,6 +23,7 @@ import { GitCodeBrowserView } from '../../components/git/GitCodeBrowserView';
 import { GitRepositoryList } from '../../components/git/GitRepositoryList';
 import { GitOverview } from '../../components/git/GitOverview';
 import { GitIssuesView } from '../../components/git/GitIssuesView';
+import { WhiteboardView } from './WhiteboardView';
 
 export const SubmodulePlaceholderView: React.FC = () => {
   const { id, submoduleId, moduleId } = useParams<{ id: string; submoduleId?: string; moduleId?: string }>();
@@ -103,6 +104,13 @@ export const SubmodulePlaceholderView: React.FC = () => {
       content = <GitOverview projectId={projectId} />;
     } else if (key === 'issues') {
       content = <GitIssuesView projectId={projectId} />;
+    } else if (key === 'whiteboard') {
+      return (
+        <WhiteboardView
+          submoduleId={submodule.id}
+          submoduleName={submodule.name}
+        />
+      );
     }
 
     if (content) {

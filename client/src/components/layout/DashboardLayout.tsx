@@ -104,8 +104,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         {/* Header bar from sidebar start to end */}
         <Header />
 
-        {/* Scrollable View Area */}
-        <main className="flex-1 overflow-y-auto min-w-0">
+        {/* View Area */}
+        <main
+          className={
+            location.pathname.includes('/whiteboard')
+              ? 'flex-1 overflow-hidden min-w-0 flex flex-col'
+              : 'flex-1 overflow-y-auto min-w-0'
+          }
+        >
           {children}
         </main>
       </div>

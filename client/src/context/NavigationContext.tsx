@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { initialFavorites, FavoriteItem } from '../config/navigation';
+import { apiUrl } from '../config/api';
+import { authService } from '../services/auth.service';
 import { favoriteService, FavoriteProject, FavoriteTeam } from '../services/favorite.service';
 import { projectModuleService } from '../services/projectModule.service';
 import type { ProjectModule } from '../types/module';
@@ -9,7 +11,12 @@ import { useOrganization } from './OrganizationContext';
 export interface ActiveProject {
   id: number;
   title: string;
+  key?: string;
+  identifier?: string;
   status?: string;
+  avatarColor?: string;
+  avatarIcon?: string;
+  description?: string;
 }
 
 interface NavigationContextType {
@@ -17,7 +24,15 @@ interface NavigationContextType {
   setMode: (mode: 'workspace' | 'project') => void;
   activeProject: ActiveProject | null;
   selectProject: (project: ActiveProject) => void;
-  openProject: (project: { id: number; title?: string; status?: string }) => Promise<void>;
+  openProject: (project: {
+    id: number;
+    title?: string;
+    status?: string;
+    avatarColor?: string;
+    avatarIcon?: string;
+    key?: string;
+    identifier?: string;
+  }) => Promise<void>;
   exitProjectMode: (targetPath?: string) => void;
   isProjectLoading: boolean;
   setIsProjectLoading: (loading: boolean) => void;
@@ -133,29 +148,68 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [activeProject?.id, refreshProjectModules]);
 
-  // Synchronize mode with current URL pathname
-  useEffect(() => {
-    const isProjectSettings =
-      location.pathname.includes('/projects/') && location.pathname.includes('/settings');
-    const isProjectWorkspace =
-      location.pathname.startsWith('/projects/') && !isProjectSettings;
-
-    if (isProjectWorkspace) {
-      const match = location.pathname.match(/\/projects\/(\d+)/);
-      if (match) {
-        const pId = parseInt(match[1], 10);
-        setMode('project');
-        setActiveProject((prev) =>
-          prev && prev.id === pId
-            ? prev
-            : { id: pId, title: prev?.id === pId ? prev.title : `Project #${pId}` }
-        );
+  // Fetch full project metadata (title, avatarColor, avatarIcon, key/identifier)
+  const fetchProjectDetails = useCallback(async (pId: number) => {
+    try {
+      const token = authService.getToken();
+      const res = await fetch(apiUrl(`/projects/${pId}`), {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        const p = json.data;
+        setActiveProject({
+          id: p.id,
+          title: p.title || `Project #${p.id}`,
+          identifier: p.identifier,
+          key: p.identifier || (p.title ? p.title.substring(0, 3).toUpperCase() : 'PRJ'),
+          status: p.status,
+          avatarColor: p.avatarColor || '#8B5CF6',
+          avatarIcon: p.avatarIcon || 'folder',
+          description: p.description,
+        });
       }
-    } else if (!isProjectSettings) {
-      // Outside project: automatically update sidebar back to workspace mode!
+    } catch (err) {
+      console.warn(`Failed to fetch project details for #${pId}:`, err);
+    }
+  }, []);
+
+  // Synchronize mode and activeProject with current URL pathname
+  useEffect(() => {
+    const match = location.pathname.match(/\/projects\/(\d+)/);
+    if (match) {
+      const pId = parseInt(match[1], 10);
+      setMode('project');
+
+      setActiveProject((prev) => {
+        if (prev && prev.id === pId && prev.title && !prev.title.startsWith('Project #')) {
+          return prev;
+        }
+        // Check favoriteProjects cache for immediate high-fidelity title & avatar
+        const fav = favoriteProjects.find((f) => f.id === pId);
+        if (fav) {
+          return {
+            id: pId,
+            title: fav.title || fav.name || `Project #${pId}`,
+            avatarColor: fav.avatarColor || '#8B5CF6',
+            avatarIcon: fav.avatarIcon || 'folder',
+            key: fav.key,
+            identifier: fav.key,
+            status: fav.status,
+          };
+        }
+        return prev && prev.id === pId ? prev : { id: pId, title: `Project #${pId}` };
+      });
+
+      // Fetch fresh project metadata from backend
+      fetchProjectDetails(pId);
+    } else {
       setMode('workspace');
     }
-  }, [location.pathname]);
+  }, [location.pathname, favoriteProjects, fetchProjectDetails]);
 
   const refreshFavorites = useCallback(async (orgSlugOrId?: string | number) => {
     try {
@@ -341,26 +395,37 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const openProject = useCallback(
-    async (project: { id: number; title?: string; status?: string }) => {
+    async (project: {
+      id: number;
+      title?: string;
+      status?: string;
+      avatarColor?: string;
+      avatarIcon?: string;
+      key?: string;
+      identifier?: string;
+    }) => {
       setOpeningProjectId(project.id);
       setIsProjectLoading(true);
       setActiveProject({
         id: project.id,
         title: project.title || `Project #${project.id}`,
         status: project.status || 'IN_PROGRESS',
+        avatarColor: project.avatarColor,
+        avatarIcon: project.avatarIcon,
+        key: project.key || project.identifier,
+        identifier: project.identifier || project.key,
       });
 
-      // 2.2 second smooth transition time to open project sidebar and page
-      await new Promise((resolve) => setTimeout(resolve, 2200));
+      // Smooth transition
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
       navigate(`/projects/${project.id}`);
       setMode('project');
       setOpeningProjectId(null);
 
-      // Keep skeleton in sidebar briefly for smooth layout transition
       setTimeout(() => {
         setIsProjectLoading(false);
-      }, 500);
+      }, 300);
     },
     [navigate]
   );

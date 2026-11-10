@@ -24,7 +24,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
   // Filter visible modules
   const visibleModules = projectModules.filter((mod) => mod.isVisible);
 
-  // Collect individually pinned submodules across all visible modules
+  // Collect individually pinned submodules across all visible modules, sorted by position
   const pinnedSubmodules: Array<{ sub: ProjectSubmodule; parentModule: ProjectModule }> = [];
   visibleModules.forEach((mod) => {
     (mod.submodules || []).forEach((sub) => {
@@ -33,25 +33,37 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
       }
     });
   });
+  pinnedSubmodules.sort((a, b) => (a.sub.position ?? 0) - (b.sub.position ?? 0));
 
-  // Sort pinned modules to the top
-  const pinnedModules = visibleModules.filter((mod) => mod.isPinned);
-  const regularModules = visibleModules.filter((mod) => !mod.isPinned);
+  // Sort pinned modules to the top, maintaining exact position order
+  const pinnedModules = [...visibleModules.filter((mod) => mod.isPinned)].sort(
+    (a, b) => (a.position ?? 0) - (b.position ?? 0)
+  );
+  const regularModules = [...visibleModules.filter((mod) => !mod.isPinned)].sort(
+    (a, b) => (a.position ?? 0) - (b.position ?? 0)
+  );
   const sortedModules = [...pinnedModules, ...regularModules];
+
+  const orgMatch = location.pathname.match(/^\/organizations\/([^/]+)/);
+  const orgSlug = orgMatch ? orgMatch[1] : undefined;
+  const projectBase = orgSlug ? `/organizations/${orgSlug}/projects/${projectId}` : `/projects/${projectId}`;
 
   const getSubmodulePath = (sub: ProjectSubmodule) => {
     if (sub.type === 'built_in' && sub.builtInKey) {
       if (sub.builtInKey === 'overview') {
-        return `/projects/${projectId}`;
+        return projectBase;
       }
-      return `/projects/${projectId}/${sub.builtInKey}`;
+      if (sub.builtInKey === 'whiteboard') {
+        return `${projectBase}/whiteboard/${sub.id}`;
+      }
+      return `${projectBase}/${sub.builtInKey}`;
     }
-    return `/projects/${projectId}/submodules/${sub.id}`;
+    return `${projectBase}/submodules/${sub.id}`;
   };
 
   const isPathActive = (targetPath: string) => {
-    if (targetPath === `/projects/${projectId}`) {
-      return location.pathname === `/projects/${projectId}` || location.pathname === `/projects/${projectId}/`;
+    if (targetPath === projectBase) {
+      return location.pathname === projectBase || location.pathname === `${projectBase}/`;
     }
     return location.pathname === targetPath || location.pathname.startsWith(`${targetPath}/`);
   };
@@ -124,12 +136,16 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
       {/* ─── Modules & Submodules List ────────────────────────────────────────── */}
       {sortedModules.map((mod) => {
         const isExpanded = isGroupExpanded(`mod-${mod.id}`, true);
-        const allSubmodules = mod.submodules || [];
+        const allSubmodules = [...(mod.submodules || [])].sort(
+          (a, b) => (a.position ?? 0) - (b.position ?? 0)
+        );
         const visibleSubmodules = allSubmodules.filter((sub) => {
           if (!sub.isVisible) return false;
           if (sub.type === 'built_in' && sub.builtInKey) {
-            if (seenBuiltInKeys.has(sub.builtInKey)) return false;
-            seenBuiltInKeys.add(sub.builtInKey);
+            if (sub.builtInKey !== 'whiteboard') {
+              if (seenBuiltInKeys.has(sub.builtInKey)) return false;
+              seenBuiltInKeys.add(sub.builtInKey);
+            }
           }
           return true;
         });
@@ -139,7 +155,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
 
         if (isIndependentModule) {
           const ModIcon = resolveModuleIcon(mod.icon, Folder);
-          const targetPath = `/projects/${projectId}/modules/${mod.id}`;
+          const targetPath = `${projectBase}/modules/${mod.id}`;
           const isActive = isPathActive(targetPath);
 
           if (isCollapsed) {

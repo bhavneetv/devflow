@@ -19,6 +19,8 @@ import { RequirementsTraceabilityView } from './views/requirements/RequirementsT
 import { ProjectSettingsView } from './views/project/ProjectSettingsView';
 import { SubmodulePlaceholderView } from './views/project/SubmodulePlaceholderView';
 import { ProjectOverviewView } from './views/project/ProjectOverviewView';
+import { WhiteboardView } from './views/project/WhiteboardView';
+import { PublicWhiteboardView } from './views/public/PublicWhiteboardView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
 import { LoginPage } from './pages/LoginPage';
@@ -137,6 +139,7 @@ export const App: React.FC = () => {
                 <Route path="/invite/org/:token" element={<OrgInviteAcceptPage />} />
                 <Route path="/join/org/:token" element={<OrgInviteAcceptPage />} />
                 <Route path="/git/callback" element={<GitOAuthCallbackView />} />
+                <Route path="/whiteboard/share/:token" element={<PublicWhiteboardView />} />
 
                 {/* Authenticated Workspace Application */}
                 <Route
@@ -176,6 +179,8 @@ export const App: React.FC = () => {
                             <Route path="/organizations/:organizationSlug/projects/:id/git-commits" element={<GitCommitsPage />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/code" element={<GitCodePage />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/git-code" element={<GitCodePage />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/whiteboard" element={<WhiteboardView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/whiteboard/:submoduleId" element={<WhiteboardView />} />
 
                             <Route path="/organizations/:organizationSlug/activity" element={<OrganizationActivityView />} />
                             <Route path="/organizations/:organizationSlug/settings" element={<OrganizationSettingsView />} />
@@ -235,6 +240,8 @@ export const App: React.FC = () => {
                             <Route path="/projects/:id/git-commits" element={<GitCommitsPage />} />
                             <Route path="/projects/:id/code" element={<GitCodePage />} />
                             <Route path="/projects/:id/git-code" element={<GitCodePage />} />
+                            <Route path="/projects/:id/whiteboard" element={<WhiteboardView />} />
+                            <Route path="/projects/:id/whiteboard/:submoduleId" element={<WhiteboardView />} />
                             <Route path="/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />

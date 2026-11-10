@@ -7,11 +7,12 @@ import {
   FolderKanban,
   Building2,
 } from 'lucide-react';
-import { useNavigation } from '../../context/NavigationContext';
+import { useNavigation, ActiveProject } from '../../context/NavigationContext';
 import { useOrganization } from '../../context/OrganizationContext';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { OrgAvatar } from '../organization/OrgAvatar';
+import { AVATAR_ICON_COMPONENTS } from '../onboarding/StepProfile';
 import { cn } from '../../lib/utils';
 
 interface SidebarHeaderProps {
@@ -43,6 +44,34 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const renderProjectAvatar = () => {
+    const pColor = activeProject?.avatarColor || '#8B5CF6';
+    const hasIcon = activeProject?.avatarIcon && AVATAR_ICON_COMPONENTS[activeProject.avatarIcon];
+    const IconComp = hasIcon ? AVATAR_ICON_COMPONENTS[activeProject.avatarIcon!] : FolderKanban;
+    const initials =
+      activeProject?.key?.slice(0, 2) ||
+      activeProject?.identifier?.slice(0, 2) ||
+      activeProject?.title?.slice(0, 2).toUpperCase() ||
+      'PR';
+
+    return (
+      <div
+        className="w-5 h-5 rounded flex items-center justify-center text-white shrink-0 shadow-sm overflow-hidden"
+        style={{ backgroundColor: pColor }}
+      >
+        {activeProject?.avatarIcon && activeProject.avatarIcon !== 'initials' && hasIcon ? (
+          <IconComp size={12} className="text-white" />
+        ) : activeProject?.avatarIcon === 'initials' ? (
+          <span className="text-[8.5px] font-mono font-bold leading-none tracking-tighter uppercase text-white">
+            {initials}
+          </span>
+        ) : (
+          <IconComp size={12} className="text-white" />
+        )}
+      </div>
+    );
+  };
 
   return (
     <div
@@ -136,16 +165,24 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
             isCollapsed ? 'justify-center w-full' : 'justify-between gap-1'
           )}
         >
-          <div className="flex items-center gap-1.5 overflow-hidden">
+          {isCollapsed ? (
             <button
               onClick={() => exitProjectMode()}
-              className="p-1 -ml-1 rounded hover:bg-sidebar-hover text-sidebar-icon hover:text-white transition-colors flex-shrink-0"
-              title="Back to Workspace"
+              className="p-1 rounded hover:bg-sidebar-hover transition-colors flex items-center justify-center cursor-pointer group"
+              title={`Back to Workspace (${activeProject?.title || 'Project'})`}
             >
-              <ArrowLeft size={14} />
+              {renderProjectAvatar()}
             </button>
-            {!isCollapsed && (
-              isProjectLoading ? (
+          ) : (
+            <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
+              <button
+                onClick={() => exitProjectMode()}
+                className="p-1 -ml-1 rounded hover:bg-sidebar-hover text-sidebar-icon hover:text-white transition-colors flex-shrink-0 cursor-pointer"
+                title="Back to Workspace"
+              >
+                <ArrowLeft size={14} />
+              </button>
+              {isProjectLoading ? (
                 <div className="flex items-center gap-2 truncate animate-pulse">
                   <div className="w-5 h-5 rounded bg-zinc-800/80 border border-zinc-700/50 shrink-0" />
                   <div className="space-y-1">
@@ -154,27 +191,28 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 truncate">
-                  <div className="w-5 h-5 rounded bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 flex-shrink-0">
-                    <FolderKanban size={12} />
-                  </div>
-                  <div className="truncate">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-text-muted leading-none">
-                      Project
+                <div className="flex items-center gap-2 truncate min-w-0 flex-1">
+                  {renderProjectAvatar()}
+                  <div className="truncate min-w-0 flex-1">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-text-muted leading-none truncate">
+                      {activeProject?.key || activeProject?.identifier || 'PROJECT'}
                     </div>
-                    <div className="text-[13px] font-semibold text-white truncate leading-tight mt-0.5">
-                      {activeProject?.title || 'Active Project'}
+                    <div
+                      className="text-[13px] font-semibold text-white truncate leading-tight mt-0.5"
+                      title={activeProject?.title || 'Active Project'}
+                    >
+                      {activeProject?.title || `Project #${activeProject?.id}`}
                     </div>
                   </div>
                 </div>
-              )
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {!isCollapsed && (
             <button
               onClick={() => setIsCreateOpen(true)}
-              className="w-7 h-7 rounded border border-sidebar-border bg-[#141417] flex items-center justify-center text-sidebar-icon hover:text-white hover:bg-sidebar-hover transition-all duration-150 flex-shrink-0"
+              className="w-7 h-7 rounded border border-sidebar-border bg-[#141417] flex items-center justify-center text-sidebar-icon hover:text-white hover:bg-sidebar-hover transition-all duration-150 flex-shrink-0 cursor-pointer"
               title="Create Task in Project"
             >
               <SquarePen size={14} />

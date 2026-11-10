@@ -42,6 +42,7 @@ import {
   Search,
   Check,
   X,
+  PenTool,
   LucideIcon,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -104,6 +105,7 @@ export const MODULE_ICONS: IconOption[] = [
   { id: 'flame', label: 'Flame', category: 'General', icon: Flame },
   { id: 'hash', label: 'Hash Tag', category: 'General', icon: Hash },
   { id: 'sliders', label: 'Sliders', category: 'General', icon: Sliders },
+  { id: 'pen-tool', label: 'Whiteboard', category: 'General', icon: PenTool },
 ];
 
 const ICON_MAP = new Map<string, LucideIcon>();

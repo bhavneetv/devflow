@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   GitCommit,
   Code2,
+  PenTool,
 } from 'lucide-react';
 
 export type SubmoduleType = 'built_in' | 'custom' | 'composite';
@@ -208,6 +209,14 @@ export const BUILT_IN_SUBMODULE_DEFINITIONS: BuiltInSubmoduleDefinition[] = [
     defaultIcon: 'rotate-ccw',
     iconComponent: RotateCcw,
     subpath: 'cycles',
+  },
+  {
+    key: 'whiteboard',
+    defaultName: 'Whiteboard',
+    description: 'Infinite canvas whiteboard with freehand sketching, shapes, sticky notes, and text',
+    defaultIcon: 'pen-tool',
+    iconComponent: PenTool,
+    subpath: 'whiteboard',
   },
 ];
 

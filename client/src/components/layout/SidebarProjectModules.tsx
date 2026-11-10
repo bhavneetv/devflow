@@ -24,7 +24,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
   // Filter visible modules
   const visibleModules = projectModules.filter((mod) => mod.isVisible);
 
-  // Collect individually pinned submodules across all visible modules
+  // Collect individually pinned submodules across all visible modules, sorted by position
   const pinnedSubmodules: Array<{ sub: ProjectSubmodule; parentModule: ProjectModule }> = [];
   visibleModules.forEach((mod) => {
     (mod.submodules || []).forEach((sub) => {
@@ -33,10 +33,15 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
       }
     });
   });
+  pinnedSubmodules.sort((a, b) => (a.sub.position ?? 0) - (b.sub.position ?? 0));
 
-  // Sort pinned modules to the top
-  const pinnedModules = visibleModules.filter((mod) => mod.isPinned);
-  const regularModules = visibleModules.filter((mod) => !mod.isPinned);
+  // Sort pinned modules to the top, maintaining exact position order
+  const pinnedModules = [...visibleModules.filter((mod) => mod.isPinned)].sort(
+    (a, b) => (a.position ?? 0) - (b.position ?? 0)
+  );
+  const regularModules = [...visibleModules.filter((mod) => !mod.isPinned)].sort(
+    (a, b) => (a.position ?? 0) - (b.position ?? 0)
+  );
   const sortedModules = [...pinnedModules, ...regularModules];
 
   const getSubmodulePath = (sub: ProjectSubmodule) => {
@@ -124,7 +129,9 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
       {/* ─── Modules & Submodules List ────────────────────────────────────────── */}
       {sortedModules.map((mod) => {
         const isExpanded = isGroupExpanded(`mod-${mod.id}`, true);
-        const allSubmodules = mod.submodules || [];
+        const allSubmodules = [...(mod.submodules || [])].sort(
+          (a, b) => (a.position ?? 0) - (b.position ?? 0)
+        );
         const visibleSubmodules = allSubmodules.filter((sub) => {
           if (!sub.isVisible) return false;
           if (sub.type === 'built_in' && sub.builtInKey) {

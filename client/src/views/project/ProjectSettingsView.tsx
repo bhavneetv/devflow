@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useOrganization } from '../../context/OrganizationContext';
+import { useNavigation } from '../../context/NavigationContext';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { useToast } from '../../context/ToastContext';
 import { organizationService } from '../../services/organization.service';
@@ -395,6 +396,7 @@ export const ProjectSettingsView: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { currentOrganization } = useOrganization();
+  const { selectProject } = useNavigation();
   const { accentColor } = useAccentTheme();
 
   const projectId = id ? parseInt(id, 10) : 1;
@@ -763,6 +765,15 @@ export const ProjectSettingsView: React.FC = () => {
       const res = await organizationService.updateProject(projectId, payload);
       if (res.success && res.data) {
         setInitialProject(res.data);
+        selectProject({
+          id: res.data.id,
+          title: res.data.title,
+          key: res.data.identifier,
+          identifier: res.data.identifier,
+          status: res.data.status,
+          avatarColor: res.data.avatarColor,
+          avatarIcon: res.data.avatarIcon,
+        });
         toast.success('Project settings saved successfully!');
       } else {
         toast.error((res as any).message || res.error || 'Failed to save project settings');

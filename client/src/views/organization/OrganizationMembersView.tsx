@@ -838,10 +838,10 @@ export const OrganizationMembersView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#27272A]/70">
         <div>
           <h1 className="text-2xl sm:text-3xl md:text-[32px] font-extrabold text-[#FFFFFF] tracking-tight leading-tight">
-            Members & Permissions
+            Members
           </h1>
           <p className="text-sm sm:text-[14.5px] text-[#A1A1AA] mt-1.5 leading-relaxed">
-            Manage organization memberships, seat allocations, and administrative roles
+            Manage organization memberships, seat allocations, and collaborative roles
           </p>
         </div>
 

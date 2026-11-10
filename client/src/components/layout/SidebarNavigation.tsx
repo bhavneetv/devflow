@@ -34,7 +34,81 @@ import { NavigationItem } from './NavigationItem';
 import { NavigationGroup } from './NavigationGroup';
 import { SidebarProjectModules } from './SidebarProjectModules';
 import { resolveModuleIcon } from '../project/ModuleIconPicker';
+import { AVATAR_ICON_COMPONENTS } from '../onboarding/StepProfile';
 import { cn } from '../../lib/utils';
+
+// Helper to parse key and icon metadata encoded in team description
+function parseTeamMetadata(description?: string | null, teamName?: string) {
+  let key = '';
+  let icon = 'initials';
+  let cleanDesc = description || '';
+
+  if (cleanDesc) {
+    const keyMatch = cleanDesc.match(/\[key:([^\]]+)\]/);
+    if (keyMatch) {
+      key = keyMatch[1];
+      cleanDesc = cleanDesc.replace(keyMatch[0], '').trim();
+    }
+    const iconMatch = cleanDesc.match(/\[icon:([^\]]+)\]/);
+    if (iconMatch) {
+      icon = iconMatch[1];
+      cleanDesc = cleanDesc.replace(iconMatch[0], '').trim();
+    }
+  }
+
+  if (!key && teamName) {
+    const words = teamName.trim().split(/\s+/).filter(Boolean);
+    if (words.length >= 2) {
+      key = words.slice(0, 4).map((w) => w[0]?.toUpperCase()).join('').slice(0, 5);
+    } else {
+      key = teamName.slice(0, 3).toUpperCase();
+    }
+  }
+
+  return { key: key || 'TEAM', icon, cleanDesc };
+}
+
+// Render project saved avatar or fallback
+const renderProjectSidebarAvatar = (proj: any) => {
+  const pColor = proj.avatarColor || proj.color || '#8B5CF6';
+  const IconComp =
+    proj.avatarIcon && AVATAR_ICON_COMPONENTS[proj.avatarIcon]
+      ? AVATAR_ICON_COMPONENTS[proj.avatarIcon]
+      : FolderKanban;
+
+  return (
+    <div
+      className="w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0 shadow-sm"
+      style={{ backgroundColor: pColor }}
+    >
+      <IconComp size={10} className="text-white" />
+    </div>
+  );
+};
+
+// Render team saved avatar or fallback
+const renderTeamSidebarAvatar = (team: any) => {
+  const { key, icon } = parseTeamMetadata(team.description, team.name);
+  const tColor = team.color || '#3B82F6';
+  const hasCustomIcon = icon && icon !== 'initials' && AVATAR_ICON_COMPONENTS[icon];
+  const IconComp = hasCustomIcon ? AVATAR_ICON_COMPONENTS[icon] : null;
+  const initials = key?.slice(0, 2) || team.name?.slice(0, 2).toUpperCase() || 'TM';
+
+  return (
+    <div
+      className="w-4 h-4 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0 shadow-sm overflow-hidden"
+      style={{ backgroundColor: tColor }}
+    >
+      {IconComp ? (
+        <IconComp size={10} className="text-white" />
+      ) : (
+        <span className="leading-none text-[8px] font-mono tracking-tighter uppercase font-semibold">
+          {initials}
+        </span>
+      )}
+    </div>
+  );
+};
 
 export const SidebarNavigation: React.FC = () => {
   const {
@@ -49,10 +123,16 @@ export const SidebarNavigation: React.FC = () => {
     favoriteTeams,
     isResourceFavorite,
     toggleFavoriteResource,
+    refreshFavorites,
+    setIsCreateProjectOpen,
+    setIsCreateTeamOpen,
   } = useNavigation();
   const { currentOrganization } = useOrganization();
   const { toggleChat, unreadTotal } = useChat();
   const navigate = useNavigate();
+
+  const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  const modKey = isMac ? '⌘' : 'Ctrl';
 
   const orgSlug = currentOrganization?.slug;
 
@@ -85,6 +165,20 @@ export const SidebarNavigation: React.FC = () => {
   useEffect(() => {
     fetchOrgResources();
   }, [fetchOrgResources]);
+
+  // Listen for created resources or sidebar config change
+  useEffect(() => {
+    const onCreated = () => {
+      fetchOrgResources();
+      refreshFavorites();
+    };
+    window.addEventListener('devflow:project-created', onCreated);
+    window.addEventListener('devflow:team-created', onCreated);
+    return () => {
+      window.removeEventListener('devflow:project-created', onCreated);
+      window.removeEventListener('devflow:team-created', onCreated);
+    };
+  }, [fetchOrgResources, refreshFavorites]);
 
   const hasAnyFavorites = favoriteProjects.length > 0 || favoriteTeams.length > 0;
 
@@ -120,6 +214,7 @@ export const SidebarNavigation: React.FC = () => {
                 title="Inbox"
                 path="/inbox"
                 icon={Inbox}
+                shortcut={`${modKey}+⇧I`}
               />
               <NavigationItem
                 title="Requirements"
@@ -219,84 +314,78 @@ export const SidebarNavigation: React.FC = () => {
                   animate={{ opacity: 1 }}
                 >
                   {/* Starred Projects */}
-                  {favoriteProjects.map((proj) => (
-                    <motion.div
-                      key={`fav-p-${proj.id}`}
-                      layout
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      <NavigationItem
-                        title={proj.name}
-                        path={`/projects/${proj.id}`}
-                        onClick={() => {
-                          setIsProjectLoading(true);
-                          setTimeout(() => setIsProjectLoading(false), 1200);
-                        }}
-                        customIcon={
-                          <div
-                            className="w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                            style={{
-                              backgroundColor: proj.color || '#8B5CF6',
-                            }}
-                          >
-                            <FolderKanban size={11} className="text-white" />
-                          </div>
-                        }
-                        isFavorite={true}
-                        starPosition="left"
-                        onToggleFavorite={() =>
-                          toggleFavoriteResource('PROJECT', proj.id, currentOrganization?.id, {
-                            name: proj.name,
-                          })
-                        }
-                        badge="Project"
-                        badgeVariant="subtle"
-                      />
-                    </motion.div>
-                  ))}
+                  {favoriteProjects.map((proj) => {
+                    const title = proj.title || proj.name || 'Untitled Project';
+                    return (
+                      <motion.div
+                        key={`fav-p-${proj.id}`}
+                        layout
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <NavigationItem
+                          title={title}
+                          path={`/projects/${proj.id}`}
+                          onClick={() => {
+                            setIsProjectLoading(true);
+                            setTimeout(() => setIsProjectLoading(false), 1200);
+                          }}
+                          customIcon={renderProjectSidebarAvatar(proj)}
+                          isFavorite={true}
+                          starPosition="left"
+                          onToggleFavorite={() =>
+                            toggleFavoriteResource('PROJECT', proj.id, currentOrganization?.id, {
+                              name: title,
+                              title: title,
+                              avatarColor: proj.avatarColor,
+                              avatarIcon: proj.avatarIcon,
+                            })
+                          }
+                          badge="Project"
+                          badgeVariant="subtle"
+                        />
+                      </motion.div>
+                    );
+                  })}
 
                   {/* Starred Teams */}
-                  {favoriteTeams.map((team) => (
-                    <motion.div
-                      key={`fav-t-${team.id}`}
-                      layout
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      <NavigationItem
-                        title={team.name}
-                        path={
-                          orgSlug
-                            ? `/organizations/${orgSlug}/teams/${team.id}`
-                            : `/teams/${team.id}`
-                        }
-                        customIcon={
-                          <div
-                            className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 shadow-sm"
-                            style={{
-                              backgroundColor: team.color || '#3B82F6',
-                            }}
-                          >
-                            <Layers size={10} className="text-white" />
-                          </div>
-                        }
-                        isFavorite={true}
-                        starPosition="left"
-                        onToggleFavorite={() =>
-                          toggleFavoriteResource('TEAM', team.id, currentOrganization?.id, {
-                            name: team.name,
-                          })
-                        }
-                        badge="Team"
-                        badgeVariant="accent"
-                      />
-                    </motion.div>
-                  ))}
+                  {favoriteTeams.map((team) => {
+                    const title = team.name || team.title || 'Untitled Team';
+                    return (
+                      <motion.div
+                        key={`fav-t-${team.id}`}
+                        layout
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <NavigationItem
+                          title={title}
+                          path={
+                            orgSlug
+                              ? `/organizations/${orgSlug}/teams/${team.id}`
+                              : `/teams/${team.id}`
+                          }
+                          customIcon={renderTeamSidebarAvatar(team)}
+                          isFavorite={true}
+                          starPosition="left"
+                          onToggleFavorite={() =>
+                            toggleFavoriteResource('TEAM', team.id, currentOrganization?.id, {
+                              name: title,
+                              title: title,
+                              color: team.color,
+                              description: team.description,
+                            })
+                          }
+                          badge="Team"
+                          badgeVariant="accent"
+                        />
+                      </motion.div>
+                    );
+                  })}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -309,8 +398,9 @@ export const SidebarNavigation: React.FC = () => {
               title="Projects"
               collapsible={true}
               defaultExpanded={true}
-              actionTitle="View all projects"
-              onAction={() => navigate(`/organizations/${orgSlug}/projects`)}
+              actionTitle="Create Project"
+              actionShortcut={`${modKey}+⇧P`}
+              onAction={() => setIsCreateProjectOpen(true)}
             >
               <div className="space-y-0.5">
                 {orgProjects.slice(0, 6).map((proj) => {
@@ -325,22 +415,15 @@ export const SidebarNavigation: React.FC = () => {
                         setIsProjectLoading(true);
                         setTimeout(() => setIsProjectLoading(false), 1200);
                       }}
-                      customIcon={
-                        <div
-                          className="w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                          style={{
-                            backgroundColor: proj.avatarColor || '#8B5CF6',
-                          }}
-                        >
-                          <FolderKanban size={11} className="text-white" />
-                        </div>
-                      }
+                      customIcon={renderProjectSidebarAvatar(proj)}
                       isFavorite={isFav}
                       starPosition="left"
                       onToggleFavorite={() =>
                         toggleFavoriteResource('PROJECT', proj.id, currentOrganization?.id, {
                           name: title,
-                          color: proj.avatarColor,
+                          title: title,
+                          avatarColor: proj.avatarColor,
+                          avatarIcon: proj.avatarIcon,
                         })
                       }
                     />
@@ -368,33 +451,28 @@ export const SidebarNavigation: React.FC = () => {
               title="Teams"
               collapsible={true}
               defaultExpanded={true}
-              actionTitle="View all teams"
-              onAction={() => navigate(`/organizations/${orgSlug}/teams`)}
+              actionTitle="Create Team"
+              actionShortcut={`${modKey}+⇧T`}
+              onAction={() => setIsCreateTeamOpen(true)}
             >
               <div className="space-y-0.5">
                 {orgTeams.slice(0, 6).map((team) => {
+                  const title = team.name || team.title || 'Untitled';
                   const isFav = isResourceFavorite('TEAM', team.id);
                   return (
                     <NavigationItem
                       key={`team-${team.id}`}
-                      title={team.name}
+                      title={title}
                       path={`/organizations/${orgSlug}/teams/${team.id}`}
-                      customIcon={
-                        <div
-                          className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                          style={{
-                            backgroundColor: team.color || '#3B82F6',
-                          }}
-                        >
-                          <Layers size={10} className="text-white" />
-                        </div>
-                      }
+                      customIcon={renderTeamSidebarAvatar(team)}
                       isFavorite={isFav}
                       starPosition="left"
                       onToggleFavorite={() =>
                         toggleFavoriteResource('TEAM', team.id, currentOrganization?.id, {
-                          name: team.name,
+                          name: title,
+                          title: title,
                           color: team.color,
+                          description: team.description,
                         })
                       }
                     />

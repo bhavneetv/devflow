@@ -104,25 +104,29 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
           </button>
 
           {/* Quick actions (Search & Quick Create) */}
-          {!isCollapsed && (
-            <div className="flex items-center gap-1 transition-opacity duration-200">
-              <button
-                onClick={() => setIsSearchOpen(true)}
-                className="w-7 h-7 rounded flex items-center justify-center text-sidebar-icon hover:text-sidebar-text-active hover:bg-sidebar-hover transition-colors duration-150"
-                title="Search (Ctrl + K)"
-              >
-                <Search size={15} />
-              </button>
+          {!isCollapsed && (() => {
+            const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+            const modKey = isMac ? '⌘' : 'Ctrl';
+            return (
+              <div className="flex items-center gap-1 transition-opacity duration-200">
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className="w-7 h-7 rounded flex items-center justify-center text-sidebar-icon hover:text-sidebar-text-active hover:bg-sidebar-hover transition-colors duration-150"
+                  title={`Search (${modKey}+K)`}
+                >
+                  <Search size={15} />
+                </button>
 
-              <button
-                onClick={() => setIsCreateOpen(true)}
-                className="w-7 h-7 rounded border border-sidebar-border bg-[#141417] flex items-center justify-center text-sidebar-icon hover:text-white hover:bg-sidebar-hover hover:border-zinc-700 transition-all duration-150"
-                title="New Issue (C)"
-              >
-                <SquarePen size={14} />
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={() => setIsCreateOpen(true)}
+                  className="w-7 h-7 rounded border border-sidebar-border bg-[#141417] flex items-center justify-center text-sidebar-icon hover:text-white hover:bg-sidebar-hover hover:border-zinc-700 transition-all duration-150"
+                  title="New Issue (C)"
+                >
+                  <SquarePen size={14} />
+                </button>
+              </div>
+            );
+          })()}
         </div>
       ) : (
         /* Project Context Header */

@@ -10,6 +10,7 @@ interface NavigationGroupProps {
   defaultExpanded?: boolean;
   onAction?: () => void;
   actionTitle?: string;
+  actionShortcut?: string;
   className?: string;
   children: React.ReactNode;
 }
@@ -21,6 +22,7 @@ export const NavigationGroup: React.FC<NavigationGroupProps> = ({
   defaultExpanded = true,
   onAction,
   actionTitle,
+  actionShortcut,
   className,
   children,
 }) => {
@@ -58,14 +60,21 @@ export const NavigationGroup: React.FC<NavigationGroupProps> = ({
         </button>
 
         {onAction && (
-          <button
-            type="button"
-            onClick={onAction}
-            title={actionTitle || 'Add'}
-            className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-500 hover:text-white hover:bg-sidebar-hover transition-all"
-          >
-            <Plus size={13} />
-          </button>
+          <div className="flex items-center gap-1">
+            {actionShortcut && (
+              <kbd className="hidden sm:inline-flex items-center px-1 py-0.2 rounded text-[9px] font-mono font-medium text-zinc-500 bg-white/[0.04] border border-white/[0.08] opacity-0 group-hover:opacity-100 transition-opacity">
+                {actionShortcut}
+              </kbd>
+            )}
+            <button
+              type="button"
+              onClick={onAction}
+              title={actionTitle ? `${actionTitle}${actionShortcut ? ` (${actionShortcut})` : ''}` : 'Add'}
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-500 hover:text-white hover:bg-sidebar-hover transition-all"
+            >
+              <Plus size={13} />
+            </button>
+          </div>
         )}
       </div>
 

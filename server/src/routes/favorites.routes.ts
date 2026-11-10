@@ -67,11 +67,14 @@ favoritesRouter.get('/', async (req: Request, res: Response) => {
         raw: allFavorites,
         projects: projects.map((p) => ({
           ...p,
+          name: p.title,
+          title: p.title,
           isFavorite: true,
         })),
         teams: teams.map((t) => ({
           id: t.id,
           name: t.name,
+          title: t.name,
           color: t.color,
           description: t.description,
           organizationId: t.organizationId,

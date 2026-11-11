@@ -5,7 +5,9 @@ import { Request } from 'express';
  * Token format: devflow_session_{userId}_{timestamp} or devflow_oauth_{provider}_{userId}_{timestamp}
  */
 export function getUserIdFromToken(req: Request): number | null {
-  const auth = req.headers.authorization || '';
+  const auth =
+    req.headers.authorization ||
+    (typeof req.query.token === 'string' ? req.query.token : '');
   if (!auth) return null;
   // Strip "Bearer " prefix if present
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;

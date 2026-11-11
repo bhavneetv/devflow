@@ -15,6 +15,7 @@ import {
   ArrowRight,
   X,
   Loader2,
+  LogOut,
 } from 'lucide-react';
 import { gitService } from '../../services/git.service';
 import { useToast } from '../../context/ToastContext';
@@ -86,6 +87,7 @@ export const ProjectGitHubLinker: React.FC<ProjectGitHubLinkerProps> = ({
   // Syncing existing repo state
   const [isReSyncing, setIsReSyncing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Active connected GitHub repo for this project
   const linkedRepo =
@@ -364,6 +366,38 @@ export const ProjectGitHubLinker: React.FC<ProjectGitHubLinkerProps> = ({
     }
   };
 
+  // Log out / disconnect Git account from project
+  const handleLogoutGitAccount = async () => {
+    if (!githubConnection) return;
+    const accountName = githubConnection.accountName;
+    const confirmed = window.confirm(
+      `Are you sure you want to log out the GitHub account @${accountName}?\n\nThis will disconnect your GitHub credentials and any linked repositories from this project.`
+    );
+    if (!confirmed) return;
+
+    setIsLoggingOut(true);
+    try {
+      if (linkedRepo) {
+        await gitService.disconnectRepository(projectId, linkedRepo.id);
+        onRepoUnlinked?.();
+      }
+
+      const res = await gitService.removeConnection(projectId, githubConnection.id);
+      if (res.success) {
+        toast.success(`Logged out GitHub account @${accountName}`);
+        setIsRepoPickerOpen(false);
+        setIsAuthModalOpen(false);
+        await loadData();
+      } else {
+        toast.error(res.error || 'Failed to log out GitHub account');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Logout failed');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   const filteredRepos = providerRepos.filter(
     (r) =>
       r.fullName.toLowerCase().includes(repoSearch.toLowerCase()) ||
@@ -473,6 +507,19 @@ export const ProjectGitHubLinker: React.FC<ProjectGitHubLinkerProps> = ({
               >
                 <Trash2 size={14} />
               </button>
+
+              {githubConnection && (
+                <button
+                  type="button"
+                  onClick={handleLogoutGitAccount}
+                  disabled={isLoggingOut}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                  title={`Log out GitHub account @${githubConnection.accountName}`}
+                >
+                  <LogOut size={13} className={isLoggingOut ? 'animate-spin' : ''} />
+                  <span>Log Out Git</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -518,6 +565,19 @@ export const ProjectGitHubLinker: React.FC<ProjectGitHubLinkerProps> = ({
                 </>
               )}
             </button>
+
+            {githubConnection && (
+              <button
+                type="button"
+                onClick={handleLogoutGitAccount}
+                disabled={isLoggingOut}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                title={`Log out GitHub account @${githubConnection.accountName}`}
+              >
+                <LogOut size={14} className={isLoggingOut ? 'animate-spin' : ''} />
+                <span>Log Out</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -626,13 +686,27 @@ export const ProjectGitHubLinker: React.FC<ProjectGitHubLinkerProps> = ({
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsRepoPickerOpen(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-              >
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-2">
+                {githubConnection && (
+                  <button
+                    type="button"
+                    onClick={handleLogoutGitAccount}
+                    disabled={isLoggingOut}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                    title={`Log out GitHub account @${githubConnection.accountName}`}
+                  >
+                    <LogOut size={12} className={isLoggingOut ? 'animate-spin' : ''} />
+                    <span>Log Out</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsRepoPickerOpen(false)}
+                  className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
             {/* Search Filter */}

@@ -1310,12 +1310,25 @@ teamsRouter.get('/:id/conversations', async (req: Request, res: Response) => {
           },
         });
 
+        let topicIcon: string | undefined = undefined;
+        if (c.type === 'GROUP' && c.participantIds) {
+          try {
+            const parsed = JSON.parse(c.participantIds);
+            if (parsed && typeof parsed.icon === 'string') {
+              topicIcon = parsed.icon;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         return {
           id: c.id,
           teamId: c.teamId,
           type: c.type,
           name: c.name || (otherUser ? otherUser.name : 'Direct Message'),
           participantIds: c.participantIds,
+          icon: topicIcon,
           otherUser,
           lastMessage: c.messages[0] || null,
           unreadCount,
@@ -1325,6 +1338,62 @@ teamsRouter.get('/:id/conversations', async (req: Request, res: Response) => {
     );
 
     res.json({ success: true, data: formatted });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/teams/:id/conversations — create a group topic / channel
+teamsRouter.post('/:id/conversations', async (req: Request, res: Response) => {
+  const callerId = getUserIdFromToken(req);
+  if (!callerId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  const teamId = parseId(req.params.id);
+  if (isNaN(teamId)) return res.status(400).json({ success: false, error: 'Invalid team ID' });
+
+  const { name, icon } = req.body;
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, error: 'Topic / Channel name is required' });
+  }
+
+  try {
+    const callerMembership = await ensureCallerTeamAccess(teamId, callerId);
+    if (!callerMembership) return res.status(403).json({ success: false, error: 'Not authorized to create topics in this workspace' });
+
+    const cleanName = name.trim().toLowerCase().replace(/^#+/, '');
+    const participantMeta = icon ? JSON.stringify({ icon }) : null;
+
+    // Check if channel with this name already exists in team
+    const existing = await prisma.teamConversation.findFirst({
+      where: {
+        teamId,
+        type: 'GROUP',
+        name: cleanName,
+      },
+    });
+
+    if (existing) {
+      return res.status(409).json({ success: false, error: `Topic #${cleanName} already exists` });
+    }
+
+    const conversation = await prisma.teamConversation.create({
+      data: {
+        teamId,
+        type: 'GROUP',
+        name: cleanName,
+        participantIds: participantMeta,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ...conversation,
+        icon: icon || null,
+        unreadCount: 0,
+        messages: [],
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

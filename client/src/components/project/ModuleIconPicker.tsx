@@ -122,12 +122,14 @@ interface ModuleIconPickerProps {
   value: string;
   onChange: (iconId: string) => void;
   accentColor?: string;
+  gridHeight?: string;
 }
 
 export const ModuleIconPicker: React.FC<ModuleIconPickerProps> = ({
   value,
   onChange,
   accentColor = '#8B5CF6',
+  gridHeight = 'max-h-[210px]',
 }) => {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -146,16 +148,29 @@ export const ModuleIconPicker: React.FC<ModuleIconPickerProps> = ({
   const selectedIconOption = MODULE_ICONS.find((item) => item.id === value);
 
   return (
-    <div className="space-y-2.5">
-      {/* Search & Category Filter */}
-      <div className="flex flex-col sm:flex-row gap-2">
+    <div className="space-y-2">
+      {/* Search & Selected Icon Header */}
+      <div className="flex items-center gap-2">
+        {selectedIconOption && (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs shrink-0 select-none shadow-xs"
+            style={{
+              borderColor: `${accentColor}50`,
+              backgroundColor: `${accentColor}18`,
+            }}
+            title={selectedIconOption.label}
+          >
+            <selectedIconOption.icon size={13} style={{ color: accentColor }} />
+            <span className="text-[11px] font-medium text-zinc-200">{selectedIconOption.label}</span>
+          </div>
+        )}
         <div className="relative flex-1">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search icons (e.g. git, code, folder)..."
+            placeholder="Search icons..."
             className="w-full pl-8 pr-7 py-1.5 text-xs bg-[#0E0F14] border border-[#27272A] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
           />
           {search && (
@@ -168,47 +183,40 @@ export const ModuleIconPicker: React.FC<ModuleIconPickerProps> = ({
             </button>
           )}
         </div>
-
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          {categories.map((cat) => {
-            const isCatSelected = selectedCategory === cat;
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={cn(
-                  'px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all cursor-pointer border',
-                  isCatSelected
-                    ? 'text-white border-zinc-700 bg-zinc-800 shadow-xs'
-                    : 'text-zinc-400 hover:text-zinc-200 border-transparent hover:bg-zinc-800/60'
-                )}
-                style={
-                  isCatSelected
-                    ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}20` }
-                    : undefined
-                }
-              >
-                {cat}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
-      {/* Selected Icon Chip */}
-      {selectedIconOption && (
-        <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-[#0E0F14] border border-[#27272A]/80 text-xs">
-          <span className="text-zinc-400 text-[11px]">Active Icon</span>
-          <div className="flex items-center gap-1.5 font-medium text-white">
-            <selectedIconOption.icon size={14} style={{ color: accentColor }} />
-            <span className="text-[11.5px]">{selectedIconOption.label}</span>
-          </div>
-        </div>
-      )}
+      {/* Category Pills Bar */}
+      <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none">
+        {categories.map((cat) => {
+          const isCatSelected = selectedCategory === cat;
+          return (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setSelectedCategory(cat)}
+              className={cn(
+                'px-2 py-0.5 rounded-md text-[10.5px] font-medium whitespace-nowrap transition-all cursor-pointer border',
+                isCatSelected
+                  ? 'text-white border-zinc-700 bg-zinc-800 shadow-xs'
+                  : 'text-zinc-400 hover:text-zinc-200 border-transparent hover:bg-zinc-800/60'
+              )}
+              style={
+                isCatSelected
+                  ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}25` }
+                  : undefined
+              }
+            >
+              {cat}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Icons Grid */}
-      <div className="grid grid-cols-7 sm:grid-cols-8 md:grid-cols-9 gap-1.5 p-2.5 bg-[#0E0F14] border border-[#27272A] rounded-xl max-h-[175px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700">
+      {/* Compact Icons Grid */}
+      <div className={cn(
+        'grid grid-cols-7 sm:grid-cols-9 md:grid-cols-10 gap-1 p-2 bg-[#0E0F14] border border-[#27272A] rounded-xl overflow-y-auto scrollbar-none',
+        gridHeight
+      )}>
         {filteredIcons.map((opt) => {
           const Icon = opt.icon;
           const isSelected = value === opt.id;
@@ -218,29 +226,29 @@ export const ModuleIconPicker: React.FC<ModuleIconPickerProps> = ({
               type="button"
               onClick={() => onChange(opt.id)}
               className={cn(
-                'relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center border transition-all cursor-pointer group',
+                'relative w-8 h-8 rounded-lg flex items-center justify-center border transition-all cursor-pointer group',
                 isSelected
                   ? 'text-white shadow-md scale-105'
-                  : 'border-transparent text-zinc-400 hover:text-white hover:bg-zinc-800/80 hover:scale-105'
+                  : 'border-transparent text-zinc-400 hover:text-white hover:bg-zinc-800/80'
               )}
               style={
                 isSelected
                   ? {
                       borderColor: accentColor,
                       backgroundColor: `${accentColor}25`,
-                      boxShadow: `0 0 12px ${accentColor}30`,
+                      boxShadow: `0 0 10px ${accentColor}30`,
                     }
                   : undefined
               }
               title={opt.label}
             >
-              <Icon size={17} strokeWidth={isSelected ? 2.3 : 1.9} />
+              <Icon size={15} strokeWidth={isSelected ? 2.3 : 1.9} />
               {isSelected && (
                 <div
-                  className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-white text-[8px] shadow-sm ring-2 ring-[#0E0F14]"
+                  className="absolute -top-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center text-white text-[7px] shadow-sm ring-1 ring-[#0E0F14]"
                   style={{ backgroundColor: accentColor }}
                 >
-                  <Check size={8} strokeWidth={3.5} />
+                  <Check size={7} strokeWidth={3.5} />
                 </div>
               )}
             </button>
@@ -248,7 +256,7 @@ export const ModuleIconPicker: React.FC<ModuleIconPickerProps> = ({
         })}
 
         {filteredIcons.length === 0 && (
-          <div className="col-span-full py-8 text-center text-xs text-zinc-500">
+          <div className="col-span-full py-6 text-center text-xs text-zinc-500">
             No icons matching "{search}"
           </div>
         )}

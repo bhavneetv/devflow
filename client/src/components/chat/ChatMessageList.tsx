@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { ChevronDown, MessageSquare, Sparkles } from 'lucide-react';
+import { useAccentTheme } from '../../services/accentTheme.service';
 import { ChatMessageItem } from './ChatMessageItem';
 import type { TeamMessage } from '../../types/team';
 
@@ -34,6 +35,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
+  const { accentColor } = useAccentTheme();
 
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const [unreadCountBelow, setUnreadCountBelow] = useState(0);
@@ -92,29 +94,44 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
         className="flex-1 overflow-y-auto px-2 py-4 space-y-1 select-text scroll-smooth"
       >
         {isLoading ? (
-          /* Shimmer Skeleton Loading */
+          /* Alternating Left/Right Shimmer Skeleton Loading */
           <div className="space-y-4 p-4 animate-pulse">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-zinc-800/80 shrink-0" />
-                <div className="space-y-1.5 flex-1">
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 h-3 rounded bg-zinc-800" />
-                    <div className="w-12 h-2.5 rounded bg-zinc-800/60" />
+            {[1, 2, 3, 4, 5, 6].map((i) => {
+              const isRight = i % 2 === 0;
+              return (
+                <div
+                  key={i}
+                  className={`flex items-end gap-2 ${isRight ? 'justify-end' : 'justify-start'}`}
+                >
+                  {!isRight && <div className="w-6 h-6 rounded-lg bg-zinc-800/80 shrink-0 mb-1" />}
+                  <div className={`space-y-1.5 flex flex-col ${isRight ? 'items-end' : 'items-start'} max-w-[70%]`}>
+                    <div className="w-16 h-2.5 rounded bg-zinc-800/60" />
+                    <div
+                      className={`h-9 rounded-2xl ${
+                        isRight
+                          ? 'rounded-br-xs bg-zinc-800/80 w-44'
+                          : 'rounded-bl-xs bg-zinc-850/80 bg-zinc-900 border border-zinc-800 w-56'
+                      }`}
+                      style={{ width: `${Math.max(120, ((i * 47) % 180) + 100)}px` }}
+                    />
                   </div>
-                  <div
-                    className="h-4 rounded bg-zinc-800/70"
-                    style={{ width: `${Math.max(30, (i * 37) % 85)}%` }}
-                  />
+                  {isRight && <div className="w-6 h-6 rounded-lg bg-zinc-800/80 shrink-0 mb-1" />}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : messages.length === 0 ? (
           /* Empty State */
           <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shadow-inner">
-              <MessageSquare size={22} />
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner border"
+              style={{
+                backgroundColor: `${accentColor}18`,
+                borderColor: `${accentColor}40`,
+                color: accentColor,
+              }}
+            >
+              <MessageSquare size={22} style={{ color: accentColor }} />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-white">No messages yet</h3>
@@ -184,14 +201,17 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
               className="px-4 py-2 flex items-center gap-2 text-xs text-zinc-400"
             >
               <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-full shadow-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" />
                 <span
-                  className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce"
-                  style={{ animationDelay: '150ms' }}
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ backgroundColor: accentColor }}
                 />
                 <span
-                  className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce"
-                  style={{ animationDelay: '300ms' }}
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ backgroundColor: accentColor, animationDelay: '150ms' }}
+                />
+                <span
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ backgroundColor: accentColor, animationDelay: '300ms' }}
                 />
                 <span className="text-[11px] text-zinc-400 ml-1.5 font-medium">
                   {typingUserName} is typing...
@@ -211,9 +231,10 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
             initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, scale: 0.9, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: 8 }}
-            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            transition={{ type: 'spring', bounce: 0.2 }}
             onClick={() => scrollToBottom('smooth')}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-xl cursor-pointer transition-transform active:scale-95"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white shadow-xl cursor-pointer transition-transform active:scale-95"
+            style={{ backgroundColor: accentColor }}
           >
             <ChevronDown size={14} />
             <span>

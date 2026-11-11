@@ -63,6 +63,7 @@ import { ProjectStructureView } from './ProjectStructureView';
 import { SidebarOrderSettingsView } from './SidebarOrderSettingsView';
 import { ProjectGitHubLinker } from '../../components/git/ProjectGitHubLinker';
 import { ProjectGitMemberMapping } from '../../components/git/ProjectGitMemberMapping';
+import { ProjectStorageSettingsTab } from '../../components/settings/ProjectStorageSettingsTab';
 
 // ─── CONSTANTS & DICTIONARIES ────────────────────────────────────────────────
 
@@ -1662,6 +1663,11 @@ export const ProjectSettingsView: React.FC = () => {
         <div className="px-6 sm:px-8 py-6">
           <ProjectGitMemberMapping projectId={projectId} />
         </div>
+      )}
+
+      {/* ─── TAB: STORAGE (REPO, BRANCH USAGE, UNLINK & RELINK) ─────────── */}
+      {activeSection === 'storage' && (
+        <ProjectStorageSettingsTab projectId={projectId} />
       )}
 
       {/* ─── TAB 3: SECURITY & ACCESS ─────────────────────────────────────── */}

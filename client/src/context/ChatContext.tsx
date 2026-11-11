@@ -9,7 +9,7 @@ import { getSocketUrl } from '../config/api';
 import type { TeamSummary, TeamConversation, TeamMessage } from '../types/team';
 import type { OrganizationMember } from '../types/organization';
 
-export type ChatCategory = 'org' | 'team' | 'direct';
+export type ChatCategory = 'org' | 'teams' | 'team' | 'project' | 'direct';
 
 interface ChatContextType {
   isOpen: boolean;
@@ -29,6 +29,15 @@ interface ChatContextType {
   orgTeam: TeamSummary | null;
   squadTeams: TeamSummary[];
   orgMembers: OrganizationMember[];
+  projects: any[];
+  activeProjectChat: any | null;
+  setActiveProjectChat: (proj: any | null) => void;
+  isLeftMenuOpen: boolean;
+  setIsLeftMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  toggleLeftMenu: () => void;
+  isMuted: boolean;
+  toggleMute: () => void;
+  playNotificationSound: (type?: 'chime' | 'pop') => void;
   unreadTotal: number;
   refreshUnread: () => void;
   socket: Socket | null;
@@ -43,12 +52,83 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-  const [chatCategory, setChatCategory] = useState<ChatCategory>('team');
+  const [chatCategory, setChatCategory] = useState<ChatCategory>('org');
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [orgMembers, setOrgMembers] = useState<OrganizationMember[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [activeTeam, setActiveTeam] = useState<TeamSummary | null>(null);
+  const [activeProjectChat, setActiveProjectChat] = useState<any | null>(null);
   const [activeConversation, setActiveConversation] = useState<TeamConversation | null>(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
+  const [isLeftMenuOpen, setIsLeftMenuOpen] = useState(true);
+
+  const [isMuted, setIsMuted] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('devflow_chat_muted') === 'true';
+  });
+
+  const toggleMute = useCallback(() => {
+    setIsMuted((prev) => {
+      const next = !prev;
+      localStorage.setItem('devflow_chat_muted', String(next));
+      return next;
+    });
+  }, []);
+
+  const toggleLeftMenu = useCallback(() => {
+    setIsLeftMenuOpen((prev) => !prev);
+  }, []);
+
+  // Web Audio notification sound synthesis
+  const playNotificationSound = useCallback((type: 'chime' | 'pop' = 'chime') => {
+    if (isMuted) return;
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const now = ctx.currentTime;
+      if (type === 'chime') {
+        const notes = [698.46, 880.00, 1046.50];
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+
+          gain.gain.setValueAtTime(0, now + idx * 0.08);
+          gain.gain.linearRampToValueAtTime(0.08, now + idx * 0.08 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.28);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(now + idx * 0.08);
+          osc.stop(now + idx * 0.08 + 0.3);
+        });
+      } else {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.14);
+      }
+    } catch {
+      // AudioContext unavailable
+    }
+  }, [isMuted]);
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -56,15 +136,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const orgTeam = teams.find((t) => t.name.includes('(Organisation)') || t.name.includes('Workspace')) || teams[0] || null;
   const squadTeams = teams.filter((t) => !t.name.includes('(Organisation)') && !t.name.includes('Workspace'));
 
-  // Load user teams and organization members
+  // Load user teams, organization members, and projects
   const loadTeams = useCallback(async () => {
     try {
-      const [teamsRes, membersRes] = await Promise.all([
+      const [teamsRes, membersRes, projectsRes] = await Promise.all([
         teamService.listTeams({
           organizationSlug: currentOrganization?.slug,
         }),
         currentOrganization?.slug
           ? organizationService.listMembers(currentOrganization.slug)
+          : Promise.resolve({ success: false, data: [] }),
+        currentOrganization?.slug
+          ? organizationService.listProjects(currentOrganization.slug)
           : Promise.resolve({ success: false, data: [] }),
       ]);
 
@@ -86,8 +169,24 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (membersRes.success && Array.isArray(membersRes.data)) {
         setOrgMembers(membersRes.data);
       }
+
+      if (projectsRes.success && Array.isArray(projectsRes.data)) {
+        setProjects(projectsRes.data);
+        if (projectsRes.data.length > 0) {
+          if (activeProject?.id) {
+            const matched = projectsRes.data.find((p) => p.id === activeProject.id);
+            if (matched) {
+              setActiveProjectChat(matched);
+            } else {
+              setActiveProjectChat((prev: any) => prev || projectsRes.data![0]);
+            }
+          } else {
+            setActiveProjectChat((prev: any) => prev || projectsRes.data![0]);
+          }
+        }
+      }
     } catch (err) {
-      console.warn('Failed to fetch teams/members for chat:', err);
+      console.warn('Failed to fetch teams/members/projects for chat:', err);
     }
   }, [currentOrganization?.slug, activeProject]);
 
@@ -173,8 +272,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Ctrl+Shift+M (or Cmd+Shift+M / Ctrl+Shift+C) toggles drawer
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key.toLowerCase() === 'm' || e.key.toLowerCase() === 'c')) {
+      // Shift + M (or Ctrl/Cmd + Shift + M) toggles chat drawer
+      if (e.shiftKey && (e.key.toLowerCase() === 'm' || e.key === 'M') && !e.altKey) {
         if (!isInput) {
           e.preventDefault();
           setIsOpen((prev) => !prev);
@@ -249,6 +348,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         orgTeam,
         squadTeams,
         orgMembers,
+        projects,
+        activeProjectChat,
+        setActiveProjectChat,
+        isLeftMenuOpen,
+        setIsLeftMenuOpen,
+        toggleLeftMenu,
+        isMuted,
+        toggleMute,
+        playNotificationSound,
         unreadTotal,
         refreshUnread,
         socket: socketRef.current,

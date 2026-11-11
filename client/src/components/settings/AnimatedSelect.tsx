@@ -153,7 +153,7 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className={`absolute ${
               dropdownAlign === 'right' ? 'right-0' : 'left-0'
-            } top-full z-50 p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-80 flex flex-col ${
+            } top-full z-[9985] p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-80 flex flex-col ${
               dropdownMinWidth || 'w-full sm:min-w-[270px]'
             }`}
           >
@@ -418,7 +418,7 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className={`absolute ${
               dropdownAlign === 'right' ? 'right-0' : 'left-0'
-            } top-full z-50 p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-80 flex flex-col ${
+            } top-full z-[9985] p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-80 flex flex-col ${
               dropdownMinWidth || 'w-full sm:min-w-[270px]'
             }`}
           >

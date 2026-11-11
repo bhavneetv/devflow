@@ -2,21 +2,20 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   MessageSquare,
-  Maximize2,
   X,
-  Search,
   Sparkles,
-  ChevronRight,
-  Hash,
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useAccentTheme } from '../../services/accentTheme.service';
 import { teamService } from '../../services/team.service';
 import { ChatHeader } from './ChatHeader';
-import { ChatConversationSwitcher, ChatTargetUser } from './ChatConversationSwitcher';
+import { ChatLeftSidebar, ChatTargetUser } from './ChatLeftSidebar';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
+import { FloatingTooltip } from '../common/FloatingTooltip';
+import { cn } from '../../lib/utils';
 import type { TeamConversation, TeamMessage, TeamMember } from '../../types/team';
 
 export const GlobalChatSlideOver: React.FC = () => {
@@ -24,7 +23,6 @@ export const GlobalChatSlideOver: React.FC = () => {
     isOpen,
     isMinimized,
     closeChat,
-    minimizeChat,
     expandChat,
     activeTeam,
     setActiveTeam,
@@ -34,27 +32,30 @@ export const GlobalChatSlideOver: React.FC = () => {
     setChatCategory,
     orgTeam,
     squadTeams,
+    teams,
+    projects,
+    activeProjectChat,
+    setActiveProjectChat,
+    isLeftMenuOpen,
+    setIsLeftMenuOpen,
     unreadTotal,
     refreshUnread,
+    playNotificationSound,
     socket,
   } = useChat();
 
   const { user } = useAuth();
   const { toast } = useToast();
+  const { accentColor } = useAccentTheme();
   const shouldReduceMotion = useReducedMotion();
 
   const [conversations, setConversations] = useState<TeamConversation[]>([]);
   const [messages, setMessages] = useState<TeamMessage[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isLoadingTeamData, setIsLoadingTeamData] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
-  const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchFilter, setSearchFilter] = useState('');
-  const [isMuted, setIsMuted] = useState(() => {
-    return localStorage.getItem('devflow_chat_muted') === 'true';
-  });
 
   const [replyingTo, setReplyingTo] = useState<{
     id: number;
@@ -62,39 +63,37 @@ export const GlobalChatSlideOver: React.FC = () => {
     content: string;
   } | null>(null);
 
-  // Play subtle audio ping
-  const playPing = useCallback(() => {
-    if (isMuted) return;
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12); // A5
-      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.2);
-    } catch {
-      // AudioContext not allowed or not supported
+  // Synchronize category switch with active team & default general topic selection
+  useEffect(() => {
+    if (chatCategory === 'org') {
+      if (orgTeam && activeTeam?.id !== orgTeam.id) {
+        setActiveTeam(orgTeam);
+      }
+    } else if (chatCategory === 'teams' || chatCategory === 'team') {
+      if (squadTeams.length > 0 && (!activeTeam || activeTeam.name.includes('(Organisation)'))) {
+        setActiveTeam(squadTeams[0]);
+      }
+    } else if (chatCategory === 'project') {
+      if (activeProjectChat) {
+        if (activeProjectChat.teamId) {
+          const matchedTeam = teams.find((t) => t.id === activeProjectChat.teamId);
+          if (matchedTeam) {
+            setActiveTeam(matchedTeam);
+            return;
+          }
+        }
+      }
+      if (orgTeam && (!activeTeam || activeTeam.id !== orgTeam.id)) {
+        setActiveTeam(orgTeam);
+      }
     }
-  }, [isMuted]);
-
-  const toggleMute = () => {
-    setIsMuted((prev) => {
-      const next = !prev;
-      localStorage.setItem('devflow_chat_muted', String(next));
-      return next;
-    });
-  };
+  }, [chatCategory, orgTeam, squadTeams, activeProjectChat, teams]);
 
   // Load team members and conversations when activeTeam changes
   const loadTeamData = useCallback(async () => {
     if (!activeTeam) return;
     try {
+      setIsLoadingTeamData(true);
       const [convRes, teamDetailRes] = await Promise.all([
         teamService.getConversations(activeTeam.id),
         teamService.getTeam(activeTeam.id),
@@ -102,8 +101,9 @@ export const GlobalChatSlideOver: React.FC = () => {
 
       if (convRes.success && convRes.data) {
         setConversations(convRes.data);
-        if (!activeConversation && convRes.data.length > 0) {
-          // Default to General channel or first conversation
+        // By default show and select #general topic if active conversation is not set or belongs to another team
+        const isCurrentConvInTeam = activeConversation && convRes.data.some((c) => c.id === activeConversation.id);
+        if (!isCurrentConvInTeam && convRes.data.length > 0) {
           const general = convRes.data.find(
             (c) => c.type === 'GROUP' && c.name?.toLowerCase() === 'general'
           );
@@ -116,6 +116,8 @@ export const GlobalChatSlideOver: React.FC = () => {
       }
     } catch (err) {
       console.warn('Failed to load team conversations:', err);
+    } finally {
+      setIsLoadingTeamData(false);
     }
   }, [activeTeam, activeConversation, setActiveConversation]);
 
@@ -133,7 +135,6 @@ export const GlobalChatSlideOver: React.FC = () => {
       const res = await teamService.getMessages(activeTeam.id, activeConversation.id);
       if (res.success && res.data) {
         setMessages(res.data);
-        // Mark conversation as read
         teamService.markConversationRead(activeTeam.id, activeConversation.id);
         refreshUnread();
       }
@@ -161,8 +162,10 @@ export const GlobalChatSlideOver: React.FC = () => {
           return [...prev, payload.message];
         });
         teamService.markConversationRead(activeTeam.id, activeConversation.id);
-        playPing();
       }
+
+      // Play audio chime notification
+      playNotificationSound('chime');
 
       // Update conversations list badge
       setConversations((prev) =>
@@ -221,20 +224,49 @@ export const GlobalChatSlideOver: React.FC = () => {
       socket.off('message_pinned', handleMessagePinned);
       socket.off('user_typing', handleUserTyping);
     };
-  }, [socket, activeTeam, activeConversation, playPing, refreshUnread, user?.id]);
+  }, [socket, activeTeam, activeConversation, playNotificationSound, refreshUnread, user?.id]);
 
-  // Send Message
+  // Send Message with instant optimistic delivery (0ms perceived delay)
   const handleSendMessage = async (
     content: string,
     options?: {
       mentions?: number[];
-      attachments?: Array<{ name: string; size: string }>;
+      attachments?: Array<{ name: string; size: string; url?: string; type?: string }>;
       sharedEntity?: any;
       replyToId?: number;
     }
   ) => {
-    if (!activeTeam || !activeConversation || isSending) return;
-    setIsSending(true);
+    if (!activeTeam || !activeConversation) return;
+
+    // 1. Instantly create and display optimistic message
+    const tempId = -Date.now();
+    const optimisticMsg: TeamMessage = {
+      id: tempId,
+      teamId: activeTeam.id,
+      conversationId: activeConversation.id,
+      senderId: user?.id || 0,
+      content,
+      mentions: options?.mentions ? JSON.stringify(options.mentions) : null,
+      attachments: options?.attachments ? JSON.stringify(options.attachments) : null,
+      sharedEntity: options?.sharedEntity ? JSON.stringify(options.sharedEntity) : null,
+      replyToId: options?.replyToId || null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sender: {
+        id: user?.id || 0,
+        name: user?.name || 'You',
+        email: user?.email || '',
+        username: (user as any)?.username || '',
+        avatarUrl: user?.avatarUrl || null,
+        avatarColor: user?.avatarColor || accentColor,
+        avatarType: user?.avatarType || 'initials',
+        avatarId: user?.avatarId || null,
+      },
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+
+    // 2. Sync with backend in background
     try {
       const res = await teamService.sendMessage(
         activeTeam.id,
@@ -243,15 +275,13 @@ export const GlobalChatSlideOver: React.FC = () => {
         options
       );
       if (res.success && res.data) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === res.data!.id)) return prev;
-          return [...prev, res.data!];
-        });
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? res.data! : m))
+        );
       }
     } catch (err: any) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       toast.error('Failed to send message', err.message);
-    } finally {
-      setIsSending(false);
     }
   };
 
@@ -338,7 +368,6 @@ export const GlobalChatSlideOver: React.FC = () => {
           return prev;
         });
         setActiveConversation(res.data);
-        setIsSwitcherOpen(false);
       }
     } catch (err: any) {
       toast.error('Failed to open chat with member', err.message);
@@ -347,18 +376,11 @@ export const GlobalChatSlideOver: React.FC = () => {
 
   const handleSelectConversation = (conv: TeamConversation) => {
     setActiveConversation(conv);
-    setIsSwitcherOpen(false);
   };
-
-  // Filter messages if search is active
-  const filteredMessages = messages.filter((m) => {
-    if (!isSearchOpen || !searchFilter.trim()) return true;
-    return m.content.toLowerCase().includes(searchFilter.toLowerCase().trim());
-  });
 
   return (
     <>
-      {/* 1. Minimized Floating Dock Pill (When minimized) */}
+      {/* ── 1. Minimized Floating Dock Pill ── */}
       <AnimatePresence>
         {isOpen && isMinimized && (
           <motion.div
@@ -366,17 +388,31 @@ export const GlobalChatSlideOver: React.FC = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.9 }}
             transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="fixed bottom-6 right-6 z-[100] flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-zinc-900 border border-purple-500/40 shadow-2xl backdrop-blur-md select-none cursor-pointer group hover:border-purple-400 transition-colors"
+            className="fixed bottom-6 right-6 z-[100] flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-zinc-900 border shadow-2xl backdrop-blur-md select-none cursor-pointer group transition-colors"
+            style={{ borderColor: `${accentColor}50` }}
             onClick={expandChat}
           >
             <div className="relative">
-              <div className="w-8 h-8 rounded-xl bg-purple-600/20 text-purple-400 border border-purple-500/30 flex items-center justify-center">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center border shadow-xs"
+                style={{
+                  backgroundColor: `${accentColor}20`,
+                  color: accentColor,
+                  borderColor: `${accentColor}40`,
+                }}
+              >
                 <MessageSquare size={16} />
               </div>
               {unreadTotal > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-purple-500 text-[9px] font-bold text-white items-center justify-center">
+                  <span
+                    className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                    style={{ backgroundColor: accentColor }}
+                  />
+                  <span
+                    className="relative inline-flex rounded-full h-4 w-4 text-[9px] font-bold text-white items-center justify-center"
+                    style={{ backgroundColor: accentColor }}
+                  >
                     {unreadTotal}
                   </span>
                 </span>
@@ -386,28 +422,30 @@ export const GlobalChatSlideOver: React.FC = () => {
             <div className="text-left pr-2">
               <div className="text-xs font-bold text-white flex items-center gap-1.5">
                 <span>DevFlow Chat</span>
-                <span className="text-[10px] text-purple-400 font-normal">
+                <span className="text-[10px] font-normal" style={{ color: accentColor }}>
                   ({activeConversation?.name ? `#${activeConversation.name.toLowerCase()}` : 'Channel'})
                 </span>
               </div>
               <p className="text-[10px] text-zinc-400">Click to expand overlay</p>
             </div>
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                closeChat();
-              }}
-              className="p-1 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Close"
-            >
-              <X size={14} />
-            </button>
+            <FloatingTooltip content="Close" side="top">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeChat();
+                }}
+                className="p-1 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </FloatingTooltip>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 2. Full Floating Right-Side Overlay Drawer */}
+      {/* ── 2. Full Floating Right-Side Overlay Drawer ── */}
       <AnimatePresence>
         {isOpen && !isMinimized && (
           <div className="fixed inset-0 z-[100] pointer-events-none">
@@ -416,7 +454,7 @@ export const GlobalChatSlideOver: React.FC = () => {
               initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0 }}
-              transition={{ duration: 0.25 }}
+              transition={{ duration: 0.18 }}
               onClick={closeChat}
               className="fixed inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto"
             />
@@ -426,119 +464,82 @@ export const GlobalChatSlideOver: React.FC = () => {
               initial={shouldReduceMotion ? { x: 0 } : { x: '100%', opacity: 0.9 }}
               animate={{ x: 0, opacity: 1 }}
               exit={shouldReduceMotion ? { x: 0 } : { x: '100%', opacity: 0.9 }}
-              transition={{
-                type: 'spring',
-                damping: 26,
-                stiffness: 290,
-                mass: 0.85,
-              }}
-              className="fixed right-0 top-0 bottom-0 w-full sm:w-[480px] md:w-[460px] lg:w-[33vw] min-w-[390px] max-w-[520px] h-screen bg-zinc-950 border-l border-zinc-800/90 shadow-[-20px_0_50px_rgba(0,0,0,0.85),-4px_0_24px_rgba(139,92,246,0.15)] flex flex-col pointer-events-auto z-10 overflow-hidden"
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="fixed right-0 top-0 bottom-0 h-screen bg-zinc-950 border-l border-zinc-800/90 shadow-[-20px_0_50px_rgba(0,0,0,0.85)] flex flex-row pointer-events-auto z-10 overflow-hidden"
             >
-              {/* Luminous Purple Accent Left Edge Line */}
-              <div className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-gradient-to-b from-purple-500/80 via-purple-600/40 to-transparent pointer-events-none z-30" />
-
-              {/* Header */}
-              <ChatHeader
-                conversation={activeConversation}
-                teamName={activeTeam?.name || 'Workspace Team'}
-                isSwitcherOpen={isSwitcherOpen}
-                onToggleSwitcher={() => setIsSwitcherOpen((prev) => !prev)}
-                isSearchOpen={isSearchOpen}
-                onToggleSearch={() => setIsSearchOpen((prev) => !prev)}
-                isMuted={isMuted}
-                onToggleMute={toggleMute}
-                onMinimize={minimizeChat}
-                onClose={closeChat}
-                memberCount={teamMembers.length}
+              {/* Luminous Accent Left Edge Line */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-[2px] pointer-events-none z-30 opacity-80"
+                style={{
+                  background: `linear-gradient(to bottom, ${accentColor}, ${accentColor}40, transparent)`,
+                }}
               />
 
-              {/* In-Drawer Search Bar (Slide-down animation) */}
-              <AnimatePresence>
-                {isSearchOpen && (
+              {/* Slide-out Left Navigation Menu (Org Topics / Teams / Projects / 1:1 Members) */}
+              <AnimatePresence initial={false}>
+                {isLeftMenuOpen && (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden bg-zinc-900/90 border-b border-zinc-800 px-3 py-2 flex items-center gap-2 shrink-0"
+                    initial={shouldReduceMotion ? { opacity: 1 } : { width: 0, opacity: 0 }}
+                    animate={{ width: 280, opacity: 1 }}
+                    exit={shouldReduceMotion ? { opacity: 0 } : { width: 0, opacity: 0 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                    className="h-full overflow-hidden shrink-0 flex border-r border-zinc-800/80 sm:relative absolute left-0 top-0 bottom-0 z-30 bg-zinc-950 shadow-2xl sm:shadow-none"
                   >
-                    <Search size={14} className="text-zinc-500 shrink-0" />
-                    <input
-                      type="text"
-                      value={searchFilter}
-                      onChange={(e) => setSearchFilter(e.target.value)}
-                      placeholder="Filter messages in this conversation..."
-                      autoFocus
-                      className="w-full bg-transparent text-xs text-white placeholder-zinc-500 focus:outline-none"
-                    />
-                    {searchFilter && (
-                      <button
-                        onClick={() => setSearchFilter('')}
-                        className="text-zinc-500 hover:text-white p-0.5 rounded cursor-pointer"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* In-Drawer Conversation & Direct Message Switcher */}
-              <AnimatePresence>
-                {isSwitcherOpen && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="overflow-hidden shrink-0 z-20"
-                  >
-                    <ChatConversationSwitcher
+                    <ChatLeftSidebar
                       conversations={conversations}
                       activeConvId={activeConversation?.id}
                       onSelectConversation={handleSelectConversation}
                       teamMembers={teamMembers}
                       currentUserId={user?.id}
                       onSelectMember={handleSelectMember}
-                      teamName={activeTeam?.name || 'Team'}
+                      onCloseLeftMenu={() => setIsLeftMenuOpen(false)}
+                      isLoading={isLoadingTeamData}
                     />
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Independently Scrollable Message Area */}
-              <ChatMessageList
-                messages={filteredMessages}
-                currentUserId={user?.id}
-                isLoading={isLoadingMessages}
-                isTyping={Boolean(typingUser)}
-                typingUserName={typingUser || undefined}
-                onReply={(m) =>
-                  setReplyingTo({
-                    id: m.id,
-                    senderName: m.sender?.name || 'Collaborator',
-                    content: m.content,
-                  })
-                }
-                onAddReaction={(msgId, emoji) => {
-                  // Handled optimistically inside ChatMessageItem
-                }}
-                onEditMessage={handleEditMessage}
-                onDeleteMessage={handleDeleteMessage}
-                onTogglePin={handleTogglePin}
-                onCreateTaskFromMessage={handleCreateTaskFromMessage}
-              />
+              {/* Right Chat Bar (Right Navbar + Messages + Composer) - NEVER SMALLS! */}
+              <div className="w-full sm:w-[480px] md:w-[500px] lg:w-[520px] flex flex-col h-full shrink-0 overflow-hidden bg-zinc-950">
+                {/* Right Navbar (Header) with Hamburger on Left */}
+                <ChatHeader
+                  conversation={activeConversation}
+                  onClose={closeChat}
+                />
+                  {/* Independently Scrollable Message Area */}
+                  <ChatMessageList
+                    messages={messages}
+                    currentUserId={user?.id}
+                    isLoading={isLoadingMessages}
+                    isTyping={Boolean(typingUser)}
+                    typingUserName={typingUser || undefined}
+                    onReply={(m) =>
+                      setReplyingTo({
+                        id: m.id,
+                        senderName: m.sender?.name || 'Collaborator',
+                        content: m.content,
+                      })
+                    }
+                    onAddReaction={(msgId, emoji) => {
+                      // Handled optimistically inside ChatMessageItem
+                    }}
+                    onEditMessage={handleEditMessage}
+                    onDeleteMessage={handleDeleteMessage}
+                    onTogglePin={handleTogglePin}
+                    onCreateTaskFromMessage={handleCreateTaskFromMessage}
+                  />
 
-              {/* Fixed Bottom Message Composer */}
-              <ChatComposer
-                conversationId={activeConversation?.id}
-                onSendMessage={handleSendMessage}
-                isSending={isSending}
-                teamMembers={teamMembers}
-                replyingTo={replyingTo}
-                onCancelReply={() => setReplyingTo(null)}
-                onTyping={handleTyping}
-              />
+                  {/* Fixed Bottom Message Composer */}
+                  <ChatComposer
+                    conversationId={activeConversation?.id}
+                    onSendMessage={handleSendMessage}
+                    isSending={isSending}
+                    teamMembers={teamMembers}
+                    replyingTo={replyingTo}
+                    onCancelReply={() => setReplyingTo(null)}
+                    onTyping={handleTyping}
+                  />
+                </div>
             </motion.div>
           </div>
         )}
@@ -546,4 +547,3 @@ export const GlobalChatSlideOver: React.FC = () => {
     </>
   );
 };
-

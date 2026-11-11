@@ -15,6 +15,7 @@ import { favoritesRouter } from './routes/favorites.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { projectModulesRouter } from './routes/projectModules.routes.js';
 import { gitRoutes } from './routes/git.routes.js';
+import { documentsRouter, publicShareRouter } from './routes/documents.routes.js';
 import { initSocketIO } from './lib/socket.js';
 
 dotenv.config();
@@ -61,7 +62,8 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '35mb' }));
+app.use(express.urlencoded({ limit: '35mb', extended: true }));
 
 // Request logging in development
 if (process.env.NODE_ENV !== 'production') {
@@ -85,6 +87,8 @@ app.use('/api/requirements', requirementsRouter);
 app.use('/api/favorites', favoritesRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/projects/:projectId/git', gitRoutes);
+app.use('/api/projects/:projectId/documents', documentsRouter);
+app.use('/api/documents/public-share', publicShareRouter);
 
 // Root route
 app.get('/', (_req: Request, res: Response) => {

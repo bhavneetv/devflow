@@ -10,10 +10,14 @@ import {
   ExternalLink,
   Lock,
   GitBranch,
+  Copy,
+  XCircle,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { DocumentModuleSettings, ProjectStorageConnection } from '../../types/document';
 import { documentService } from '../../services/document.service';
+import { AnimatedSelect, SelectOption } from '../settings/AnimatedSelect';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface DocumentSettingsModalProps {
   projectId: number;
@@ -28,6 +32,7 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
   onClose,
   onSettingsUpdated,
 }) => {
+  const { accentColor } = useAccentTheme();
   const [storage, setStorage] = useState<ProjectStorageConnection | null>(null);
   const [settings, setSettings] = useState<DocumentModuleSettings | null>(null);
   const [maxSizeMb, setMaxSizeMb] = useState(25);
@@ -109,7 +114,7 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between">
           <div className="space-y-0.5">
             <h3 className="text-base font-semibold text-white tracking-tight flex items-center gap-2">
-              <Settings size={18} className="text-blue-400" />
+              <Settings size={18} style={{ color: accentColor }} />
               Documents & Storage Configuration
             </h3>
             <p className="text-xs text-zinc-400">
@@ -127,9 +132,20 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
         {/* Content */}
         <div className="p-4 sm:p-5 space-y-5 overflow-y-auto flex-1">
           {isLoading ? (
-            <div className="py-12 flex items-center justify-center gap-2 text-zinc-400 text-xs">
-              <Loader2 size={16} className="animate-spin" />
-              <span>Loading storage configuration...</span>
+            <div className="space-y-4 py-2 animate-pulse">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 space-y-3">
+                <div className="h-4 w-44 rounded bg-zinc-800" />
+                <div className="h-3 w-64 rounded bg-zinc-800/70" />
+                <div className="h-8 w-full rounded-lg bg-zinc-800/60" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-3.5 w-36 rounded bg-zinc-800" />
+                <div className="h-9 w-full rounded-lg bg-zinc-800/70" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-3.5 w-44 rounded bg-zinc-800" />
+                <div className="h-9 w-full rounded-lg bg-zinc-800/70" />
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSave} className="space-y-5 text-xs">
@@ -202,7 +218,7 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
 
                 <div>
                   <label className="text-[11px] font-medium text-zinc-300 block mb-1">
-                    Max File Upload Size: <span className="text-blue-400 font-bold">{maxSizeMb} MB</span>
+                    Max File Upload Size: <span className="font-bold" style={{ color: accentColor }}>{maxSizeMb} MB</span>
                   </label>
                   <input
                     type="range"
@@ -221,15 +237,31 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
                   <label className="text-[11px] font-medium text-zinc-300 block mb-1">
                     Default Duplicate Policy
                   </label>
-                  <select
+                  <AnimatedSelect
                     value={duplicateHandling}
-                    onChange={(e) => setDuplicateHandling(e.target.value as any)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
-                  >
-                    <option value="rename">Auto-Rename (Append (1), (2))</option>
-                    <option value="replace">Replace Existing (Increment Version)</option>
-                    <option value="reject">Reject / Skip Duplicate</option>
-                  </select>
+                    onChange={(val) => setDuplicateHandling(val as any)}
+                    options={[
+                      {
+                        value: 'rename',
+                        label: 'Auto-Rename',
+                        sublabel: 'Append (1), (2)',
+                        icon: <Copy size={13} style={{ color: accentColor }} />,
+                      },
+                      {
+                        value: 'replace',
+                        label: 'Replace Existing',
+                        sublabel: 'Increment Version',
+                        icon: <RefreshCw size={13} className="text-amber-400" />,
+                      },
+                      {
+                        value: 'reject',
+                        label: 'Reject / Skip',
+                        sublabel: 'Error on duplicate',
+                        icon: <XCircle size={13} className="text-rose-400" />,
+                      },
+                    ]}
+                    accentColor={accentColor}
+                  />
                 </div>
               </div>
 
@@ -286,7 +318,8 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all shadow-sm disabled:opacity-50 hover:brightness-110 cursor-pointer"
+                  style={{ backgroundColor: accentColor }}
                 >
                   {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                   <span>Save Configuration</span>

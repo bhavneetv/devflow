@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Folder,
@@ -16,16 +16,20 @@ import {
   Loader2,
   Check,
   FolderPlus,
+  FolderTree,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { DocumentCategory } from '../../types/document';
 import { documentService } from '../../services/document.service';
+import { AnimatedSelect } from '../settings/AnimatedSelect';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface CategoryManageModalProps {
   projectId: number;
   isOpen: boolean;
   onClose: () => void;
   categories: DocumentCategory[];
+  initialParentId?: number | null;
   onCategoryCreated: (newCat: DocumentCategory) => void;
 }
 
@@ -59,20 +63,31 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
   projectId,
   isOpen,
   onClose,
-  categories: _categories,
+  categories,
+  initialParentId = null,
   onCategoryCreated,
 }) => {
   const [name, setName] = useState('');
+  const { accentColor } = useAccentTheme();
+  const [parentFolderId, setParentFolderId] = useState<number | null>(initialParentId);
   const [selectedIcon, setSelectedIcon] = useState('Folder');
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0].hex);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setParentFolderId(initialParentId ?? null);
+      setError(null);
+    }
+  }, [isOpen, initialParentId]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
+    const cleanedName = name.trim();
+    if (!cleanedName) {
       setError('Please enter a folder name');
       return;
     }
@@ -81,8 +96,13 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
     setError(null);
 
     try {
+      const parentCat = parentFolderId
+        ? categories.find((c) => c.id === parentFolderId)
+        : undefined;
+      const finalName = parentCat ? `${parentCat.name} / ${cleanedName}` : cleanedName;
+
       const res = await documentService.createCategory(projectId, {
-        name: name.trim(),
+        name: finalName,
         icon: selectedIcon,
         color: selectedColor,
       });
@@ -90,6 +110,7 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
       if (res.success && res.data) {
         onCategoryCreated(res.data);
         setName('');
+        setParentFolderId(null);
         setSelectedIcon('Folder');
         setSelectedColor(PRESET_COLORS[0].hex);
         onClose();
@@ -107,9 +128,9 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#17181D] border border-[#27272A] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+      <div className="bg-[#17181D] border border-[#27272A] rounded-2xl w-full max-w-md shadow-2xl overflow-visible flex flex-col">
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-[#27272A] flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-[#27272A] flex items-center justify-between rounded-t-2xl">
           <div className="flex items-center gap-2.5">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border"
@@ -161,6 +182,40 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
             />
           </div>
 
+          {/* 1b. Parent Folder (Subfolder Support) */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+              <FolderTree size={12} style={{ color: accentColor }} />
+              <span>Location / Parent Folder</span>
+            </label>
+            <AnimatedSelect
+              value={parentFolderId !== null ? String(parentFolderId) : ''}
+              onChange={(val) => setParentFolderId(val ? Number(val) : null)}
+              options={[
+                {
+                  value: '',
+                  label: 'Root (Top-Level Folder)',
+                  icon: <Folder size={13} className="text-zinc-400" />,
+                  sublabel: 'Root directory',
+                },
+                ...categories.map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                  icon: (
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: c.color || '#3B82F6' }}
+                    />
+                  ),
+                  sublabel: `${c._count?.documents || 0} files`,
+                })),
+              ]}
+              accentColor={selectedColor}
+              placeholder="Choose parent folder..."
+              searchPlaceholder="Search parent folder..."
+            />
+          </div>
+
           {/* 2. Avatar / Icon Picker */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 block">
@@ -178,10 +233,17 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
                     title={item.label}
                     className={cn(
                       'h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer border',
-                      isSelected
-                        ? 'border-blue-500 bg-blue-500/15 text-blue-400 shadow-sm'
-                        : 'border-[#27272A] bg-[#0E0F14] text-zinc-400 hover:text-white hover:border-zinc-700'
+                      !isSelected && 'border-[#27272A] bg-[#0E0F14] text-zinc-400 hover:text-white hover:border-zinc-700'
                     )}
+                    style={
+                      isSelected
+                        ? {
+                            borderColor: accentColor,
+                            backgroundColor: `${accentColor}20`,
+                            color: accentColor,
+                          }
+                        : undefined
+                    }
                   >
                     <IconComp size={16} />
                   </button>
@@ -229,7 +291,8 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || !name.trim()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-[#0A0B10] transition-all shadow-sm disabled:opacity-50 cursor-pointer hover:brightness-110"
+              style={{ backgroundColor: accentColor }}
             >
               {isSubmitting ? (
                 <>

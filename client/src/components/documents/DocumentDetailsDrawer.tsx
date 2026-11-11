@@ -20,11 +20,14 @@ import {
   Lock,
   Clock,
   Sparkles,
+  Folder,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { ProjectDocument, DocumentCategory } from '../../types/document';
 import { documentService } from '../../services/document.service';
 import { formatDistanceToNow } from '../../lib/dateUtils';
+import { AnimatedSelect, SelectOption } from '../settings/AnimatedSelect';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface DocumentDetailsDrawerProps {
   projectId: number;
@@ -55,6 +58,7 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
   onShare,
   onDelete,
 }) => {
+  const { accentColor } = useAccentTheme();
   const [doc, setDoc] = useState<ProjectDocument | null>(initialDoc);
   const [activeTab, setActiveTab] = useState<'preview' | 'metadata' | 'edit' | 'shares' | 'activity'>('preview');
   const [isSaving, setIsSaving] = useState(false);
@@ -159,7 +163,10 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-xs uppercase font-mono px-2 py-0.5 rounded bg-zinc-800 text-blue-400 font-semibold border border-zinc-700">
+              <span
+                className="text-xs uppercase font-mono px-2 py-0.5 rounded bg-zinc-800 font-semibold border border-zinc-700"
+                style={{ color: accentColor }}
+              >
                 {ext}
               </span>
               <h3 className="text-sm font-semibold text-white tracking-tight truncate max-w-md">
@@ -188,7 +195,8 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => documentService.downloadDocument(projectId, doc)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all shadow-sm hover:brightness-110 cursor-pointer"
+              style={{ backgroundColor: accentColor }}
             >
               <Download size={13} />
               <span>Download</span>
@@ -313,7 +321,8 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
                   </div>
                   <button
                     onClick={() => documentService.downloadDocument(projectId, doc)}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all shadow-sm hover:brightness-110 cursor-pointer"
+                    style={{ backgroundColor: accentColor }}
                   >
                     <Download size={14} />
                     <span>Download {formatBytes(doc.sizeBytes)}</span>
@@ -430,20 +439,33 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
 
               <div>
                 <label className="text-[11px] font-medium text-zinc-300 block mb-1">
-                  Category
+                  Folder / Category
                 </label>
-                <select
-                  value={editCategoryId !== undefined ? String(editCategoryId) : ''}
-                  onChange={(e) => setEditCategoryId(e.target.value ? Number(e.target.value) : undefined)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="">(None)</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <AnimatedSelect
+                  value={editCategoryId !== undefined && editCategoryId !== null ? String(editCategoryId) : ''}
+                  onChange={(val) => setEditCategoryId(val ? Number(val) : undefined)}
+                  options={[
+                    {
+                      value: '',
+                      label: 'Root / General (No Folder)',
+                      icon: <Folder size={13} className="text-zinc-400" />,
+                    },
+                    ...categories.map((c) => ({
+                      value: String(c.id),
+                      label: c.name,
+                      icon: (
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: c.color || '#3B82F6' }}
+                        />
+                      ),
+                      sublabel: `${c._count?.documents || 0} files`,
+                    })),
+                  ]}
+                  accentColor={accentColor}
+                  placeholder="Select folder..."
+                  searchPlaceholder="Search folder..."
+                />
               </div>
 
               <div>
@@ -476,7 +498,8 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all shadow-sm disabled:opacity-50 hover:brightness-110 cursor-pointer"
+                  style={{ backgroundColor: accentColor }}
                 >
                   {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                   <span>Save Changes</span>

@@ -17,6 +17,7 @@ import { cn } from '../../lib/utils';
 import type { ProjectDocument } from '../../types/document';
 import { formatDistanceToNow } from '../../lib/dateUtils';
 import { documentService } from '../../services/document.service';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface DocumentCardViewProps {
   projectId: number;
@@ -73,6 +74,7 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
   onDeleteDocument,
   density = 'comfortable',
 }) => {
+  const { accentColor } = useAccentTheme();
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
 
   if (documents.length === 0) {
@@ -104,10 +106,17 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
             key={doc.id}
             className={cn(
               'group relative rounded-xl border bg-zinc-900/80 transition-all duration-200 flex flex-col justify-between overflow-hidden hover:shadow-lg',
-              isSelected
-                ? 'border-blue-500 bg-blue-950/20 shadow-blue-950/40'
-                : 'border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-850'
+              !isSelected && 'border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-850'
             )}
+            style={
+              isSelected
+                ? {
+                    borderColor: accentColor,
+                    backgroundColor: `${accentColor}12`,
+                    boxShadow: `0 8px 24px -10px ${accentColor}50`,
+                  }
+                : undefined
+            }
           >
             {/* Top selection checkbox & badge */}
             <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5">
@@ -118,11 +127,12 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
                   onToggleSelect(doc.id);
                 }}
                 className={cn(
-                  'w-5 h-5 rounded border flex items-center justify-center transition-all',
+                  'w-5 h-5 rounded border flex items-center justify-center transition-all cursor-pointer',
                   isSelected
-                    ? 'bg-blue-600 border-blue-500 text-white'
+                    ? 'text-[#0A0B10]'
                     : 'bg-zinc-900/80 border-zinc-700/80 text-transparent opacity-0 group-hover:opacity-100 hover:border-zinc-500'
                 )}
+                style={isSelected ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
               >
                 <Check size={12} className={isSelected ? 'opacity-100' : 'opacity-0'} />
               </button>
@@ -254,7 +264,13 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
                     onSelectDocument(doc);
                   }}
                   title="Preview"
-                  className="p-2 rounded-lg bg-zinc-900/90 text-white hover:bg-blue-600 transition-colors shadow-md"
+                  className="p-2 rounded-lg bg-zinc-900/90 text-white hover:text-[#0A0B10] transition-colors shadow-md cursor-pointer"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = accentColor;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '';
+                  }}
                 >
                   <Eye size={14} />
                 </button>
@@ -265,7 +281,7 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
                     documentService.downloadDocument(projectId, doc);
                   }}
                   title="Download"
-                  className="p-2 rounded-lg bg-zinc-900/90 text-white hover:bg-emerald-600 transition-colors shadow-md"
+                  className="p-2 rounded-lg bg-zinc-900/90 text-white hover:bg-emerald-600 transition-colors shadow-md cursor-pointer"
                 >
                   <Download size={14} />
                 </button>
@@ -276,7 +292,13 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
                     onShareDocument(doc);
                   }}
                   title="Share"
-                  className="p-2 rounded-lg bg-zinc-900/90 text-white hover:bg-indigo-600 transition-colors shadow-md"
+                  className="p-2 rounded-lg bg-zinc-900/90 text-white hover:text-[#0A0B10] transition-colors shadow-md cursor-pointer"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = accentColor;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '';
+                  }}
                 >
                   <Share2 size={14} />
                 </button>

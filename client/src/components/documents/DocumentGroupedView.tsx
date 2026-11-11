@@ -17,6 +17,7 @@ import { cn } from '../../lib/utils';
 import type { ProjectDocument, DocumentCategory } from '../../types/document';
 import { DocumentCardView } from './DocumentCardView';
 import { isToday, isThisWeek, isThisMonth } from '../../lib/dateUtils';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface DocumentGroupedViewProps {
   projectId: number;
@@ -65,6 +66,7 @@ export const DocumentGroupedView: React.FC<DocumentGroupedViewProps> = ({
   groupBy = 'folder',
   density = 'comfortable',
 }) => {
+  const { accentColor } = useAccentTheme();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const toggleGroup = (key: string) => {
@@ -256,9 +258,12 @@ export const DocumentGroupedView: React.FC<DocumentGroupedViewProps> = ({
                         onUploadToFolder(group.categoryId!);
                       }}
                       title={`Upload file to ${group.title}`}
-                      className="p-1.5 rounded-lg text-zinc-400 hover:text-white bg-[#17181D] hover:bg-blue-600/20 border border-[#27272A] hover:border-blue-500/40 transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-white bg-[#17181D] border border-[#27272A] transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
+                      style={{
+                        borderColor: `${accentColor}30`,
+                      }}
                     >
-                      <Plus size={13} className="text-blue-400" />
+                      <Plus size={13} style={{ color: accentColor }} />
                     </button>
                   )}
                 </div>
@@ -287,7 +292,12 @@ export const DocumentGroupedView: React.FC<DocumentGroupedViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onUploadToFolder(group.categoryId!)}
-                          className="mt-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-400 bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                          className="mt-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer"
+                          style={{
+                            color: accentColor,
+                            backgroundColor: `${accentColor}15`,
+                            borderColor: `${accentColor}35`,
+                          }}
                         >
                           <Plus size={12} />
                           <span>Upload File to this Folder</span>

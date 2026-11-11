@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { DocumentDashboardData, ProjectDocument } from '../../types/document';
 import { formatDistanceToNow } from '../../lib/dateUtils';
+import { useAccentTheme } from '../../services/accentTheme.service';
 import { cn } from '../../lib/utils';
 
 interface DocumentsDashboardProps {
@@ -92,14 +93,18 @@ export const DocumentsDashboard: React.FC<DocumentsDashboardProps> = ({
   onViewAllClick,
   onRefresh: _onRefresh,
 }) => {
+  const { accentColor } = useAccentTheme();
   const { metrics, recentDocuments, recentFiles, recentShares } = data;
   const [copiedShareId, setCopiedShareId] = useState<number | null>(null);
 
-  // Storage calculation
+  // Storage calculation (GitHub repository storage limit: 2 GB)
   const totalSizeBytes = metrics.totalSize || metrics.totalSizeBytes || 0;
-  const maxQuotaBytes = 26214400; // 25 MB default limit
+  const maxQuotaBytes = 2 * 1024 * 1024 * 1024; // 2 GB per repository
   const remainingBytes = Math.max(0, maxQuotaBytes - totalSizeBytes);
-  const usedPct = Math.min(100, Math.round((totalSizeBytes / maxQuotaBytes) * 100));
+  const exactUsedPct = maxQuotaBytes > 0 ? Math.min(100, (totalSizeBytes / maxQuotaBytes) * 100) : 0;
+  const usedPct = Math.round(exactUsedPct);
+  const formattedUsedPct =
+    totalSizeBytes > 0 && exactUsedPct < 0.1 ? '< 0.1' : exactUsedPct.toFixed(1).replace(/\.0$/, '');
 
   const totalDocsCount = metrics.totalDocuments || metrics.totalFiles || 0;
   const activeSharesCount = metrics.activeShares || 0;
@@ -107,8 +112,9 @@ export const DocumentsDashboard: React.FC<DocumentsDashboardProps> = ({
 
   const handleCopyShare = async (share: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    const token = share.tokenHash;
-    const url = token ? `${window.location.origin}/share/documents/${token}` : window.location.href;
+    const token = share.tokenHash || share.token;
+    if (!token) return;
+    const url = `${window.location.origin}/share/documents/${token}`;
     await navigator.clipboard.writeText(url);
     setCopiedShareId(share.id);
     setTimeout(() => setCopiedShareId(null), 2000);
@@ -121,24 +127,37 @@ export const DocumentsDashboard: React.FC<DocumentsDashboardProps> = ({
         {/* Card 1: Total Documents */}
         <div
           onClick={onViewAllClick}
-          className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 shadow-xl flex flex-col justify-between cursor-pointer hover:border-[#3B82F6]/50 transition-all group"
+          className="rounded-2xl bg-[#0E0F14]/95 border border-[#27272A] p-4 sm:p-5 shadow-xl flex flex-col justify-between cursor-pointer transition-all group"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = `${accentColor}80`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = '';
+          }}
         >
           <div className="flex items-start justify-between">
             <div>
               <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
                 Total Documents
               </div>
-              <div className="text-3xl font-bold font-mono text-white tracking-tight mt-1.5 group-hover:text-blue-400 transition-colors">
+              <div className="text-3xl font-bold font-mono text-white tracking-tight mt-1.5 transition-colors">
                 {totalDocsCount}
               </div>
             </div>
-            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+            <div
+              className="p-2.5 rounded-xl border shrink-0"
+              style={{
+                backgroundColor: `${accentColor}15`,
+                color: accentColor,
+                borderColor: `${accentColor}35`,
+              }}
+            >
               <FileText size={20} />
             </div>
           </div>
           <div className="pt-3 mt-3 border-t border-[#27272A]/70 flex items-center justify-between text-[11px] text-zinc-500">
             <span>Tracked in DevFlow & GitHub</span>
-            <span className="text-blue-400 group-hover:underline flex items-center gap-1 font-medium">
+            <span className="group-hover:underline flex items-center gap-1 font-medium" style={{ color: accentColor }}>
               View all <ArrowRight size={11} />
             </span>
           </div>
@@ -156,7 +175,7 @@ export const DocumentsDashboard: React.FC<DocumentsDashboardProps> = ({
                   <span className="text-lg font-bold font-mono text-white">
                     {formatBytes(totalSizeBytes)}
                   </span>
-                  <span className="text-[11px] font-medium text-blue-400 font-mono">
+                  <span className="text-[11px] font-medium font-mono" style={{ color: accentColor }}>
                     used
                   </span>
                 </div>
@@ -173,14 +192,14 @@ export const DocumentsDashboard: React.FC<DocumentsDashboardProps> = ({
 
             {/* Circular Pie Ring Chart */}
             <div className="pt-1">
-              <StorageRing usedPct={usedPct} color={usedPct > 90 ? '#EF4444' : '#3B82F6'} />
+              <StorageRing usedPct={exactUsedPct} color={usedPct > 90 ? '#EF4444' : accentColor} />
             </div>
           </div>
 
           <div className="pt-3 mt-3 border-t border-[#27272A]/70 flex items-center justify-between text-[11px] text-zinc-500">
-            <span>Quota limit: {formatBytes(maxQuotaBytes)}</span>
+            <span>Repo limit: {formatBytes(maxQuotaBytes)}</span>
             <span className="font-mono text-zinc-400">
-              {usedPct}% capacity
+              {formattedUsedPct}% capacity
             </span>
           </div>
         </div>
@@ -227,7 +246,8 @@ export const DocumentsDashboard: React.FC<DocumentsDashboardProps> = ({
             </div>
             <button
               onClick={onViewAllClick}
-              className="text-[11px] text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1 transition-colors cursor-pointer"
+              className="text-[11px] font-medium inline-flex items-center gap-1 transition-opacity hover:opacity-80 cursor-pointer"
+              style={{ color: accentColor }}
             >
               <span>View all</span>
               <ArrowRight size={12} />
@@ -245,7 +265,10 @@ export const DocumentsDashboard: React.FC<DocumentsDashboardProps> = ({
                     className="py-2.5 px-2 flex items-center justify-between gap-3 group cursor-pointer hover:bg-white/[0.03] rounded-xl transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-zinc-800/80 border border-zinc-700/60 flex items-center justify-center text-zinc-300 group-hover:text-blue-400 group-hover:border-blue-500/30 transition-colors shrink-0">
+                      <div
+                        className="w-8 h-8 rounded-lg bg-zinc-800/80 border border-zinc-700/60 flex items-center justify-center text-zinc-300 transition-colors shrink-0"
+                        style={{ borderColor: undefined }}
+                      >
                         <Icon size={16} />
                       </div>
                       <div className="min-w-0">
@@ -362,7 +385,7 @@ export const DocumentsDashboard: React.FC<DocumentsDashboardProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {isExternal && (
+                      {isExternal && (share.tokenHash || share.token) && (
                         <button
                           onClick={(e) => handleCopyShare(share, e)}
                           title="Copy share link"

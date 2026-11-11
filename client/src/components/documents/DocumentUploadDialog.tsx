@@ -19,6 +19,8 @@ import {
 import { cn } from '../../lib/utils';
 import type { DocumentCategory } from '../../types/document';
 import { documentService } from '../../services/document.service';
+import { AnimatedSelect, SelectOption } from '../settings/AnimatedSelect';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface DocumentUploadDialogProps {
   projectId: number;
@@ -80,6 +82,7 @@ export const DocumentUploadDialog: React.FC<DocumentUploadDialogProps> = ({
   initialCategoryId,
   onUploadSuccess,
 }) => {
+  const { accentColor } = useAccentTheme();
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [targetFolderId, setTargetFolderId] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -278,11 +281,18 @@ export const DocumentUploadDialog: React.FC<DocumentUploadDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#17181D] border border-[#27272A] rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-[#17181D] border border-[#27272A] rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-visible">
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-[#27272A] flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-[#27272A] flex items-center justify-between rounded-t-2xl">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-400 flex items-center justify-center shrink-0">
+            <div
+              className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: `${accentColor}20`,
+                borderColor: `${accentColor}45`,
+                color: accentColor,
+              }}
+            >
               <Upload size={16} />
             </div>
             <div>
@@ -303,27 +313,39 @@ export const DocumentUploadDialog: React.FC<DocumentUploadDialogProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-5 space-y-4 flex-1 overflow-visible">
           {/* Option: Where to put that file (Folder / Category selector) */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 block flex items-center gap-1.5">
-              <Folder size={12} className="text-blue-400" />
+              <Folder size={12} style={{ color: accentColor }} />
               <span>Where to put file (Folder)</span>
             </label>
-            <select
+            <AnimatedSelect
               value={targetFolderId !== null ? String(targetFolderId) : ''}
-              onChange={(e) => setTargetFolderId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-[#0E0F14] border border-[#27272A] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
-            >
-              <option value="" className="bg-[#17181D] text-zinc-300">
-                General Files (No Folder)
-              </option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id} className="bg-[#17181D] text-zinc-200">
-                  📁 {c.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setTargetFolderId(val ? Number(val) : null)}
+              options={[
+                {
+                  value: '',
+                  label: 'Root / General Files (No Folder)',
+                  icon: <Folder size={14} className="text-zinc-400" />,
+                  sublabel: 'Root level',
+                },
+                ...categories.map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                  icon: (
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: c.color || '#3B82F6' }}
+                    />
+                  ),
+                  sublabel: `${c._count?.documents || 0} files`,
+                })),
+              ]}
+              accentColor={accentColor}
+              placeholder="Choose destination folder..."
+              searchPlaceholder="Search folder..."
+            />
           </div>
 
           {/* Upload Dragger */}
@@ -347,11 +369,11 @@ export const DocumentUploadDialog: React.FC<DocumentUploadDialogProps> = ({
               className="hidden"
             />
             <div className="w-10 h-10 rounded-xl bg-zinc-800/80 border border-zinc-700/60 flex items-center justify-center text-zinc-300">
-              <Upload size={18} className="text-blue-400" />
+              <Upload size={18} style={{ color: accentColor }} />
             </div>
             <div>
               <p className="text-xs font-medium text-white">
-                Drag and drop files here, or <span className="text-blue-400 underline">browse</span>
+                Drag and drop files here, or <span className="underline" style={{ color: accentColor }}>browse</span>
               </p>
               <p className="text-[11px] text-zinc-500 mt-0.5">
                 PDF, Word, Images, Code, Videos, Archives (up to 25 MB each)
@@ -511,7 +533,8 @@ export const DocumentUploadDialog: React.FC<DocumentUploadDialogProps> = ({
               type="button"
               onClick={startUpload}
               disabled={isUploading || pendingCount === 0}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-[#0A0B10] transition-all shadow-sm disabled:opacity-50 cursor-pointer hover:brightness-110"
+              style={{ backgroundColor: accentColor }}
             >
               {isUploading ? (
                 <>

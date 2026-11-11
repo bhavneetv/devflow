@@ -12,13 +12,15 @@ import {
   Eye,
   Check,
   MoreHorizontal,
-  FolderInput,
+  Folder,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { ProjectDocument, DocumentCategory } from '../../types/document';
 import { formatDistanceToNow } from '../../lib/dateUtils';
 import { documentService } from '../../services/document.service';
+import { AnimatedSelect } from '../settings/AnimatedSelect';
+import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface DocumentListViewProps {
   projectId: number;
@@ -70,8 +72,8 @@ export const DocumentListView: React.FC<DocumentListViewProps> = ({
   onBulkMoveCategory,
   density = 'comfortable',
 }) => {
+  const { accentColor } = useAccentTheme();
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
-  const [showMoveDropdown, setShowMoveDropdown] = useState(false);
 
   const allSelected = documents.length > 0 && selectedDocIds.length === documents.length;
   const hasSelection = selectedDocIds.length > 0;
@@ -95,9 +97,15 @@ export const DocumentListView: React.FC<DocumentListViewProps> = ({
     <div className="space-y-3">
       {/* ─── Bulk Action Bar (when items selected) ─────────────────────────── */}
       {hasSelection && (
-        <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-blue-950/40 border border-blue-500/30 text-xs">
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border text-xs"
+          style={{
+            backgroundColor: `${accentColor}15`,
+            borderColor: `${accentColor}40`,
+          }}
+        >
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-blue-300">
+            <span className="font-semibold" style={{ color: accentColor }}>
               {selectedDocIds.length} {selectedDocIds.length === 1 ? 'file' : 'files'} selected
             </span>
             <button
@@ -111,57 +119,42 @@ export const DocumentListView: React.FC<DocumentListViewProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleBulkDownload}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all shadow-sm hover:brightness-110 cursor-pointer"
+              style={{ backgroundColor: accentColor }}
             >
               <Download size={13} />
               <span>Download Selected</span>
             </button>
 
-            {/* Move to Category Popover */}
-            <div className="relative">
-              <button
-                onClick={() => setShowMoveDropdown(!showMoveDropdown)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-750 hover:text-white border border-zinc-700 transition-colors"
-              >
-                <FolderInput size={13} />
-                <span>Move to Category</span>
-              </button>
-
-              {showMoveDropdown && (
-                <>
-                  <div
-                    className="fixed inset-0 z-30"
-                    onClick={() => setShowMoveDropdown(false)}
-                  />
-                  <div className="absolute right-0 top-8 z-40 w-48 rounded-lg bg-zinc-900 border border-zinc-800 shadow-xl py-1 text-xs">
-                    <button
-                      onClick={() => {
-                        setShowMoveDropdown(false);
-                        onBulkMoveCategory(null);
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800"
-                    >
-                      (No Category)
-                    </button>
-                    {categories.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => {
-                          setShowMoveDropdown(false);
-                          onBulkMoveCategory(c.id);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 flex items-center gap-2"
-                      >
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: c.color || '#3b82f6' }}
-                        />
-                        <span className="truncate">{c.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+            {/* Move to Folder (AnimatedSelect) */}
+            <div className="w-44">
+              <AnimatedSelect
+                value="__move_prompt__"
+                onChange={(val) => onBulkMoveCategory(val ? Number(val) : null)}
+                placeholder="Move to Folder..."
+                searchPlaceholder="Search folder..."
+                accentColor={accentColor}
+                dropdownAlign="right"
+                dropdownMinWidth="w-52"
+                options={[
+                  {
+                    value: '',
+                    label: 'Root (No Folder)',
+                    icon: <Folder size={13} className="text-zinc-400" />,
+                  },
+                  ...categories.map((c) => ({
+                    value: String(c.id),
+                    label: c.name,
+                    icon: (
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: c.color || '#3b82f6' }}
+                      />
+                    ),
+                    sublabel: `${c._count?.documents || 0} files`,
+                  })),
+                ]}
+              />
             </div>
 
             <button

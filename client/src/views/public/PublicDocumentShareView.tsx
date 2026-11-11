@@ -17,6 +17,7 @@ import {
   Film,
 } from 'lucide-react';
 import { documentService } from '../../services/document.service';
+import { useAccentTheme } from '../../services/accentTheme.service';
 import type { PublicShareInfo } from '../../types/document';
 
 function formatBytes(bytes: number): string {
@@ -28,6 +29,7 @@ function formatBytes(bytes: number): string {
 }
 
 export const PublicDocumentShareView: React.FC = () => {
+  const { accentColor } = useAccentTheme();
   const { token } = useParams<{ token: string }>();
   const [shareInfo, setShareInfo] = useState<PublicShareInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -121,9 +123,32 @@ export const PublicDocumentShareView: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 text-xs text-zinc-400 gap-2">
-        <Loader2 size={24} className="animate-spin text-blue-500" />
-        <span>Loading shared technical document...</span>
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+        <header className="border-b border-zinc-800 bg-zinc-900/80 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 animate-pulse">
+            <div className="w-6 h-6 rounded-lg bg-zinc-800" />
+            <div className="h-4 w-20 rounded bg-zinc-800" />
+            <div className="h-4 w-48 rounded bg-zinc-800/80" />
+          </div>
+          <div className="h-8 w-28 rounded-lg bg-zinc-800 animate-pulse" />
+        </header>
+        <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-6 animate-pulse">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-zinc-800" />
+              <div className="space-y-2">
+                <div className="h-4 w-56 rounded bg-zinc-800" />
+                <div className="h-3 w-40 rounded bg-zinc-800/70" />
+              </div>
+            </div>
+            <div className="h-7 w-36 rounded-md bg-zinc-800" />
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 h-[420px] flex flex-col gap-3">
+            <div className="h-4 w-1/3 rounded bg-zinc-800" />
+            <div className="h-4 w-2/3 rounded bg-zinc-800/70" />
+            <div className="flex-1 rounded-lg bg-zinc-800/50 mt-2" />
+          </div>
+        </main>
       </div>
     );
   }
@@ -143,7 +168,8 @@ export const PublicDocumentShareView: React.FC = () => {
           </div>
           <Link
             to="/login"
-            className="inline-block px-4 py-2 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
+            className="inline-block px-4 py-2 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all hover:brightness-110"
+            style={{ backgroundColor: accentColor }}
           >
             Go to DevFlow
           </Link>
@@ -185,14 +211,16 @@ export const PublicDocumentShareView: React.FC = () => {
                 placeholder="Enter passphrase"
                 autoFocus
                 required
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                style={{ borderColor: password ? accentColor : undefined }}
               />
             </div>
 
             <button
               type="submit"
               disabled={isVerifying || !password}
-              className="w-full py-2.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 hover:brightness-110 cursor-pointer"
+              style={{ backgroundColor: accentColor }}
             >
               {isVerifying ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
               <span>Unlock Document</span>
@@ -218,7 +246,10 @@ export const PublicDocumentShareView: React.FC = () => {
       <header className="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-md px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4 sticky top-0 z-30">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center gap-2 font-bold text-white tracking-tight text-sm shrink-0">
-            <span className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center text-xs text-white">
+            <span
+              className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold text-[#0A0B10]"
+              style={{ backgroundColor: accentColor }}
+            >
               DF
             </span>
             <span>DevFlow</span>
@@ -238,7 +269,8 @@ export const PublicDocumentShareView: React.FC = () => {
           {canDownload && (
             <button
               onClick={handleDownload}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all shadow-sm hover:brightness-110 cursor-pointer"
+              style={{ backgroundColor: accentColor }}
             >
               <Download size={14} />
               <span>Download File</span>
@@ -252,7 +284,14 @@ export const PublicDocumentShareView: React.FC = () => {
         {/* Document Header Card */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="p-3 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+            <div
+              className="p-3 rounded-xl border shrink-0"
+              style={{
+                backgroundColor: `${accentColor}15`,
+                color: accentColor,
+                borderColor: `${accentColor}30`,
+              }}
+            >
               <FileText size={24} />
             </div>
             <div className="space-y-1">
@@ -316,9 +355,12 @@ export const PublicDocumentShareView: React.FC = () => {
               </div>
               <div className="p-4 overflow-auto max-h-[700px] font-mono text-xs text-zinc-300 leading-relaxed whitespace-pre">
                 {isLoadingText ? (
-                  <div className="flex items-center justify-center py-12 gap-2 text-zinc-500">
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Loading document content...</span>
+                  <div className="space-y-2.5 py-4 animate-pulse">
+                    <div className="h-3.5 w-3/4 rounded bg-zinc-800/80" />
+                    <div className="h-3.5 w-5/6 rounded bg-zinc-800/60" />
+                    <div className="h-3.5 w-2/3 rounded bg-zinc-800/70" />
+                    <div className="h-3.5 w-4/5 rounded bg-zinc-800/50" />
+                    <div className="h-3.5 w-1/2 rounded bg-zinc-800/60" />
                   </div>
                 ) : (
                   textContent || 'Empty document'
@@ -351,7 +393,8 @@ export const PublicDocumentShareView: React.FC = () => {
               {canDownload && (
                 <button
                   onClick={handleDownload}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-[#0A0B10] transition-all shadow-sm hover:brightness-110 cursor-pointer"
+                  style={{ backgroundColor: accentColor }}
                 >
                   <Download size={14} />
                   <span>Download {formatBytes(doc.sizeBytes)}</span>

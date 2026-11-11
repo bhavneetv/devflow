@@ -895,7 +895,7 @@ documentsRouter.post('/:id/share', async (req: Request, res: Response) => {
 
     const effectiveUserId = userId || project?.ownerId || 390004;
 
-    const { shareType, recipientUserId, recipientTeamId, permissionLevel, expiresInDays, password } = req.body;
+    const { shareType, recipientUserId, recipientTeamId, permissionLevel, permission, expiresInDays, expiresAt: expiresAtInput, password } = req.body;
 
     const document = await (prisma as any).projectDocument.findFirst({
       where: { id: docId, projectId, deletedAt: null },
@@ -909,9 +909,27 @@ documentsRouter.post('/:id/share', async (req: Request, res: Response) => {
     let expiresAt: Date | null = null;
     let accessPasswordHash: string | null = null;
 
-    if (shareType === 'external_link') {
+    const isLinkShare =
+      shareType === 'external_link' ||
+      shareType === 'public' ||
+      shareType === 'internal' ||
+      (!recipientUserId && !recipientTeamId);
+    const normalizedShareType =
+      shareType === 'public' || shareType === 'external_link'
+        ? 'external_link'
+        : shareType === 'internal'
+          ? 'internal_member'
+          : shareType || 'internal_member';
+    const resolvedPermission = permissionLevel || permission || 'view';
+
+    if (isLinkShare) {
       tokenHash = crypto.randomBytes(24).toString('hex');
-      if (expiresInDays && parseInt(expiresInDays, 10) > 0) {
+      if (expiresAtInput) {
+        const parsedExpiry = new Date(expiresAtInput);
+        if (!Number.isNaN(parsedExpiry.getTime())) {
+          expiresAt = parsedExpiry;
+        }
+      } else if (expiresInDays && parseInt(expiresInDays, 10) > 0) {
         expiresAt = new Date(Date.now() + parseInt(expiresInDays, 10) * 24 * 60 * 60 * 1000);
       }
       if (password && password.trim()) {
@@ -922,12 +940,12 @@ documentsRouter.post('/:id/share', async (req: Request, res: Response) => {
     const share = await (prisma as any).documentShare.create({
       data: {
         documentId: docId,
-        shareType: shareType || 'internal_member',
+        shareType: normalizedShareType,
         recipientUserId: recipientUserId ? parseInt(recipientUserId, 10) : null,
         recipientTeamId: recipientTeamId ? parseInt(recipientTeamId, 10) : null,
         tokenHash,
         accessPasswordHash,
-        permissionLevel: permissionLevel || 'view',
+        permissionLevel: resolvedPermission,
         expiresAt,
         createdById: effectiveUserId,
       },
@@ -957,6 +975,8 @@ documentsRouter.post('/:id/share', async (req: Request, res: Response) => {
       success: true,
       data: {
         ...share,
+        token: share.tokenHash,
+        permission: share.permissionLevel,
         shareUrl: tokenHash ? `/share/documents/${tokenHash}` : null,
       },
     });
@@ -1209,7 +1229,239 @@ documentsRouter.put('/settings', async (req: Request, res: Response) => {
 
 // ─── STANDALONE PUBLIC SHARE HANDLER ─────────────────────────────────────────
 
+async function resolveValidPublicShare(token: string) {
+  if (!token || token === 'undefined' || token === 'null') {
+    return { status: 404, error: 'Share link is invalid or has been revoked.' };
+  }
+
+  const share = await (prisma as any).documentShare.findUnique({
+    where: { tokenHash: token },
+    include: {
+      document: {
+        include: {
+          project: { select: { id: true, title: true } },
+          uploadedBy: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  if (!share || share.revokedAt || !share.document || share.document.deletedAt) {
+    return { status: 404, error: 'Share link is invalid or has been revoked.' };
+  }
+
+  if (share.expiresAt && new Date(share.expiresAt) < new Date()) {
+    return { status: 410, error: 'This share link has expired.' };
+  }
+
+  return { share };
+}
+
+function buildPublicSharePayload(share: any) {
+  const doc = share.document;
+  return {
+    id: share.id,
+    token: share.tokenHash,
+    shareType: share.shareType,
+    permission: share.permissionLevel || 'view',
+    permissionLevel: share.permissionLevel || 'view',
+    requiresPassword: Boolean(share.accessPasswordHash),
+    isPasswordProtected: Boolean(share.accessPasswordHash),
+    expiresAt: share.expiresAt,
+    document: {
+      id: doc.id,
+      name: doc.displayName || doc.originalName,
+      displayName: doc.displayName || doc.originalName,
+      originalName: doc.originalName,
+      fileExtension: doc.extension || '',
+      extension: doc.extension || '',
+      mimeType: doc.mimeType || 'application/octet-stream',
+      sizeBytes: doc.sizeBytes || 0,
+      updatedAt: doc.updatedAt,
+      projectName: doc.project?.title || 'DevFlow Project',
+      uploaderName: doc.uploadedBy?.name || 'Team Member',
+    },
+  };
+}
+
+function isSharePasswordValid(share: any, rawPassword: unknown): boolean {
+  if (!share.accessPasswordHash) return true;
+  if (typeof rawPassword !== 'string' || !rawPassword.trim()) return false;
+  const hashed = crypto.createHash('sha256').update(rawPassword.trim()).digest('hex');
+  return hashed === share.accessPasswordHash;
+}
+
+async function sendPublicShareFile(
+  req: Request,
+  res: Response,
+  share: any,
+  isDownload: boolean,
+  password: unknown
+) {
+  if (share.shareType !== 'external_link' && share.shareType !== 'public') {
+    const reqUserId = getUserIdFromToken(req);
+    const access = await checkProjectAccess(share.document.projectId, reqUserId);
+    if (!access.allowed) {
+      return res.status(403).json({
+        success: false,
+        error: 'This internal document link requires project member access.',
+      });
+    }
+  }
+
+  if (!isSharePasswordValid(share, password)) {
+    return res.status(401).json({
+      success: false,
+      error: isDownload
+        ? 'Valid passphrase required to download this file.'
+        : 'Valid passphrase required to access this file.',
+    });
+  }
+
+  if (isDownload && share.permissionLevel !== 'download' && share.permissionLevel !== 'full') {
+    return res.status(403).json({
+      success: false,
+      error: 'This share link only allows view/preview access.',
+    });
+  }
+
+  const doc = share.document;
+  const fileResult = await GitHubDocumentStorageService.getDocumentContent({
+    projectId: doc.projectId,
+    repositoryPath: doc.repositoryPath,
+  });
+
+  const filename = encodeURIComponent(doc.displayName || doc.originalName || 'document');
+  res.setHeader('Content-Type', doc.mimeType || fileResult.contentType || 'application/octet-stream');
+  res.setHeader(
+    'Content-Disposition',
+    `${isDownload ? 'attachment' : 'inline'}; filename="${filename}"`
+  );
+  res.setHeader('Cache-Control', 'private, max-age=120');
+  return res.send(fileResult.buffer);
+}
+
+publicShareRouter.post('/:token/verify', async (req: Request, res: Response) => {
+  try {
+    const token = String(req.params.token || '');
+    const { password } = req.body || {};
+
+    const resolved = await resolveValidPublicShare(token);
+    if (!resolved.share) {
+      return res.status(resolved.status || 404).json({
+        success: false,
+        error: resolved.error,
+        message: resolved.error,
+      });
+    }
+
+    const share = resolved.share;
+    if (!isSharePasswordValid(share, password)) {
+      return res.status(401).json({
+        success: false,
+        error: 'Incorrect passphrase. Please try again.',
+        message: 'Incorrect passphrase. Please try again.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      verified: true,
+      data: buildPublicSharePayload(share),
+    });
+  } catch (err: any) {
+    console.error('[PublicShare Verify Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to verify share link.',
+    });
+  }
+});
+
+publicShareRouter.get('/:token/content', async (req: Request, res: Response) => {
+  try {
+    const token = String(req.params.token || '');
+    const { download, password } = req.query;
+
+    const resolved = await resolveValidPublicShare(token);
+    if (!resolved.share) {
+      return res.status(resolved.status || 404).json({
+        success: false,
+        error: resolved.error,
+      });
+    }
+
+    const isDownload = download === 'true' || download === '1';
+    return await sendPublicShareFile(
+      req,
+      res,
+      resolved.share,
+      isDownload,
+      typeof password === 'string' ? password : ''
+    );
+  } catch (err: any) {
+    console.error('[PublicShare Content Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to stream shared document content.',
+    });
+  }
+});
+
 publicShareRouter.get('/:token', async (req: Request, res: Response) => {
+  try {
+    const token = String(req.params.token || '');
+    const { download, password } = req.query;
+
+    const resolved = await resolveValidPublicShare(token);
+    if (!resolved.share) {
+      return res.status(resolved.status || 404).json({
+        success: false,
+        error: resolved.error,
+        message: resolved.error,
+      });
+    }
+
+    const share = resolved.share;
+
+    // Enforce project access for non-external/internal shares
+    if (share.shareType !== 'external_link' && share.shareType !== 'public') {
+      const reqUserId = getUserIdFromToken(req);
+      const access = await checkProjectAccess(share.document.projectId, reqUserId);
+      if (!access.allowed) {
+        return res.status(403).json({
+          success: false,
+          error: 'This internal document link requires project member access.',
+          message: 'This internal document link requires project member access.',
+        });
+      }
+    }
+
+    if (download === 'true' || download === '1') {
+      return await sendPublicShareFile(
+        req,
+        res,
+        share,
+        true,
+        typeof password === 'string' ? password : ''
+      );
+    }
+
+    return res.json({
+      success: true,
+      data: buildPublicSharePayload(share),
+    });
+  } catch (err: any) {
+    console.error('[PublicShare Info Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to load shared document information.',
+    });
+  }
+});
+
+// Legacy fallback handler retained below
+publicShareRouter.get('/legacy/:token', async (req: Request, res: Response) => {
   try {
     const { token } = req.params;
     const { download, password } = req.query;

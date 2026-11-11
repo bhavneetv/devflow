@@ -818,6 +818,9 @@ model ProjectSubmodule {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
+  documents          ProjectDocument[]
+  documentCategories DocumentCategory[]
+
   @@unique([moduleId, name])
   @@index([projectId])
   @@index([moduleId])
@@ -955,6 +958,8 @@ model DocumentCategory {
   id          Int               @id @default(autoincrement())
   projectId   Int               @map("project_id")
   project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  submoduleId Int?              @map("submodule_id")
+  submodule   ProjectSubmodule? @relation(fields: [submoduleId], references: [id], onDelete: SetNull)
   name        String
   slug        String
   description String?           @db.Text
@@ -970,6 +975,7 @@ model DocumentCategory {
 
   @@unique([projectId, slug])
   @@index([projectId])
+  @@index([submoduleId])
   @@map("document_categories")
 }
 
@@ -978,6 +984,8 @@ model ProjectDocument {
   organizationId      Int?                      @map("organization_id")
   projectId           Int                       @map("project_id")
   project             Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  submoduleId         Int?                      @map("submodule_id")
+  submodule           ProjectSubmodule?         @relation(fields: [submoduleId], references: [id], onDelete: SetNull)
   storageConnectionId Int?                      @map("storage_connection_id")
   storageConnection   ProjectStorageConnection? @relation(fields: [storageConnectionId], references: [id], onDelete: SetNull)
   uploadedById        Int                       @map("uploaded_by")
@@ -985,6 +993,7 @@ model ProjectDocument {
   originalName        String                    @map("original_name")
   displayName         String                    @map("display_name")
   storageKey          String                    @unique @map("storage_key")
+  branch              String?                   @map("branch")
   repositoryPath      String                    @map("repository_path")
   providerFileSha     String?                   @map("provider_file_sha")
   mimeType            String                    @map("mime_type")
@@ -1005,6 +1014,7 @@ model ProjectDocument {
   activities          DocumentActivity[]
 
   @@index([projectId])
+  @@index([submoduleId])
   @@index([categoryId])
   @@index([uploadedById])
   @@index([storageConnectionId])
@@ -1022,6 +1032,12 @@ model DocumentShare {
   tokenHash          String?         @unique @map("token_hash")
   accessPasswordHash String?         @map("access_password_hash")
   permissionLevel    String          @default("view") @map("permission_level") // "view" | "download" | "full"
+  shareMessage       String?         @map("share_message") @db.Text
+  allowApproval      Boolean         @default(false) @map("allow_approval")
+  approvalStatus     String?         @map("approval_status") // "pending" | "approved" | "declined"
+  approvalActorName  String?         @map("approval_actor_name")
+  approvalNote       String?         @map("approval_note") @db.Text
+  approvalActedAt    DateTime?       @map("approval_acted_at")
   expiresAt          DateTime?       @map("expires_at")
   revokedAt          DateTime?       @map("revoked_at")
   createdById        Int             @map("created_by")

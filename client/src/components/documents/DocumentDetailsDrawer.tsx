@@ -21,6 +21,8 @@ import {
   Clock,
   Sparkles,
   Folder,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { ProjectDocument, DocumentCategory } from '../../types/document';
@@ -28,6 +30,8 @@ import { documentService } from '../../services/document.service';
 import { formatDistanceToNow } from '../../lib/dateUtils';
 import { AnimatedSelect, SelectOption } from '../settings/AnimatedSelect';
 import { useAccentTheme } from '../../services/accentTheme.service';
+import { confirmDeleteSwal } from '../../lib/confirmAlert';
+import { PdfDocumentViewer } from './PdfDocumentViewer';
 
 interface DocumentDetailsDrawerProps {
   projectId: number;
@@ -143,6 +147,14 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
   };
 
   const handleRevokeShare = async (shareId: number) => {
+    const confirmed = await confirmDeleteSwal({
+      title: 'Remove sharing link?',
+      text: 'Anyone currently using this share link will immediately lose access.',
+      confirmText: 'Remove Sharing',
+      accentColor,
+    });
+    if (!confirmed) return;
+
     const res = await documentService.revokeShare(projectId, doc.id, shareId);
     if (res.success) {
       setDoc((prev) =>
@@ -157,7 +169,7 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[120] flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-2xl bg-zinc-900 border-l border-zinc-800 h-full flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-right duration-250">
         {/* Drawer Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-start justify-between gap-3">
@@ -270,13 +282,11 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
               )}
 
               {isPdf && (
-                <div className="w-full h-[520px] rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950">
-                  <iframe
-                    src={previewUrl}
-                    title={doc.name}
-                    className="w-full h-full border-0"
-                  />
-                </div>
+                <PdfDocumentViewer
+                  url={previewUrl}
+                  title={doc.name}
+                  inlineHeightClassName="w-full h-[calc(100vh-230px)] min-h-[460px]"
+                />
               )}
 
               {isCodeOrText && (
@@ -527,19 +537,19 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
                   {doc.shares.map((share) => (
                     <div key={share.id} className="p-3.5 flex items-center justify-between gap-3">
                       <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span
                             className={cn(
                               'text-[10px] font-semibold px-1.5 py-0.2 rounded uppercase',
-                              share.shareType === 'public'
+                              share.shareType === 'public' || share.shareType === 'external_link'
                                 ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
                                 : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
                             )}
                           >
-                            {share.shareType}
+                            {share.shareType === 'external_link' || share.shareType === 'public' ? 'Public' : 'Team'}
                           </span>
                           <span className="text-zinc-200 font-medium">
-                            {share.shareType === 'public'
+                            {share.shareType === 'public' || share.shareType === 'external_link'
                               ? 'External Token Link'
                               : share.sharedWithUser?.name || 'Workspace Member'}
                           </span>
@@ -548,7 +558,37 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
                               <Lock size={10} /> Password Protected
                             </span>
                           )}
+                          {share.allowApproval && (
+                            <span
+                              className={cn(
+                                'text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 border',
+                                share.approvalStatus === 'approved'
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                  : share.approvalStatus === 'declined'
+                                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                  : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              )}
+                            >
+                              {share.approvalStatus === 'approved' ? (
+                                <CheckCircle2 size={10} />
+                              ) : share.approvalStatus === 'declined' ? (
+                                <XCircle size={10} />
+                              ) : (
+                                <Clock size={10} />
+                              )}
+                              {share.approvalStatus === 'approved'
+                                ? `Approved${share.approvalActorName ? ` by ${share.approvalActorName}` : ''}`
+                                : share.approvalStatus === 'declined'
+                                ? `Declined${share.approvalActorName ? ` by ${share.approvalActorName}` : ''}`
+                                : 'Approval Enabled'}
+                            </span>
+                          )}
                         </div>
+                        {share.message && (
+                          <p className="text-[11px] text-zinc-400 truncate max-w-md">
+                            Message: {share.message}
+                          </p>
+                        )}
                         <div className="flex items-center gap-2 text-[11px] text-zinc-500">
                           <span>Perm: {share.permission}</span>
                           <span>•</span>
@@ -564,10 +604,11 @@ export const DocumentDetailsDrawer: React.FC<DocumentDetailsDrawerProps> = ({
 
                       <button
                         onClick={() => handleRevokeShare(share.id)}
-                        className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition-colors"
-                        title="Revoke share access"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 transition-colors shrink-0 cursor-pointer"
+                        title="Remove Sharing"
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={12} />
+                        <span>Remove Sharing</span>
                       </button>
                     </div>
                   ))}

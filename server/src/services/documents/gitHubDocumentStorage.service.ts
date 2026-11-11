@@ -18,6 +18,16 @@ export interface GitHubFileUploadResult {
   commitSha: string;
   path: string;
   size: number;
+  branch: string;
+}
+
+export interface GitHubBranchStat {
+  name: string;
+  commitSha: string;
+  isDefault: boolean;
+  protected: boolean;
+  gitHubTreeBytes: number | null;
+  gitHubBlobCount: number | null;
 }
 
 export interface GitHubFileContentResult {
@@ -170,6 +180,12 @@ export class GitHubDocumentStorageService {
       where: { projectId },
     });
 
+    if (existingConn && existingConn.connectionStatus === 'unlinked') {
+      throw new Error(
+        `Storage repository (${existingConn.providerOwner}/${existingConn.repositoryName}) is currently unlinked. Relink it in Project Settings > Storage to access or upload documents.`
+      );
+    }
+
     if (existingConn && existingConn.repositoryName) {
       // Verify repository still exists on GitHub
       try {
@@ -285,6 +301,58 @@ export class GitHubDocumentStorageService {
   }
 
   /**
+   * Ensures a branch exists in the GitHub repository, creating it from baseBranch if missing.
+   */
+  public static async ensureBranchExists(
+    token: string,
+    owner: string,
+    repoName: string,
+    branchName: string,
+    baseBranch: string
+  ): Promise<void> {
+    const cleanBranch = branchName.trim().replace(/^refs\/heads\//, '');
+    if (!cleanBranch || cleanBranch === baseBranch) return;
+
+    try {
+      await this.request(
+        token,
+        `/repos/${owner}/${repoName}/git/ref/heads/${encodeURIComponent(cleanBranch).replace(/%2F/g, '/')}`
+      );
+      return; // Branch already exists
+    } catch (err: any) {
+      if (err.status !== 404) {
+        throw err;
+      }
+    }
+
+    // Resolve SHA from base branch
+    let baseSha: string | null = null;
+    try {
+      const { data: baseRef } = await this.request<any>(
+        token,
+        `/repos/${owner}/${repoName}/git/ref/heads/${encodeURIComponent(baseBranch).replace(/%2F/g, '/')}`
+      );
+      baseSha = baseRef?.object?.sha || null;
+    } catch {
+      const { data: branches } = await this.request<any[]>(token, `/repos/${owner}/${repoName}/branches?per_page=10`);
+      baseSha = branches?.[0]?.commit?.sha || null;
+    }
+
+    if (!baseSha) {
+      throw new Error(`Cannot create branch "${cleanBranch}" because base branch "${baseBranch}" has no commits yet.`);
+    }
+
+    await this.request(token, `/repos/${owner}/${repoName}/git/refs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ref: `refs/heads/${cleanBranch}`,
+        sha: baseSha,
+      }),
+    });
+  }
+
+  /**
    * Uploads or updates a file in the project's private GitHub document repository.
    */
   public static async uploadDocumentFile(params: {
@@ -293,18 +361,27 @@ export class GitHubDocumentStorageService {
     fileName: string;
     storageKey: string;
     categorySlug?: string;
+    branchName?: string;
+    pathPrefix?: string;
     contentBuffer: Buffer;
     existingSha?: string;
     uploaderName?: string;
   }): Promise<GitHubFileUploadResult> {
-    const { token, owner } = await this.resolveGitHubCredentials(params.projectId);
+    const { token } = await this.resolveGitHubCredentials(params.projectId);
     const repoInfo = await this.ensureDocumentRepository(params.projectId, params.projectTitle);
+
+    const targetBranch = (params.branchName || '').trim() || repoInfo.defaultBranch;
+    if (targetBranch !== repoInfo.defaultBranch) {
+      await this.ensureBranchExists(token, repoInfo.owner, repoInfo.name, targetBranch, repoInfo.defaultBranch);
+    }
 
     // Build deterministic safe path
     const safeName = params.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const folder = params.categorySlug
-      ? `projects/${params.projectId}/${params.categorySlug}`
-      : `projects/${params.projectId}/documents`;
+    const cleanPrefix = (params.pathPrefix || '').trim().replace(/^\/+|\/+$/g, '');
+    const catFolder = params.categorySlug || 'documents';
+    const folder = cleanPrefix
+      ? `${cleanPrefix}/${catFolder}`
+      : `projects/${params.projectId}/${catFolder}`;
     const repoPath = `${folder}/${params.storageKey}/${safeName}`;
 
     const base64Content = params.contentBuffer.toString('base64');
@@ -315,7 +392,7 @@ export class GitHubDocumentStorageService {
     const body: Record<string, any> = {
       message: commitMessage,
       content: base64Content,
-      branch: repoInfo.defaultBranch,
+      branch: targetBranch,
     };
 
     if (params.existingSha) {
@@ -337,6 +414,7 @@ export class GitHubDocumentStorageService {
       commitSha: result.commit?.sha || '',
       path: repoPath,
       size: params.contentBuffer.length,
+      branch: targetBranch,
     };
   }
 
@@ -346,6 +424,7 @@ export class GitHubDocumentStorageService {
   public static async getDocumentContent(params: {
     projectId: number;
     repositoryPath: string;
+    branch?: string;
   }): Promise<GitHubFileContentResult> {
     const { token } = await this.resolveGitHubCredentials(params.projectId);
     const storageConn = await (prisma as any).projectStorageConnection.findUnique({
@@ -355,9 +434,13 @@ export class GitHubDocumentStorageService {
     if (!storageConn) {
       throw new Error('Project storage connection is not configured.');
     }
+    if (storageConn.connectionStatus === 'unlinked') {
+      throw new Error('Document storage repository is currently unlinked. Relink it in Project Settings > Storage to view files.');
+    }
 
     const cleanPath = params.repositoryPath.replace(/^\/+/, '');
-    const endpoint = `/repos/${storageConn.providerOwner}/${storageConn.repositoryName}/contents/${encodeURIComponent(cleanPath).replace(/%2F/g, '/')}`;
+    const targetBranch = (params.branch || '').trim() || storageConn.defaultBranch || 'main';
+    const endpoint = `/repos/${storageConn.providerOwner}/${storageConn.repositoryName}/contents/${encodeURIComponent(cleanPath).replace(/%2F/g, '/')}?ref=${encodeURIComponent(targetBranch)}`;
 
     // Request raw binary data
     const { data: buffer, headers } = await this.request<Buffer>(token, endpoint, {
@@ -385,6 +468,7 @@ export class GitHubDocumentStorageService {
     repositoryPath: string;
     fileSha: string;
     fileName: string;
+    branch?: string;
   }): Promise<boolean> {
     const { token } = await this.resolveGitHubCredentials(params.projectId);
     const storageConn = await (prisma as any).projectStorageConnection.findUnique({
@@ -394,8 +478,12 @@ export class GitHubDocumentStorageService {
     if (!storageConn) {
       throw new Error('Project storage connection not found');
     }
+    if (storageConn.connectionStatus === 'unlinked') {
+      throw new Error('Cannot remove file from GitHub while the storage repository is unlinked.');
+    }
 
     const cleanPath = params.repositoryPath.replace(/^\/+/, '');
+    const targetBranch = (params.branch || '').trim() || storageConn.defaultBranch || 'main';
     const endpoint = `/repos/${storageConn.providerOwner}/${storageConn.repositoryName}/contents/${encodeURIComponent(cleanPath).replace(/%2F/g, '/')}`;
 
     await this.request(token, endpoint, {
@@ -404,7 +492,7 @@ export class GitHubDocumentStorageService {
       body: JSON.stringify({
         message: `chore(docs): delete ${params.fileName} via DevFlow [skip ci]`,
         sha: params.fileSha,
-        branch: storageConn.defaultBranch || 'main',
+        branch: targetBranch,
       }),
     });
 
@@ -416,24 +504,37 @@ export class GitHubDocumentStorageService {
    */
   public static async checkStorageHealth(projectId: number): Promise<{
     isHealthy: boolean;
+    connectionStatus?: string;
     repositoryUrl?: string;
     repositoryName?: string;
     defaultBranch?: string;
     isPrivate?: boolean;
+    repoSizeKb?: number;
     rateLimitRemaining?: number;
     rateLimitLimit?: number;
     error?: string;
   }> {
     try {
-      const { token } = await this.resolveGitHubCredentials(projectId);
       const storageConn = await (prisma as any).projectStorageConnection.findUnique({
         where: { projectId },
       });
 
       if (!storageConn) {
-        return { isHealthy: false, error: 'No repository connected yet' };
+        return { isHealthy: false, connectionStatus: 'disconnected', error: 'No repository connected yet' };
       }
 
+      if (storageConn.connectionStatus === 'unlinked') {
+        return {
+          isHealthy: false,
+          connectionStatus: 'unlinked',
+          repositoryUrl: storageConn.repositoryUrl,
+          repositoryName: storageConn.repositoryName,
+          defaultBranch: storageConn.defaultBranch,
+          error: 'Repository is currently unlinked. Relink in Project Settings > Storage.',
+        };
+      }
+
+      const { token } = await this.resolveGitHubCredentials(projectId);
       const { data: repo, headers } = await this.request<any>(
         token,
         `/repos/${storageConn.providerOwner}/${storageConn.repositoryName}`
@@ -444,19 +545,253 @@ export class GitHubDocumentStorageService {
 
       return {
         isHealthy: true,
+        connectionStatus: 'connected',
         repositoryUrl: repo.html_url,
         repositoryName: repo.name,
         defaultBranch: repo.default_branch,
         isPrivate: Boolean(repo.private),
+        repoSizeKb: typeof repo.size === 'number' ? repo.size : undefined,
         rateLimitRemaining,
         rateLimitLimit,
       };
     } catch (err: any) {
       return {
         isHealthy: false,
+        connectionStatus: 'error',
         error: err.message || 'Failed to verify repository connectivity',
       };
     }
+  }
+
+  /**
+   * Fetches all GitHub branches and per-branch git tree sizes for the storage repository.
+   */
+  public static async getRepositoryBranchesAndStats(projectId: number): Promise<{
+    branches: GitHubBranchStat[];
+    repoSizeKb: number | null;
+    defaultBranch: string;
+    isPrivate: boolean;
+  }> {
+    const storageConn = await (prisma as any).projectStorageConnection.findUnique({
+      where: { projectId },
+    });
+
+    if (!storageConn || storageConn.connectionStatus === 'unlinked') {
+      return {
+        branches: [],
+        repoSizeKb: null,
+        defaultBranch: storageConn?.defaultBranch || 'main',
+        isPrivate: true,
+      };
+    }
+
+    try {
+      const { token } = await this.resolveGitHubCredentials(projectId);
+      const owner = storageConn.providerOwner;
+      const repoName = storageConn.repositoryName;
+
+      const [{ data: repoData }, { data: branchesRaw }] = await Promise.all([
+        this.request<any>(token, `/repos/${owner}/${repoName}`),
+        this.request<any[]>(token, `/repos/${owner}/${repoName}/branches?per_page=50`),
+      ]);
+
+      const defaultBranch = repoData?.default_branch || storageConn.defaultBranch || 'main';
+      const branchList = Array.isArray(branchesRaw) ? branchesRaw : [];
+
+      const enriched = await Promise.all(
+        branchList.slice(0, 15).map(async (b: any): Promise<GitHubBranchStat> => {
+          const sha = b.commit?.sha || b.name;
+          let treeBytes: number | null = null;
+          let blobCount: number | null = null;
+          try {
+            const { data: treeData } = await this.request<any>(
+              token,
+              `/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(sha)}?recursive=1`
+            );
+            if (Array.isArray(treeData?.tree)) {
+              const blobs = treeData.tree.filter((item: any) => item.type === 'blob');
+              blobCount = blobs.length;
+              treeBytes = blobs.reduce((acc: number, item: any) => acc + (Number(item.size) || 0), 0);
+            }
+          } catch {
+            // Empty or unreachable tree; fall back gracefully to tracked DB totals
+          }
+          return {
+            name: b.name,
+            commitSha: sha,
+            isDefault: b.name === defaultBranch,
+            protected: Boolean(b.protected),
+            gitHubTreeBytes: treeBytes,
+            gitHubBlobCount: blobCount,
+          };
+        })
+      );
+
+      return {
+        branches: enriched,
+        repoSizeKb: typeof repoData?.size === 'number' ? repoData.size : null,
+        defaultBranch,
+        isPrivate: Boolean(repoData?.private ?? true),
+      };
+    } catch {
+      return {
+        branches: [],
+        repoSizeKb: null,
+        defaultBranch: storageConn.defaultBranch || 'main',
+        isPrivate: true,
+      };
+    }
+  }
+
+  /**
+   * Lists accessible GitHub repositories for relinking/switching storage repos.
+   */
+  public static async listAccessibleRepositories(projectId: number): Promise<
+    Array<{
+      id: string;
+      name: string;
+      fullName: string;
+      owner: string;
+      isPrivate: boolean;
+      defaultBranch: string;
+      webUrl: string;
+      sizeKb: number;
+    }>
+  > {
+    const { token } = await this.resolveGitHubCredentials(projectId);
+    const { data: repos } = await this.request<any[]>(
+      token,
+      '/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator'
+    );
+    return (Array.isArray(repos) ? repos : []).map((r: any) => ({
+      id: String(r.id),
+      name: r.name,
+      fullName: r.full_name,
+      owner: r.owner?.login || r.full_name?.split('/')[0] || '',
+      isPrivate: Boolean(r.private),
+      defaultBranch: r.default_branch || 'main',
+      webUrl: r.html_url,
+      sizeKb: typeof r.size === 'number' ? r.size : 0,
+    }));
+  }
+
+  /**
+   * Unlinks the project's storage repository while preserving metadata so relinking restores access.
+   */
+  public static async unlinkRepository(projectId: number) {
+    const existingConn = await (prisma as any).projectStorageConnection.findUnique({
+      where: { projectId },
+    });
+
+    if (!existingConn) {
+      throw new Error('No document storage repository is currently linked to this project.');
+    }
+
+    return await (prisma as any).projectStorageConnection.update({
+      where: { projectId },
+      data: {
+        connectionStatus: 'unlinked',
+        lastSyncAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Ensures a target branch exists inside the project's connected storage repository.
+   */
+  public static async ensureBranchForProject(projectId: number, branchName: string): Promise<string | null> {
+    const cleanBranch = (branchName || '').trim();
+    if (!cleanBranch) return null;
+    const storageConn = await (prisma as any).projectStorageConnection.findUnique({
+      where: { projectId },
+    });
+    if (!storageConn || storageConn.connectionStatus === 'unlinked') {
+      return null;
+    }
+    const { token } = await this.resolveGitHubCredentials(projectId);
+    const defaultBranch = storageConn.defaultBranch || 'main';
+    await this.ensureBranchExists(
+      token,
+      storageConn.providerOwner,
+      storageConn.repositoryName,
+      cleanBranch,
+      defaultBranch
+    );
+    return cleanBranch;
+  }
+
+  /**
+   * Relinks the previous repository (or switches to a selected GitHub repository).
+   */
+  public static async relinkRepository(
+    projectId: number,
+    projectTitle: string,
+    target?: { owner?: string; repositoryName?: string; branch?: string }
+  ) {
+    const { token, owner: credOwner, connectionId, accountId } = await this.resolveGitHubCredentials(projectId);
+    const existingConn = await (prisma as any).projectStorageConnection.findUnique({
+      where: { projectId },
+    });
+
+    const targetOwner = target?.owner?.trim() || existingConn?.providerOwner || credOwner;
+    const targetRepoName = target?.repositoryName?.trim() || existingConn?.repositoryName;
+
+    if (!targetRepoName) {
+      // Nothing previously linked — provision default devflow repo
+      if (existingConn) {
+        await (prisma as any).projectStorageConnection.update({
+          where: { projectId },
+          data: { connectionStatus: 'connected' },
+        });
+      }
+      return await this.ensureDocumentRepository(projectId, projectTitle);
+    }
+
+    const { data: repo } = await this.request<any>(
+      token,
+      `/repos/${encodeURIComponent(targetOwner)}/${encodeURIComponent(targetRepoName)}`
+    );
+
+    const branchToUse = target?.branch?.trim() || repo.default_branch || existingConn?.defaultBranch || 'main';
+
+    await (prisma as any).projectStorageConnection.upsert({
+      where: { projectId },
+      update: {
+        provider: 'github',
+        providerAccountId: accountId || credOwner,
+        providerOwner: repo.owner?.login || targetOwner,
+        providerRepoId: repo.id.toString(),
+        repositoryName: repo.name,
+        repositoryUrl: repo.html_url,
+        defaultBranch: branchToUse,
+        connectionStatus: 'connected',
+        lastSyncAt: new Date(),
+        providerConnectionId: connectionId || existingConn?.providerConnectionId || null,
+      },
+      create: {
+        projectId,
+        provider: 'github',
+        providerAccountId: accountId || credOwner,
+        providerOwner: repo.owner?.login || targetOwner,
+        providerRepoId: repo.id.toString(),
+        repositoryName: repo.name,
+        repositoryUrl: repo.html_url,
+        defaultBranch: branchToUse,
+        connectionStatus: 'connected',
+        lastSyncAt: new Date(),
+        providerConnectionId: connectionId || null,
+      },
+    });
+
+    return {
+      repoId: repo.id.toString(),
+      name: repo.name,
+      fullName: repo.full_name,
+      owner: repo.owner?.login || targetOwner,
+      webUrl: repo.html_url,
+      defaultBranch: branchToUse,
+      isPrivate: Boolean(repo.private),
+    };
   }
 }
 

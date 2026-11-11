@@ -104,7 +104,7 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
   }, []);
 
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pb-1">
+    <div className="relative z-[60] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pb-1">
       {/* Left side: Sidebar toggle (optional), Search input & File Type filter */}
       <div className="flex items-center gap-2 flex-1 max-w-2xl">
         {onToggleSidebar && (
@@ -239,7 +239,7 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
                 animate={{ opacity: 1, y: 4, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.96 }}
                 transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute right-0 top-full z-40 w-56 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl py-2 px-1.5 text-xs"
+                className="absolute right-0 top-full z-[9980] w-56 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl py-2 px-1.5 text-xs"
               >
                 {/* Group By Section */}
                 <div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500">
@@ -353,7 +353,7 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
                 animate={{ opacity: 1, y: 4, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.96 }}
                 transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute right-0 top-full z-40 w-48 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl py-1.5 px-1.5 text-xs"
+                className="absolute right-0 top-full z-[9980] w-48 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl py-1.5 px-1.5 text-xs"
               >
                 <button
                   onClick={() => {

@@ -13,6 +13,7 @@ import {
   Boxes,
   PanelLeft,
   UserCheck,
+  HardDrive,
   LucideIcon,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
@@ -72,6 +73,13 @@ export const PROJECT_NAV_ITEMS: ProjectNavSection[] = [
     subpath: 'git-members',
     icon: UserCheck,
     description: 'Link DevFlow team members to Git commit author identities',
+  },
+  {
+    id: 'storage',
+    label: 'Storage',
+    subpath: 'storage',
+    icon: HardDrive,
+    description: 'Linked repo, branch storage usage, unlink & relink',
   },
   {
     id: 'labels',

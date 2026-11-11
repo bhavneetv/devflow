@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FileText,
   FileCode,
@@ -75,7 +76,29 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
   density = 'comfortable',
 }) => {
   const { accentColor } = useAccentTheme();
-  const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
+  const [menuState, setMenuState] = useState<{
+    doc: ProjectDocument;
+    top: number;
+    bottom: number;
+    left: number;
+    openUpward: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!menuState) return;
+    const handleClose = () => setMenuState(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuState(null);
+    };
+    window.addEventListener('scroll', handleClose, true);
+    window.addEventListener('resize', handleClose);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('scroll', handleClose, true);
+      window.removeEventListener('resize', handleClose);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuState]);
 
   if (documents.length === 0) {
     return (
@@ -145,83 +168,34 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setActiveMenuId(activeMenuId === doc.id ? null : doc.id);
+                    if (menuState?.doc.id === doc.id) {
+                      setMenuState(null);
+                      return;
+                    }
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const menuWidth = 176;
+                    const openUpward = window.innerHeight - rect.bottom < 220;
+                    const left = Math.min(
+                      Math.max(8, rect.right - menuWidth),
+                      window.innerWidth - menuWidth - 8
+                    );
+                    setMenuState({
+                      doc,
+                      top: rect.bottom + 6,
+                      bottom: window.innerHeight - rect.top + 6,
+                      left,
+                      openUpward,
+                    });
                   }}
-                  className="p-1 rounded-md text-zinc-400 hover:text-white bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800/80 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className={cn(
+                    'p-1 rounded-md text-zinc-400 hover:text-white bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800/80 transition-opacity',
+                    menuState?.doc.id === doc.id
+                      ? 'opacity-100'
+                      : 'opacity-0 group-hover:opacity-100'
+                  )}
                 >
                   <MoreVertical size={14} />
                 </button>
-
-                {/* Dropdown menu */}
-                {activeMenuId === doc.id && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-30"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuId(null);
-                      }}
-                    />
-                    <div className="absolute right-0 top-7 z-40 w-44 rounded-lg bg-zinc-900 border border-zinc-800 shadow-xl py-1 text-xs">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(null);
-                          onSelectDocument(doc);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800"
-                      >
-                        <Eye size={13} />
-                        <span>Preview & Details</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(null);
-                          documentService.downloadDocument(projectId, doc);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800"
-                      >
-                        <Download size={13} />
-                        <span>Download</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(null);
-                          onShareDocument(doc);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800"
-                      >
-                        <Share2 size={13} />
-                        <span>Share Document</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(null);
-                          onEditDocument(doc);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800"
-                      >
-                        <Edit size={13} />
-                        <span>Edit Details</span>
-                      </button>
-                      <div className="my-1 border-t border-zinc-800" />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(null);
-                          onDeleteDocument(doc);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-950/20"
-                      >
-                        <Trash2 size={13} />
-                        <span>Delete File</span>
-                      </button>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
 
@@ -343,6 +317,99 @@ export const DocumentCardView: React.FC<DocumentCardViewProps> = ({
           </div>
         );
       })}
+
+      {menuState &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[9989]"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuState(null);
+              }}
+            />
+            <div
+              style={{
+                position: 'fixed',
+                left: `${menuState.left}px`,
+                ...(menuState.openUpward
+                  ? { bottom: `${menuState.bottom}px` }
+                  : { top: `${menuState.top}px` }),
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="z-[9990] w-44 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl py-1 text-xs"
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const targetDoc = menuState.doc;
+                  setMenuState(null);
+                  onSelectDocument(targetDoc);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <Eye size={13} />
+                <span>Preview & Details</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const targetDoc = menuState.doc;
+                  setMenuState(null);
+                  documentService.downloadDocument(projectId, targetDoc);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <Download size={13} />
+                <span>Download</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const targetDoc = menuState.doc;
+                  setMenuState(null);
+                  onShareDocument(targetDoc);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <Share2 size={13} />
+                <span>Share Document</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const targetDoc = menuState.doc;
+                  setMenuState(null);
+                  onEditDocument(targetDoc);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <Edit size={13} />
+                <span>Edit Details</span>
+              </button>
+              <div className="my-1 border-t border-zinc-800" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const targetDoc = menuState.doc;
+                  setMenuState(null);
+                  onDeleteDocument(targetDoc);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 transition-colors"
+              >
+                <Trash2 size={13} />
+                <span>Delete File</span>
+              </button>
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 };

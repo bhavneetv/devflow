@@ -26,6 +26,7 @@ import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface CategoryManageModalProps {
   projectId: number;
+  submoduleId?: number;
   isOpen: boolean;
   onClose: () => void;
   categories: DocumentCategory[];
@@ -61,6 +62,7 @@ const PRESET_COLORS = [
 
 export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
   projectId,
+  submoduleId,
   isOpen,
   onClose,
   categories,
@@ -105,6 +107,7 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
         name: finalName,
         icon: selectedIcon,
         color: selectedColor,
+        submoduleId,
       });
 
       if (res.success && res.data) {
@@ -127,7 +130,7 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
   const ActiveIconComponent = FOLDER_ICONS.find((i) => i.id === selectedIcon)?.icon || Folder;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-[#17181D] border border-[#27272A] rounded-2xl w-full max-w-md shadow-2xl overflow-visible flex flex-col">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-[#27272A] flex items-center justify-between rounded-t-2xl">

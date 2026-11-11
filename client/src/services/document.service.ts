@@ -6,6 +6,8 @@ import type {
   DocumentShare,
   DocumentModuleSettings,
   ProjectStorageConnection,
+  ProjectStorageOverview,
+  AccessibleStorageRepo,
   DocumentDashboardData,
   DocumentListParams,
   DocumentListResponse,
@@ -24,10 +26,12 @@ export const documentService = {
   // ─── Dashboard ────────────────────────────────────────────────────────────
 
   async getDashboard(
-    projectId: number
+    projectId: number,
+    submoduleId?: number
   ): Promise<{ success: boolean; data?: DocumentDashboardData; error?: string }> {
     try {
-      const res = await fetch(apiUrl(`/projects/${projectId}/documents/dashboard`), {
+      const qs = submoduleId ? `?submoduleId=${submoduleId}` : '';
+      const res = await fetch(apiUrl(`/projects/${projectId}/documents/dashboard${qs}`), {
         headers: getAuthHeaders(),
       });
       return await res.json();
@@ -45,8 +49,10 @@ export const documentService = {
     try {
       const query = new URLSearchParams();
       if (params.tab) query.set('tab', params.tab);
+      if (params.submoduleId !== undefined) query.set('submoduleId', String(params.submoduleId));
       if (params.categoryId !== undefined) query.set('categoryId', String(params.categoryId));
-      if (params.fileType) query.set('fileType', params.fileType);
+      if (params.type) query.set('type', params.type);
+      else if (params.fileType) query.set('fileType', params.fileType);
       if (params.search) query.set('search', params.search);
       if (params.sortBy) query.set('sortBy', params.sortBy);
       if (params.sortOrder) query.set('sortOrder', params.sortOrder);
@@ -89,7 +95,8 @@ export const documentService = {
       tags?: string[];
       description?: string;
     }>,
-    duplicatePolicy?: 'rename' | 'replace' | 'reject'
+    duplicatePolicy?: 'rename' | 'replace' | 'reject',
+    submoduleId?: number
   ): Promise<{
     success: boolean;
     data?: {
@@ -102,7 +109,7 @@ export const documentService = {
       const res = await fetch(apiUrl(`/projects/${projectId}/documents/upload`), {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ files, duplicatePolicy }),
+        body: JSON.stringify({ files, duplicatePolicy, submoduleId }),
       });
       return await res.json();
     } catch (err: any) {
@@ -245,6 +252,8 @@ export const documentService = {
       password?: string | null;
       expiresAt?: string | null;
       maxDownloads?: number | null;
+      message?: string | null;
+      allowApproval?: boolean;
     }
   ): Promise<{ success: boolean; data?: DocumentShare; error?: string }> {
     try {
@@ -256,6 +265,35 @@ export const documentService = {
       return await res.json();
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to create share link' };
+    }
+  },
+
+  async listApprovals(
+    projectId: number,
+    status: 'all' | 'approved' | 'declined' | 'pending' = 'all',
+    search?: string,
+    submoduleId?: number
+  ): Promise<{
+    success: boolean;
+    data?: {
+      approvals: import('../types/document').DocumentApprovalEntry[];
+      counts: { total: number; approved: number; declined: number; pending: number };
+      unlinked?: boolean;
+    };
+    error?: string;
+  }> {
+    try {
+      const query = new URLSearchParams();
+      if (status) query.set('status', status);
+      if (search && search.trim()) query.set('search', search.trim());
+      if (submoduleId) query.set('submoduleId', String(submoduleId));
+      const res = await fetch(
+        apiUrl(`/projects/${projectId}/documents/approvals?${query.toString()}`),
+        { headers: getAuthHeaders() }
+      );
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to load approval files' };
     }
   },
 
@@ -281,10 +319,12 @@ export const documentService = {
   // ─── Categories ───────────────────────────────────────────────────────────
 
   async listCategories(
-    projectId: number
+    projectId: number,
+    submoduleId?: number
   ): Promise<{ success: boolean; data?: DocumentCategory[]; error?: string }> {
     try {
-      const res = await fetch(apiUrl(`/projects/${projectId}/documents/categories`), {
+      const qs = submoduleId ? `?submoduleId=${submoduleId}` : '';
+      const res = await fetch(apiUrl(`/projects/${projectId}/documents/categories${qs}`), {
         headers: getAuthHeaders(),
       });
       return await res.json();
@@ -300,6 +340,7 @@ export const documentService = {
       description?: string;
       icon?: string;
       color?: string;
+      submoduleId?: number;
     }
   ): Promise<{ success: boolean; data?: DocumentCategory; error?: string }> {
     try {
@@ -318,7 +359,7 @@ export const documentService = {
 
   async getStorageStatus(
     projectId: number
-  ): Promise<{ success: boolean; data?: ProjectStorageConnection; error?: string }> {
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const res = await fetch(apiUrl(`/projects/${projectId}/documents/storage`), {
         headers: getAuthHeaders(),
@@ -326,6 +367,87 @@ export const documentService = {
       return await res.json();
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to fetch storage status' };
+    }
+  },
+
+  async getStorageOverview(
+    projectId: number
+  ): Promise<{ success: boolean; data?: ProjectStorageOverview; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/documents/storage`), {
+        headers: getAuthHeaders(),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to load storage overview' };
+    }
+  },
+
+  async listStorageRepos(
+    projectId: number
+  ): Promise<{ success: boolean; data?: { repos: AccessibleStorageRepo[] }; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/documents/storage/repos`), {
+        headers: getAuthHeaders(),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to list GitHub repositories' };
+    }
+  },
+
+  async unlinkStorage(
+    projectId: number
+  ): Promise<{ success: boolean; data?: { storageConnection: any }; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/documents/storage/unlink`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to unlink repository' };
+    }
+  },
+
+  async relinkStorage(
+    projectId: number,
+    target?: { owner?: string; repositoryName?: string; branch?: string }
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/documents/storage/relink`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(target || {}),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to relink repository' };
+    }
+  },
+
+  async updateScopeConfig(
+    projectId: number,
+    payload: {
+      submoduleId: number;
+      storageMode: 'folder' | 'branch';
+      folderPath?: string;
+      branchName?: string;
+    }
+  ): Promise<{
+    success: boolean;
+    data?: { submodule: any; config: any; branchWarning?: string | null };
+    error?: string;
+  }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/documents/scope-config`), {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to save submodule storage config' };
     }
   },
 
@@ -402,6 +524,27 @@ export const documentService = {
       return await res.json();
     } catch (err: any) {
       return { success: false, error: err.message || 'Password verification failed' };
+    }
+  },
+
+  async respondToPublicShare(
+    token: string,
+    payload: {
+      decision: 'approved' | 'declined';
+      actorName: string;
+      note?: string;
+      password?: string;
+    }
+  ): Promise<{ success: boolean; data?: PublicShareInfo; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/documents/public-share/${token}/respond`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to submit document response' };
     }
   },
 

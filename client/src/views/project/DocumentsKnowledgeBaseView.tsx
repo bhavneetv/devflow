@@ -22,7 +22,6 @@ export const DocumentsKnowledgeBaseView: React.FC = () => {
       <DocumentsKnowledgeBaseModule
         projectId={projectId}
         submoduleId={subId}
-        submoduleName="Documents & Knowledge Base"
       />
     </div>
   );

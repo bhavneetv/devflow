@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FileText,
   FileCode,
@@ -73,7 +74,29 @@ export const DocumentListView: React.FC<DocumentListViewProps> = ({
   density = 'comfortable',
 }) => {
   const { accentColor } = useAccentTheme();
-  const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
+  const [menuState, setMenuState] = useState<{
+    doc: ProjectDocument;
+    top: number;
+    bottom: number;
+    left: number;
+    openUpward: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!menuState) return;
+    const handleClose = () => setMenuState(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuState(null);
+    };
+    window.addEventListener('scroll', handleClose, true);
+    window.addEventListener('resize', handleClose);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('scroll', handleClose, true);
+      window.removeEventListener('resize', handleClose);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuState]);
 
   const allSelected = documents.length > 0 && selectedDocIds.length === documents.length;
   const hasSelection = selectedDocIds.length > 0;
@@ -340,43 +363,32 @@ export const DocumentListView: React.FC<DocumentListViewProps> = ({
                       {/* Menu */}
                       <div className="relative">
                         <button
-                          onClick={() => setActiveMenuId(activeMenuId === doc.id ? null : doc.id)}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (menuState?.doc.id === doc.id) {
+                              setMenuState(null);
+                              return;
+                            }
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const menuWidth = 160;
+                            const openUpward = window.innerHeight - rect.bottom < 170;
+                            const left = Math.min(
+                              Math.max(8, rect.right - menuWidth),
+                              window.innerWidth - menuWidth - 8
+                            );
+                            setMenuState({
+                              doc,
+                              top: rect.bottom + 6,
+                              bottom: window.innerHeight - rect.top + 6,
+                              left,
+                              openUpward,
+                            });
+                          }}
                           className="p-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
                         >
                           <MoreHorizontal size={13} />
                         </button>
-
-                        {activeMenuId === doc.id && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-30"
-                              onClick={() => setActiveMenuId(null)}
-                            />
-                            <div className="absolute right-0 top-6 z-40 w-40 rounded-lg bg-zinc-900 border border-zinc-800 shadow-xl py-1 text-xs">
-                              <button
-                                onClick={() => {
-                                  setActiveMenuId(null);
-                                  onEditDocument(doc);
-                                }}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800"
-                              >
-                                <Edit size={13} />
-                                <span>Edit Details</span>
-                              </button>
-                              <div className="my-1 border-t border-zinc-800" />
-                              <button
-                                onClick={() => {
-                                  setActiveMenuId(null);
-                                  onDeleteDocument(doc);
-                                }}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-950/20"
-                              >
-                                <Trash2 size={13} />
-                                <span>Delete File</span>
-                              </button>
-                            </div>
-                          </>
-                        )}
                       </div>
                     </div>
                   </td>
@@ -386,6 +398,54 @@ export const DocumentListView: React.FC<DocumentListViewProps> = ({
           </tbody>
         </table>
       </div>
+
+      {menuState &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[9989]"
+              onClick={() => setMenuState(null)}
+            />
+            <div
+              style={{
+                position: 'fixed',
+                left: `${menuState.left}px`,
+                ...(menuState.openUpward
+                  ? { bottom: `${menuState.bottom}px` }
+                  : { top: `${menuState.top}px` }),
+              }}
+              className="z-[9990] w-40 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl py-1 text-xs"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  const targetDoc = menuState.doc;
+                  setMenuState(null);
+                  onEditDocument(targetDoc);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <Edit size={13} />
+                <span>Edit Details</span>
+              </button>
+              <div className="my-1 border-t border-zinc-800" />
+              <button
+                type="button"
+                onClick={() => {
+                  const targetDoc = menuState.doc;
+                  setMenuState(null);
+                  onDeleteDocument(targetDoc);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 transition-colors"
+              >
+                <Trash2 size={13} />
+                <span>Delete File</span>
+              </button>
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 };

@@ -24,6 +24,7 @@ import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface DocumentUploadDialogProps {
   projectId: number;
+  submoduleId?: number;
   isOpen: boolean;
   onClose: () => void;
   categories: DocumentCategory[];
@@ -76,6 +77,7 @@ function readFileAsBase64(file: File): Promise<string> {
 
 export const DocumentUploadDialog: React.FC<DocumentUploadDialogProps> = ({
   projectId,
+  submoduleId,
   isOpen,
   onClose,
   categories,
@@ -213,7 +215,8 @@ export const DocumentUploadDialog: React.FC<DocumentUploadDialogProps> = ({
       const res = await documentService.uploadDocuments(
         projectId,
         filesPayload,
-        'rename'
+        'rename',
+        submoduleId
       );
 
       if (res.data) {
@@ -280,7 +283,7 @@ export const DocumentUploadDialog: React.FC<DocumentUploadDialogProps> = ({
   const completedCount = queue.filter((i) => i.status === 'completed').length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-[#17181D] border border-[#27272A] rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-visible">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-[#27272A] flex items-center justify-between rounded-t-2xl">

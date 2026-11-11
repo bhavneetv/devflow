@@ -12,15 +12,22 @@ import {
   GitBranch,
   Copy,
   XCircle,
+  FolderGit2,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import type { DocumentModuleSettings, ProjectStorageConnection } from '../../types/document';
+import type {
+  DocumentModuleSettings,
+  DocumentScopeMeta,
+  ProjectStorageOverview,
+} from '../../types/document';
 import { documentService } from '../../services/document.service';
 import { AnimatedSelect, SelectOption } from '../settings/AnimatedSelect';
 import { useAccentTheme } from '../../services/accentTheme.service';
 
 interface DocumentSettingsModalProps {
   projectId: number;
+  submoduleId?: number;
+  scopeMeta?: DocumentScopeMeta;
   isOpen: boolean;
   onClose: () => void;
   onSettingsUpdated: () => void;
@@ -28,27 +35,42 @@ interface DocumentSettingsModalProps {
 
 export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
   projectId,
+  submoduleId,
+  scopeMeta,
   isOpen,
   onClose,
   onSettingsUpdated,
 }) => {
   const { accentColor } = useAccentTheme();
-  const [storage, setStorage] = useState<ProjectStorageConnection | null>(null);
+  const [storage, setStorage] = useState<ProjectStorageOverview | null>(null);
   const [settings, setSettings] = useState<DocumentModuleSettings | null>(null);
   const [maxSizeMb, setMaxSizeMb] = useState(25);
   const [duplicateHandling, setDuplicateHandling] = useState<'rename' | 'replace' | 'reject'>('rename');
   const [enableExternalSharing, setEnableExternalSharing] = useState(true);
   const [requireSharePassword, setRequireSharePassword] = useState(false);
+  const [storageMode, setStorageMode] = useState<'folder' | 'branch'>('folder');
+  const [folderPath, setFolderPath] = useState('documents');
+  const [branchName, setBranchName] = useState('main');
+  const [scopeWarning, setScopeWarning] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string | null>(null);
 
   useEffect(() => {
+    if (scopeMeta) {
+      setStorageMode(scopeMeta.storageMode || 'folder');
+      setFolderPath(scopeMeta.pathPrefix || 'documents');
+      setBranchName(scopeMeta.branchName || 'main');
+    }
+  }, [scopeMeta, isOpen]);
+
+  useEffect(() => {
     if (isOpen) {
       setIsLoading(true);
+      setScopeWarning(null);
       Promise.all([
-        documentService.getStorageStatus(projectId),
+        documentService.getStorageOverview(projectId),
         documentService.getSettings(projectId),
       ])
         .then(([storageRes, settingsRes]) => {
@@ -75,7 +97,10 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
     try {
       const res = await documentService.setupStorage(projectId);
       if (res.success && res.data) {
-        setStorage(res.data);
+        const overviewRes = await documentService.getStorageOverview(projectId);
+        if (overviewRes.success && overviewRes.data) {
+          setStorage(overviewRes.data);
+        }
         setHealthStatus('Repository connection is 100% active and healthy.');
       } else {
         setHealthStatus(res.error || 'Health check encountered an issue.');
@@ -90,13 +115,29 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setScopeWarning(null);
     try {
-      const res = await documentService.updateSettings(projectId, {
-        maxUploadSizeMb: maxSizeMb,
-        duplicateHandling,
-        enableExternalSharing,
-        requireSharePassword,
-      });
+      const targetSubId = submoduleId ?? scopeMeta?.submoduleId ?? undefined;
+      const [res, scopeRes] = await Promise.all([
+        documentService.updateSettings(projectId, {
+          maxUploadSizeMb: maxSizeMb,
+          duplicateHandling,
+          enableExternalSharing,
+          requireSharePassword,
+        }),
+        targetSubId
+          ? documentService.updateScopeConfig(projectId, {
+              submoduleId: targetSubId,
+              storageMode,
+              folderPath,
+              branchName,
+            })
+          : Promise.resolve({ success: true as const }),
+      ]);
+
+      if ((scopeRes as any)?.data?.branchWarning) {
+        setScopeWarning((scopeRes as any).data.branchWarning);
+      }
 
       if (res.success) {
         onSettingsUpdated();
@@ -108,8 +149,8 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-visible flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between">
           <div className="space-y-0.5">
@@ -165,17 +206,31 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
                   <p>
                     Target Repository:{' '}
                     <strong className="text-white font-mono">
-                      {storage ? `${storage.repositoryOwner}/${storage.repositoryName}` : 'devflow-{project}-docs'}
+                      {storage?.storageConnection?.repositoryName
+                        ? `${storage.storageConnection.providerOwner || 'owner'}/${storage.storageConnection.repositoryName}`
+                        : 'devflow-{project}-docs'}
                     </strong>
                   </p>
                   <p>
                     Default Branch:{' '}
                     <span className="text-zinc-300 font-mono">
-                      {storage?.repositoryBranch || 'main'}
+                      {storage?.storageConnection?.defaultBranch || 'main'}
                     </span>
                   </p>
                   <p>
-                    Storage Cost: <span className="text-emerald-400 font-medium">Free (Zero Infrastructure Cloud S3 Fees)</span>
+                    Status:{' '}
+                    <span
+                      className={cn(
+                        'font-medium font-mono',
+                        storage?.storageConnection?.connectionStatus === 'unlinked'
+                          ? 'text-amber-400'
+                          : 'text-emerald-400'
+                      )}
+                    >
+                      {storage?.storageConnection?.connectionStatus === 'unlinked'
+                        ? 'Unlinked (Manage in Project Settings > Storage)'
+                        : 'Free (Zero Infrastructure Cloud S3 Fees)'}
+                    </span>
                   </p>
                 </div>
 
@@ -196,9 +251,9 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
                     <span>Test Repository Sync</span>
                   </button>
 
-                  {storage?.repoUrl && (
+                  {storage?.storageConnection?.repositoryUrl && (
                     <a
-                      href={storage.repoUrl}
+                      href={storage.storageConnection.repositoryUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors"
@@ -209,6 +264,96 @@ export const DocumentSettingsModal: React.FC<DocumentSettingsModalProps> = ({
                   )}
                 </div>
               </div>
+
+              {(submoduleId || scopeMeta?.submoduleId) && (
+                <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-950/60 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-zinc-200 flex items-center gap-2">
+                      <FolderGit2 size={15} style={{ color: accentColor }} />
+                      Module Storage Isolation (Same Repository)
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                      {scopeMeta?.submoduleName || `Module #${submoduleId || scopeMeta?.submoduleId}`}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Choose whether files uploaded in this submodule are stored in an isolated folder on the default branch or on their own dedicated Git branch while sharing the 2 GB combined repository quota.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStorageMode('folder')}
+                      className={cn(
+                        'p-2.5 rounded-lg border text-left transition-all cursor-pointer',
+                        storageMode === 'folder'
+                          ? 'bg-zinc-900 text-white'
+                          : 'bg-zinc-950/50 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      )}
+                      style={storageMode === 'folder' ? { borderColor: accentColor } : undefined}
+                    >
+                      <div className="font-semibold text-[11px]">Dedicated Folder</div>
+                      <div className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate">
+                        {folderPath || 'modules/...'}
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setStorageMode('branch')}
+                      className={cn(
+                        'p-2.5 rounded-lg border text-left transition-all cursor-pointer',
+                        storageMode === 'branch'
+                          ? 'bg-zinc-900 text-white'
+                          : 'bg-zinc-950/50 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      )}
+                      style={storageMode === 'branch' ? { borderColor: accentColor } : undefined}
+                    >
+                      <div className="font-semibold text-[11px] flex items-center gap-1">
+                        <GitBranch size={11} /> Dedicated Branch
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate">
+                        {branchName || 'docs/...'}
+                      </div>
+                    </button>
+                  </div>
+
+                  {storageMode === 'folder' ? (
+                    <div>
+                      <label className="text-[11px] text-zinc-400 block mb-1">
+                        Repository Folder Path
+                      </label>
+                      <input
+                        type="text"
+                        value={folderPath}
+                        onChange={(e) => setFolderPath(e.target.value)}
+                        placeholder="modules/design-docs"
+                        className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 font-mono text-xs focus:outline-none focus:border-zinc-600"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-[11px] text-zinc-400 block mb-1">
+                        Dedicated Git Branch Name
+                      </label>
+                      <input
+                        type="text"
+                        value={branchName}
+                        onChange={(e) => setBranchName(e.target.value)}
+                        placeholder="docs/module-branch"
+                        className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 font-mono text-xs focus:outline-none focus:border-zinc-600"
+                      />
+                    </div>
+                  )}
+
+                  {scopeWarning && (
+                    <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300">
+                      {scopeWarning}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Upload Limit Settings */}
               <div className="space-y-3">

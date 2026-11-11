@@ -1,6 +1,8 @@
 export interface ProjectDocument {
   id: number;
   projectId: number;
+  submoduleId?: number | null;
+  branch?: string | null;
   categoryId?: number | null;
   name: string;
   displayName?: string;
@@ -35,6 +37,7 @@ export interface ProjectDocument {
 export interface DocumentCategory {
   id: number;
   projectId: number;
+  submoduleId?: number | null;
   name: string;
   slug: string;
   description?: string | null;
@@ -50,12 +53,21 @@ export interface DocumentCategory {
 export interface DocumentShare {
   id: number;
   documentId: number;
-  shareType: 'internal' | 'public';
-  permission: 'view' | 'download';
+  shareType: 'internal' | 'public' | 'internal_member' | 'external_link';
+  permission: 'view' | 'download' | 'full';
+  permissionLevel?: string;
   sharedWithUserId?: number | null;
   sharedWithTeamId?: number | null;
   token?: string | null;
+  tokenHash?: string | null;
   hasPassword?: boolean;
+  message?: string | null;
+  shareMessage?: string | null;
+  allowApproval?: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'declined' | null;
+  approvalActorName?: string | null;
+  approvalNote?: string | null;
+  approvalActedAt?: string | null;
   expiresAt?: string | null;
   maxDownloads?: number | null;
   downloadCount: number;
@@ -124,12 +136,103 @@ export interface DocumentModuleSettings {
   requireSharePassword: boolean;
 }
 
+export interface DocumentScopeMeta {
+  submoduleId: number | null;
+  submoduleName: string;
+  isPrimary: boolean;
+  storageMode: 'folder' | 'branch';
+  branchName: string;
+  pathPrefix: string;
+}
+
+export interface StorageBranchUsage {
+  name: string;
+  commitSha?: string | null;
+  isDefault: boolean;
+  protected: boolean;
+  fileCount: number;
+  trackedBytes: number;
+  gitHubTreeBytes?: number | null;
+  gitHubBlobCount?: number | null;
+  moduleNames: string[];
+}
+
+export interface StorageModuleUsage {
+  submoduleId: number;
+  submoduleName: string;
+  moduleId: number;
+  moduleName: string;
+  builtInKey: string;
+  isPrimary: boolean;
+  storageMode: 'folder' | 'branch';
+  branchName: string;
+  folderPath: string;
+  fileCount: number;
+  sizeBytes: number;
+}
+
+export interface ProjectStorageOverview {
+  storageConnection: {
+    id?: number;
+    projectId?: number;
+    provider?: string;
+    providerOwner?: string | null;
+    repositoryName?: string | null;
+    repositoryUrl?: string | null;
+    defaultBranch?: string;
+    connectionStatus?: 'connected' | 'unlinked' | 'disconnected' | 'error' | string;
+    lastSyncAt?: string | null;
+    providerConnection?: {
+      accountName?: string | null;
+      accountEmail?: string | null;
+      status?: string | null;
+    } | null;
+  } | null;
+  health?: {
+    isHealthy: boolean;
+    connectionStatus?: string;
+    repositoryUrl?: string;
+    repositoryName?: string;
+    defaultBranch?: string;
+    isPrivate?: boolean;
+    repoSizeKb?: number;
+    rateLimitRemaining?: number;
+    rateLimitLimit?: number;
+    error?: string;
+  };
+  usage?: {
+    totalTrackedBytes: number;
+    totalFiles: number;
+    configuredLimitBytes: number;
+    repoGitHubSizeKb?: number | null;
+    repoGitHubSizeBytes?: number | null;
+    isPrivate?: boolean;
+  };
+  branches?: StorageBranchUsage[];
+  modules?: StorageModuleUsage[];
+}
+
+export interface AccessibleStorageRepo {
+  id: string;
+  name: string;
+  fullName: string;
+  owner: string;
+  isPrivate: boolean;
+  defaultBranch: string;
+  webUrl: string;
+  sizeKb: number;
+}
+
 export interface DocumentDashboardData {
+  isStorageUnlinked?: boolean;
+  scopeMeta?: DocumentScopeMeta;
   metrics: {
     totalDocuments: number;
     totalFiles?: number;
     totalSize: number;
     totalSizeBytes?: number;
+    repoTotalSizeBytes?: number;
+    moduleSizeBytes?: number;
     documentsUploadedThisMonth: number;
     activeShares: number;
     sharedCount?: number;
@@ -137,6 +240,14 @@ export interface DocumentDashboardData {
     externalShares: number;
     totalDownloads: number;
     categoryCount: number;
+    imagesCount?: number;
+    documentsCount?: number;
+    videosCount?: number;
+    othersCount?: number;
+    configuredLimitBytes?: number;
+    approvedCount?: number;
+    pendingApprovals?: number;
+    declinedApprovals?: number;
     storageHealth?: {
       status: 'healthy' | 'warning' | 'error' | 'unconfigured';
       repository: string | null;
@@ -147,12 +258,18 @@ export interface DocumentDashboardData {
       repoUrl?: string | null;
     };
   };
+  projectMeta?: {
+    title: string;
+    status: string;
+    leadName: string;
+  };
   fileTypeDistribution: Array<{
     type: string;
     label: string;
     count: number;
     sizeBytes: number;
     color: string;
+    percentage?: number;
   }>;
   recentDocuments: ProjectDocument[];
   recentFiles?: ProjectDocument[];
@@ -174,19 +291,56 @@ export interface DocumentDashboardData {
     } | null;
   }>;
   storageNotice: {
-    repositoryName: string;
-    repositoryOwner: string;
+    repositoryName: string | null;
+    repositoryOwner?: string;
+    providerOwner?: string | null;
+    repositoryUrl?: string | null;
+    defaultBranch?: string;
     isPrivate: boolean;
-    branch: string;
-    note: string;
+    branch?: string;
+    connectionStatus?: string;
+    isHealthy?: boolean;
+    lastSyncAt?: string | null;
+    trackedSizeBytes?: number;
+    configuredLimitBytes?: number;
+    note?: string;
     repoUrl?: string | null;
   };
 }
 
+export interface DocumentApprovalEntry {
+  id: number;
+  shareId: number;
+  documentId: number;
+  token?: string | null;
+  shareUrl?: string | null;
+  isRevoked: boolean;
+  revokedAt?: string | null;
+  expiresAt?: string | null;
+  permission: string;
+  hasPassword: boolean;
+  message?: string | null;
+  allowApproval: boolean;
+  approvalStatus: 'pending' | 'approved' | 'declined';
+  approvalActorName?: string | null;
+  approvalNote?: string | null;
+  approvalActedAt?: string | null;
+  createdAt: string;
+  createdBy?: {
+    id: number;
+    name: string;
+    username?: string;
+    avatarUrl?: string | null;
+  } | null;
+  document: ProjectDocument;
+}
+
 export interface DocumentListParams {
-  tab?: 'all' | 'my_uploads' | 'shared' | 'recent' | 'category';
+  tab?: 'all' | 'my_uploads' | 'shared' | 'recent' | 'category' | 'approvals';
+  submoduleId?: number;
   categoryId?: number;
   fileType?: string;
+  type?: string;
   search?: string;
   sortBy?: 'name' | 'createdAt' | 'sizeBytes' | 'downloadCount' | 'updatedAt';
   sortOrder?: 'asc' | 'desc';
@@ -196,6 +350,8 @@ export interface DocumentListParams {
 
 export interface DocumentListResponse {
   documents: ProjectDocument[];
+  unlinked?: boolean;
+  scopeMeta?: DocumentScopeMeta;
   total: number;
   page: number;
   limit: number;
@@ -219,6 +375,13 @@ export interface UploadQueueItem {
 export interface PublicShareInfo {
   token: string;
   requiresPassword: boolean;
+  message?: string | null;
+  allowApproval?: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'declined' | null;
+  approvalActorName?: string | null;
+  approvalNote?: string | null;
+  approvalActedAt?: string | null;
+  sharedByName?: string | null;
   document?: {
     id: number;
     name: string;
@@ -228,7 +391,7 @@ export interface PublicShareInfo {
     updatedAt: string;
     uploaderName: string;
     projectName: string;
-    downloadCount: number;
+    downloadCount?: number;
   };
   permission?: 'view' | 'download';
   expiresAt?: string | null;

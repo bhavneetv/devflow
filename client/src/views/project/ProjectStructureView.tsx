@@ -31,6 +31,8 @@ import {
   ExternalLink,
   Pin,
   PanelLeft,
+  GitBranch,
+  FolderGit2,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { useToast } from '../../context/ToastContext';
@@ -2279,6 +2281,9 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
   const [moduleSearch, setModuleSearch] = useState<string>('');
   const [name, setName] = useState('Issues');
   const [icon, setIcon] = useState('circle-dot');
+  const [docStorageMode, setDocStorageMode] = useState<'folder' | 'branch'>('folder');
+  const [docFolderPath, setDocFolderPath] = useState('');
+  const [docBranchName, setDocBranchName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -2369,12 +2374,33 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
 
     try {
       setIsSubmitting(true);
+      const isDocBuiltIn =
+        subType === 'built_in' &&
+        ['docs', 'documents', 'documents.knowledge_base'].includes(selectedBuiltInKey);
+      const safeSlug =
+        trimmed
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'docs';
+
       const configJson =
         subType === 'composite'
           ? JSON.stringify({
               features: compositeFeatures,
               layout: compositeLayout,
               summaryCards: compositeCards,
+            })
+          : isDocBuiltIn
+          ? JSON.stringify({
+              storageMode: docStorageMode,
+              folderPath:
+                docStorageMode === 'folder'
+                  ? docFolderPath.trim() || `modules/${safeSlug}`
+                  : 'documents',
+              branchName:
+                docStorageMode === 'branch'
+                  ? docBranchName.trim() || `docs/${safeSlug}`
+                  : undefined,
             })
           : null;
 
@@ -2695,6 +2721,93 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
                       </div>
                     )}
                   </div>
+
+                  {['docs', 'documents', 'documents.knowledge_base'].includes(selectedBuiltInKey) && (
+                    <div className="p-3.5 rounded-xl border border-[#27272A] bg-[#0E0F14] space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                          <FolderGit2 size={14} style={{ color: accentColor }} />
+                          Document Repository Isolation
+                        </span>
+                        <span className="text-[10px] font-mono text-zinc-400">
+                          Uses shared project repo · 2 GB combined
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 leading-relaxed">
+                        Files in this module stay isolated in DevFlow and are stored either inside a dedicated folder or on a dedicated Git branch of your connected storage repo.
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDocStorageMode('folder')}
+                          className={cn(
+                            'p-2.5 rounded-lg border text-left transition-all cursor-pointer',
+                            docStorageMode === 'folder'
+                              ? 'bg-zinc-900 text-white'
+                              : 'border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                          )}
+                          style={docStorageMode === 'folder' ? { borderColor: accentColor } : undefined}
+                        >
+                          <div className="text-xs font-semibold flex items-center gap-1.5">
+                            <Folder size={12} style={docStorageMode === 'folder' ? { color: accentColor } : undefined} />
+                            Dedicated Folder
+                          </div>
+                          <div className="text-[10px] text-zinc-500 mt-0.5">
+                            Folder inside default branch
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDocStorageMode('branch')}
+                          className={cn(
+                            'p-2.5 rounded-lg border text-left transition-all cursor-pointer',
+                            docStorageMode === 'branch'
+                              ? 'bg-zinc-900 text-white'
+                              : 'border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                          )}
+                          style={docStorageMode === 'branch' ? { borderColor: accentColor } : undefined}
+                        >
+                          <div className="text-xs font-semibold flex items-center gap-1.5">
+                            <GitBranch size={12} style={docStorageMode === 'branch' ? { color: accentColor } : undefined} />
+                            Dedicated Branch
+                          </div>
+                          <div className="text-[10px] text-zinc-500 mt-0.5">
+                            Isolated Git branch in repo
+                          </div>
+                        </button>
+                      </div>
+
+                      {docStorageMode === 'folder' ? (
+                        <div>
+                          <label className="text-[11px] text-zinc-400 block mb-1">
+                            Folder Name / Path <span className="text-zinc-500">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={docFolderPath}
+                            onChange={(e) => setDocFolderPath(e.target.value)}
+                            placeholder={`modules/${(name || 'documents').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#17181D] border border-[#27272A] text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-[11px] text-zinc-400 block mb-1">
+                            Branch Name <span className="text-zinc-500">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={docBranchName}
+                            onChange={(e) => setDocBranchName(e.target.value)}
+                            placeholder={`docs/${(name || 'documents').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#17181D] border border-[#27272A] text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

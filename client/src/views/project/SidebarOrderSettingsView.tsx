@@ -82,6 +82,7 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
   const [submoduleFormIcon, setSubmoduleFormIcon] = useState('circle-dot');
   const [submoduleFormType, setSubmoduleFormType] = useState<'custom' | 'built_in'>('custom');
   const [submoduleFormBuiltInKey, setSubmoduleFormBuiltInKey] = useState<string>('');
+  const [submoduleDocStorageMode, setSubmoduleDocStorageMode] = useState<'folder' | 'branch'>('folder');
   const [submoduleFormPinned, setSubmoduleFormPinned] = useState(false);
 
   const [editingSubmodule, setEditingSubmodule] = useState<ProjectSubmodule | null>(null);
@@ -205,9 +206,10 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
   // Check which built-in modules are already used
   const assignedBuiltInKeys = useMemo(() => {
     const keys = new Map<string, { moduleId: number; moduleName: string; submoduleName: string }>();
+    const multiInstanceKeys = new Set(['whiteboard', 'docs', 'documents', 'documents.knowledge_base']);
     modules.forEach((mod) => {
       (mod.submodules || []).forEach((sub) => {
-        if (sub.type === 'built_in' && sub.builtInKey && sub.builtInKey !== 'whiteboard') {
+        if (sub.type === 'built_in' && sub.builtInKey && !multiInstanceKeys.has(sub.builtInKey)) {
           keys.set(sub.builtInKey, {
             moduleId: mod.id,
             moduleName: mod.name,
@@ -676,6 +678,16 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
 
     try {
       setIsSaving(true);
+      const isDocBuiltIn =
+        submoduleFormType === 'built_in' &&
+        ['docs', 'documents', 'documents.knowledge_base'].includes(submoduleFormBuiltInKey);
+      const safeSlug =
+        submoduleFormName
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'docs';
+
       const res = await projectModuleService.createSubmodule(
         projectId,
         createSubmoduleTargetModuleId,
@@ -684,6 +696,13 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
           icon: submoduleFormIcon,
           type: submoduleFormType,
           builtInKey: submoduleFormType === 'built_in' ? submoduleFormBuiltInKey : null,
+          config: isDocBuiltIn
+            ? JSON.stringify({
+                storageMode: submoduleDocStorageMode,
+                folderPath: submoduleDocStorageMode === 'folder' ? `modules/${safeSlug}` : 'documents',
+                branchName: submoduleDocStorageMode === 'branch' ? `docs/${safeSlug}` : undefined,
+              })
+            : null,
           isVisible: true,
           isPinned: submoduleFormPinned,
         }
@@ -2074,8 +2093,43 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
 
                 {/* Submodule Type Indicator */}
                 {submoduleFormType === 'built_in' && (
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
-                    Adding built-in tool: <strong>{submoduleFormBuiltInKey}</strong>. This links directly to DevFlow system features.
+                  <div className="space-y-2.5">
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
+                      Adding built-in tool: <strong>{submoduleFormBuiltInKey}</strong>. This links directly to DevFlow system features.
+                    </div>
+                    {['docs', 'documents', 'documents.knowledge_base'].includes(submoduleFormBuiltInKey) && (
+                      <div className="p-3 rounded-xl bg-[#18191E] border border-zinc-800 space-y-2">
+                        <div className="text-xs font-semibold text-zinc-200">
+                          Storage Isolation Mode (Same Repo · 2 GB Combined)
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSubmoduleDocStorageMode('folder')}
+                            className={cn(
+                              'py-1.5 px-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors',
+                              submoduleDocStorageMode === 'folder'
+                                ? 'bg-zinc-800 text-white border-zinc-500'
+                                : 'bg-zinc-900/40 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                            )}
+                          >
+                            Dedicated Folder
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSubmoduleDocStorageMode('branch')}
+                            className={cn(
+                              'py-1.5 px-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors',
+                              submoduleDocStorageMode === 'branch'
+                                ? 'bg-zinc-800 text-white border-zinc-500'
+                                : 'bg-zinc-900/40 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                            )}
+                          >
+                            Dedicated Branch
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

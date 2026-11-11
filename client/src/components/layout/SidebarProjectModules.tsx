@@ -69,7 +69,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
         sub.builtInKey === 'docs' ||
         sub.builtInKey === 'documents'
       ) {
-        return `${projectBase}/documents`;
+        return `${projectBase}/documents/${sub.id}`;
       }
       return `${projectBase}/${sub.builtInKey}`;
     }
@@ -155,7 +155,12 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
         const visibleSubmodules = allSubmodules.filter((sub) => {
           if (!sub.isVisible) return false;
           if (sub.type === 'built_in' && sub.builtInKey) {
-            if (sub.builtInKey !== 'whiteboard') {
+            const isMultiInstance =
+              sub.builtInKey === 'whiteboard' ||
+              sub.builtInKey === 'docs' ||
+              sub.builtInKey === 'documents' ||
+              sub.builtInKey === 'documents.knowledge_base';
+            if (!isMultiInstance) {
               if (seenBuiltInKeys.has(sub.builtInKey)) return false;
               seenBuiltInKeys.add(sub.builtInKey);
             }
@@ -325,7 +330,12 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                   const childVisibleSubs = childAllSubs.filter((sub) => {
                     if (!sub.isVisible) return false;
                     if (sub.type === 'built_in' && sub.builtInKey) {
-                      if (sub.builtInKey !== 'whiteboard') {
+                      const isMultiInstance =
+                        sub.builtInKey === 'whiteboard' ||
+                        sub.builtInKey === 'docs' ||
+                        sub.builtInKey === 'documents' ||
+                        sub.builtInKey === 'documents.knowledge_base';
+                      if (!isMultiInstance) {
                         if (seenBuiltInKeys.has(sub.builtInKey)) return false;
                         seenBuiltInKeys.add(sub.builtInKey);
                       }

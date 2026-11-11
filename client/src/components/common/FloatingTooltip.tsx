@@ -60,6 +60,7 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
   return (
     <>
       {React.cloneElement(children, {
+        title: undefined,
         ref: (node: HTMLElement | null) => {
           triggerRef.current = node;
           const { ref } = children as any;

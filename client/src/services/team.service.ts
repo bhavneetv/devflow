@@ -245,6 +245,22 @@ export const teamService = {
     }
   },
 
+  async createConversation(
+    teamId: number,
+    data: { name: string; icon?: string }
+  ): Promise<{ success: boolean; data?: TeamConversation; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/teams/${teamId}/conversations`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(data),
+      });
+      return handleResponse(res);
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to create conversation' };
+    }
+  },
+
   async getOrCreateDirectConversation(
     teamId: number,
     targetUserIdOrIds: number | number[],

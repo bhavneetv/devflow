@@ -8,7 +8,14 @@ import {
   Sparkles,
   FileText,
   Image as ImageIcon,
+  FolderKanban,
+  Users,
+  User as UserIcon,
+  Search,
 } from 'lucide-react';
+import { useChat } from '../../context/ChatContext';
+import { useAccentTheme } from '../../services/accentTheme.service';
+import { FloatingTooltip } from '../common/FloatingTooltip';
 import type { TeamMember } from '../../types/team';
 
 interface ChatComposerProps {
@@ -17,7 +24,7 @@ interface ChatComposerProps {
     content: string,
     options?: {
       mentions?: number[];
-      attachments?: Array<{ name: string; size: string }>;
+      attachments?: Array<{ name: string; size: string; url?: string; type?: string }>;
       sharedEntity?: any;
       replyToId?: number;
     }
@@ -29,10 +36,30 @@ interface ChatComposerProps {
   onTyping?: (isTyping: boolean) => void;
 }
 
-const COMMON_EMOJIS = [
-  '👍', '❤️', '🚀', '🎉', '🔥', '👀', '✨', '🙌',
-  '💡', '⚡', '✅', '❌', '💯', '👏', '🤖', '💬'
+const EMOJI_CATEGORIES = [
+  {
+    name: 'Reactions',
+    emojis: ['👍', '👎', '❤️', '🔥', '🎉', '🚀', '👀', '🙌', '👏', '💯', '✨', '💡', '⚡', '✅', '❌', '🤖'],
+  },
+  {
+    name: 'Smileys',
+    emojis: ['😀', '😂', '🤣', '😊', '😍', '🥰', '😎', '🤔', '🤫', '😴', '🥳', '🤯', '🥺', '😇', '🤩', '🫠'],
+  },
+  {
+    name: 'Work & Tech',
+    emojis: ['💻', '📱', '⌨️', '🖱️', '📁', '📂', '📊', '📈', '📌', '📍', '📝', '✏️', '📦', '🔒', '🔑', '⚙️'],
+  },
+  {
+    name: 'Gestures',
+    emojis: ['🤝', '✌️', '🤞', '👊', '🤛', '🤜', '👋', '🫡', '🙏', '💪', '🤙', '👈', '👉', '👆', '👇', '🖐️'],
+  },
+  {
+    name: 'Symbols & Fun',
+    emojis: ['☕', '🍕', '🍔', '🎂', '🍻', '🏆', '🥇', '🎯', '🎲', '🎨', '🎭', '🎪', '🌟', '⭐', '🌈', '☀️'],
+  },
 ];
+
+type TagMode = 'member' | 'project' | 'team';
 
 export const ChatComposer: React.FC<ChatComposerProps> = ({
   conversationId,
@@ -43,14 +70,25 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   onCancelReply,
   onTyping,
 }) => {
+  const { orgMembers, projects, teams, playNotificationSound } = useChat();
+  const { accentColor } = useAccentTheme();
+
   const [inputText, setInputText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [attachment, setAttachment] = useState<{ name: string; size: string } | null>(null);
+  const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
 
-  // Mention State
-  const [showMentionMenu, setShowMentionMenu] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState('');
-  const [mentionIndex, setMentionIndex] = useState(0);
+  // Attachment state
+  const [attachment, setAttachment] = useState<{
+    name: string;
+    size: string;
+    url?: string;
+    type?: string;
+  } | null>(null);
+
+  // Tagging State (@ Member, # Project, $ Team)
+  const [tagMode, setTagMode] = useState<TagMode | null>(null);
+  const [tagQuery, setTagQuery] = useState('');
+  const [tagIndex, setTagIndex] = useState(0);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,12 +109,11 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
     setInputText(saved);
   }, [conversationId]);
 
-  // Save draft to localStorage on change
+  // Handle Text Change & Detect Tag Triggers (@, #, $)
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInputText(val);
 
-    // Emit typing indicator
     if (onTyping) {
       onTyping(true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -94,46 +131,121 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       }
     }
 
-    // Auto resize textarea
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
       inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
     }
 
-    // Detect @mentions
+    // Detect cursor and tag triggers
     const cursorPos = e.target.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
-    const lastAtMatch = textBeforeCursor.match(/@([a-zA-Z0-9_.-]*)$/);
 
-    if (lastAtMatch) {
-      setShowMentionMenu(true);
-      setMentionQuery(lastAtMatch[1] || '');
-      setMentionIndex(0);
+    const atMatch = textBeforeCursor.match(/@([a-zA-Z0-9_.-]*)$/);
+    const hashMatch = textBeforeCursor.match(/#([a-zA-Z0-9_.-]*)$/);
+    const dollarMatch = textBeforeCursor.match(/\$([a-zA-Z0-9_.-]*)$/);
+
+    if (atMatch) {
+      setTagMode('member');
+      setTagQuery(atMatch[1] || '');
+      setTagIndex(0);
+    } else if (hashMatch) {
+      setTagMode('project');
+      setTagQuery(hashMatch[1] || '');
+      setTagIndex(0);
+    } else if (dollarMatch) {
+      setTagMode('team');
+      setTagQuery(dollarMatch[1] || '');
+      setTagIndex(0);
     } else {
-      setShowMentionMenu(false);
+      setTagMode(null);
     }
   };
 
-  const mentionCandidates = teamMembers
-    .filter((m) => {
-      if (!showMentionMenu) return false;
-      const q = mentionQuery.toLowerCase();
-      const name = (m.user?.name || '').toLowerCase();
-      const username = (m.user?.username || '').toLowerCase();
-      return name.includes(q) || username.includes(q);
-    })
-    .slice(0, 5);
+  // Filter tag candidates
+  const tagCandidates = (() => {
+    if (!tagMode) return [];
+    const q = tagQuery.toLowerCase().trim();
 
-  const insertMention = (member: TeamMember) => {
-    const handle = member.user?.username || member.user?.name.replace(/\s+/g, '');
+    if (tagMode === 'member') {
+      const combined = [
+        ...teamMembers.map((tm) => ({
+          id: tm.userId,
+          name: tm.user?.name || 'Member',
+          username: tm.user?.username || tm.user?.name.replace(/\s+/g, '').toLowerCase() || '',
+          color: tm.user?.avatarColor || '#3B82F6',
+        })),
+        ...orgMembers.map((om) => ({
+          id: om.userId,
+          name: om.user?.name || 'Member',
+          username: om.user && 'username' in om.user ? (om.user as any).username : om.user?.name.replace(/\s+/g, '').toLowerCase() || '',
+          color: om.user?.avatarColor || '#8B5CF6',
+        })),
+      ];
+      // Deduplicate by id
+      const seen = new Set<number>();
+      return combined
+        .filter((m) => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          if (!q) return true;
+          return m.name.toLowerCase().includes(q) || m.username.toLowerCase().includes(q);
+        })
+        .slice(0, 5);
+    }
+
+    if (tagMode === 'project') {
+      return (projects || [])
+        .filter((p) => {
+          if (!q) return true;
+          return (
+            (p.title || p.name || '').toLowerCase().includes(q) ||
+            (p.key || p.identifier || '').toLowerCase().includes(q)
+          );
+        })
+        .map((p) => ({
+          id: p.id,
+          name: p.title || p.name || `Project #${p.id}`,
+          key: p.key || p.identifier || 'PROJ',
+          color: p.avatarColor || p.color || '#10B981',
+        }))
+        .slice(0, 5);
+    }
+
+    if (tagMode === 'team') {
+      return (teams || [])
+        .filter((t) => {
+          if (!q) return true;
+          return t.name.toLowerCase().includes(q);
+        })
+        .map((t) => ({
+          id: t.id,
+          name: t.name,
+          color: t.color || '#3B82F6',
+        }))
+        .slice(0, 5);
+    }
+
+    return [];
+  })();
+
+  // Insert selected tag into textarea
+  const insertTag = (item: any) => {
     const cursorPos = inputRef.current?.selectionStart || inputText.length;
     const textBeforeCursor = inputText.slice(0, cursorPos);
     const textAfterCursor = inputText.slice(cursorPos);
 
-    const newBefore = textBeforeCursor.replace(/@([a-zA-Z0-9_.-]*)$/, `@${handle} `);
+    let newBefore = textBeforeCursor;
+    if (tagMode === 'member') {
+      newBefore = textBeforeCursor.replace(/@([a-zA-Z0-9_.-]*)$/, `@[${item.name}] `);
+    } else if (tagMode === 'project') {
+      newBefore = textBeforeCursor.replace(/#([a-zA-Z0-9_.-]*)$/, `#[${item.name}] `);
+    } else if (tagMode === 'team') {
+      newBefore = textBeforeCursor.replace(/\$([a-zA-Z0-9_.-]*)$/, `$[${item.name}] `);
+    }
+
     const updated = newBefore + textAfterCursor;
     setInputText(updated);
-    setShowMentionMenu(false);
+    setTagMode(null);
 
     if (conversationId) {
       localStorage.setItem(`devflow_chat_draft_${conversationId}`, updated);
@@ -149,24 +261,24 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showMentionMenu && mentionCandidates.length > 0) {
+    if (tagMode && tagCandidates.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setMentionIndex((prev) => (prev + 1) % mentionCandidates.length);
+        setTagIndex((prev) => (prev + 1) % tagCandidates.length);
         return;
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setMentionIndex((prev) => (prev - 1 + mentionCandidates.length) % mentionCandidates.length);
+        setTagIndex((prev) => (prev - 1 + tagCandidates.length) % tagCandidates.length);
         return;
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insertMention(mentionCandidates[mentionIndex]);
+        insertTag(tagCandidates[tagIndex]);
         return;
       }
       if (e.key === 'Escape') {
-        setShowMentionMenu(false);
+        setTagMode(null);
         return;
       }
     }
@@ -193,7 +305,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
     setInputText('');
     setAttachment(null);
     setShowEmojiPicker(false);
-    setShowMentionMenu(false);
+    setTagMode(null);
 
     if (conversationId) {
       localStorage.removeItem(`devflow_chat_draft_${conversationId}`);
@@ -204,6 +316,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
     }
 
     onCancelReply?.();
+    playNotificationSound('pop');
+
     await onSendMessage(finalContent || (currentAttachment ? `Attached: ${currentAttachment.name}` : ''), {
       attachments: currentAttachment ? [currentAttachment] : undefined,
       replyToId: currentReplyTo?.id,
@@ -212,7 +326,6 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
   const handleInsertEmoji = (emoji: string) => {
     setInputText((prev) => prev + emoji);
-    setShowEmojiPicker(false);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -221,46 +334,139 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      setAttachment({ name: file.name, size: `${sizeMb} MB` });
+      const sizeMb = file.size / (1024 * 1024);
+      const sizeFormatted = sizeMb < 1 ? `${(file.size / 1024).toFixed(0)} KB` : `${sizeMb.toFixed(1)} MB`;
+
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setAttachment({
+            name: file.name,
+            size: sizeFormatted,
+            url: event.target?.result as string,
+            type: file.type,
+          });
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setAttachment({
+          name: file.name,
+          size: sizeFormatted,
+          type: file.type,
+        });
+      }
     }
   };
 
   return (
     <div className="p-3 bg-zinc-950/95 border-t border-zinc-800/80 shrink-0 relative select-none">
-      {/* Mention Auto-complete Menu */}
+      {/* ── Smart Tagging Autocomplete Menu (@ Member, # Project, $ Team) ── */}
       <AnimatePresence>
-        {showMentionMenu && mentionCandidates.length > 0 && (
+        {tagMode && tagCandidates.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.15 }}
-            className="absolute left-4 bottom-[calc(100%+8px)] z-30 w-56 rounded-xl bg-zinc-900 border border-zinc-700/80 shadow-2xl p-1 divide-y divide-zinc-800"
+            className="absolute left-4 bottom-[calc(100%+8px)] z-40 w-64 rounded-2xl bg-zinc-900 border border-zinc-700/80 shadow-2xl p-1.5 divide-y divide-zinc-800"
           >
-            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-              Mention Member
+            <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+              {tagMode === 'member' && <UserIcon size={12} style={{ color: accentColor }} />}
+              {tagMode === 'project' && <FolderKanban size={12} style={{ color: accentColor }} />}
+              {tagMode === 'team' && <Users size={12} style={{ color: accentColor }} />}
+              <span>
+                {tagMode === 'member'
+                  ? 'Tag Member (@)'
+                  : tagMode === 'project'
+                  ? 'Tag Project (#)'
+                  : 'Tag Team ($)'}
+              </span>
             </div>
-            <div className="space-y-0.5 pt-1">
-              {mentionCandidates.map((m, idx) => (
-                <button
-                  key={m.id}
-                  onClick={() => insertMention(m)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-left cursor-pointer transition-colors ${
-                    idx === mentionIndex
-                      ? 'bg-purple-600/20 text-purple-300 font-semibold'
-                      : 'text-zinc-300 hover:bg-zinc-800'
-                  }`}
-                >
-                  <div
-                    className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                    style={{ backgroundColor: m.user?.avatarColor || '#3B82F6' }}
+
+            <div className="space-y-0.5 pt-1 max-h-44 overflow-y-auto no-scrollbar">
+              {tagCandidates.map((item: any, idx) => {
+                const isSelected = idx === tagIndex;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => insertTag(item)}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs text-left cursor-pointer transition-colors"
+                    style={{
+                      backgroundColor: isSelected ? `${accentColor}25` : undefined,
+                      color: isSelected ? accentColor : undefined,
+                    }}
                   >
-                    {(m.user?.name || 'U').slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="truncate min-w-0">
-                    <span className="truncate block">{m.user?.name}</span>
-                  </div>
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      {tagMode === 'member' ? (
+                        <div
+                          className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        >
+                          {item.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      ) : tagMode === 'project' ? (
+                        <FolderKanban size={13} style={{ color: item.color }} className="shrink-0" />
+                      ) : (
+                        <Users size={13} style={{ color: item.color }} className="shrink-0" />
+                      )}
+
+                      <span className="truncate font-medium text-zinc-200">
+                        {item.name}
+                      </span>
+                    </div>
+
+                    {item.key && (
+                      <span className="text-[10px] text-zinc-500 font-mono shrink-0">
+                        {item.key}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Expanded Emoji Picker Popover ── */}
+      <AnimatePresence>
+        {showEmojiPicker && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: 6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 6 }}
+            transition={{ duration: 0.15 }}
+            className="absolute left-4 bottom-[calc(100%+8px)] z-40 p-2.5 rounded-2xl bg-zinc-900 border border-zinc-700/80 shadow-2xl w-[290px] space-y-2 backdrop-blur-md"
+          >
+            {/* Category Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar border-b border-zinc-800">
+              {EMOJI_CATEGORIES.map((cat, idx) => (
+                <button
+                  key={cat.name}
+                  type="button"
+                  onClick={() => setActiveEmojiCategory(idx)}
+                  className="px-2 py-0.5 rounded-md text-[10px] font-medium whitespace-nowrap transition-colors cursor-pointer"
+                  style={{
+                    backgroundColor: activeEmojiCategory === idx ? `${accentColor}25` : undefined,
+                    color: activeEmojiCategory === idx ? accentColor : '#A1A1AA',
+                  }}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+
+            {/* Emoji Grid */}
+            <div className="grid grid-cols-8 gap-1 max-h-36 overflow-y-auto no-scrollbar">
+              {EMOJI_CATEGORIES[activeEmojiCategory].emojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => handleInsertEmoji(emoji)}
+                  className="w-7 h-7 flex items-center justify-center text-base hover:bg-zinc-800 rounded-lg cursor-pointer transition-transform active:scale-125"
+                >
+                  {emoji}
                 </button>
               ))}
             </div>
@@ -268,37 +474,17 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Emoji Picker Popover */}
-      <AnimatePresence>
-        {showEmojiPicker && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 6 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 6 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-4 bottom-[calc(100%+8px)] z-30 p-2 rounded-xl bg-zinc-900 border border-zinc-700/80 shadow-2xl grid grid-cols-8 gap-1"
-          >
-            {COMMON_EMOJIS.map((emoji) => (
-              <button
-                key={emoji}
-                onClick={() => handleInsertEmoji(emoji)}
-                className="w-8 h-8 flex items-center justify-center text-lg hover:bg-zinc-800 rounded-lg cursor-pointer transition-transform active:scale-125"
-              >
-                {emoji}
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Replying Context Bar */}
+      {/* ── Replying Context Bar ── */}
       {replyingTo && (
-        <div className="flex items-center justify-between px-3 py-1.5 mb-2 rounded-lg bg-zinc-900/90 border border-zinc-800 text-xs">
+        <div className="flex items-center justify-between px-3 py-1.5 mb-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs">
           <div className="flex items-center gap-2 truncate text-zinc-400">
-            <span className="text-purple-400 font-semibold">Replying to {replyingTo.senderName}:</span>
+            <span style={{ color: accentColor }} className="font-semibold">
+              Replying to {replyingTo.senderName}:
+            </span>
             <span className="truncate text-zinc-300 max-w-[240px]">{replyingTo.content}</span>
           </div>
           <button
+            type="button"
             onClick={onCancelReply}
             className="p-1 text-zinc-500 hover:text-white rounded cursor-pointer"
           >
@@ -307,29 +493,43 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         </div>
       )}
 
-      {/* Attachment Preview Chip */}
+      {/* ── Attachment Preview Chip ── */}
       {attachment && (
-        <div className="flex items-center gap-2 px-2.5 py-1 mb-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 w-fit">
-          <FileText size={13} className="text-purple-400" />
+        <div className="flex items-center gap-2 px-3 py-1.5 mb-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 w-fit shadow-xs">
+          {attachment.url ? (
+            <img
+              src={attachment.url}
+              alt={attachment.name}
+              className="w-6 h-6 object-cover rounded shrink-0 border border-zinc-700"
+            />
+          ) : (
+            <FileText size={14} style={{ color: accentColor }} />
+          )}
           <span className="font-medium truncate max-w-[180px]">{attachment.name}</span>
-          <span className="text-[10px] text-zinc-500">({attachment.size})</span>
+          <span className="text-[10px] text-zinc-500 font-mono">({attachment.size})</span>
           <button
+            type="button"
             onClick={() => setAttachment(null)}
             className="p-0.5 text-zinc-500 hover:text-white rounded cursor-pointer"
           >
-            <X size={12} />
+            <X size={13} />
           </button>
         </div>
       )}
 
-      {/* Composer Input Box */}
-      <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-2 focus-within:border-purple-500/80 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all shadow-inner">
+      {/* ── Composer Input Box ── */}
+      <div
+        className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-2.5 transition-all shadow-inner focus-within:border-zinc-700"
+        style={{
+          boxShadow: `0 0 0 1px ${accentColor}15`,
+        }}
+      >
         <textarea
           ref={inputRef}
           value={inputText}
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
-          placeholder="Message or type @ to mention..."
+          placeholder="Message or type @ for members, # for projects, $ for teams..."
           rows={1}
           className="w-full bg-transparent px-2 text-xs text-white placeholder-zinc-500 resize-none focus:outline-none max-h-32 leading-relaxed"
         />
@@ -344,44 +544,49 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               className="hidden"
               onChange={handleFileChange}
             />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 rounded-lg hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Attach image or file"
-            >
-              <Paperclip size={15} />
-            </button>
+            <FloatingTooltip content="Attach file or image" side="top">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-1.5 rounded-lg hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                <Paperclip size={15} />
+              </button>
+            </FloatingTooltip>
 
             {/* Emoji Button */}
-            <button
-              onClick={() => setShowEmojiPicker((prev) => !prev)}
-              className="p-1.5 rounded-lg hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Add emoji"
-            >
-              <Smile size={15} />
-            </button>
+            <FloatingTooltip content="Add emoji" side="top">
+              <button
+                type="button"
+                onClick={() => setShowEmojiPicker((prev) => !prev)}
+                className="p-1.5 rounded-lg hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                <Smile size={15} />
+              </button>
+            </FloatingTooltip>
 
-            <span className="text-[10px] text-zinc-600 pl-1 hidden sm:inline">
-              Return to send, Shift+Return for newline
+            <span className="text-[10px] text-zinc-500 pl-1 hidden sm:inline">
+              @ member • # project • $ team
             </span>
           </div>
 
           {/* Send Button */}
-          <button
-            onClick={handleSend}
-            disabled={(!inputText.trim() && !attachment) || isSending}
-            className={`p-2 rounded-xl transition-all cursor-pointer ${
-              inputText.trim() || attachment
-                ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md active:scale-95'
-                : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
-            }`}
-            title="Send message (Enter)"
-          >
-            <Send size={13} className={isSending ? 'animate-pulse' : ''} />
-          </button>
+          <FloatingTooltip content="Send message (Enter)" side="top">
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={(!inputText.trim() && !attachment) || isSending}
+              className="p-2 rounded-xl transition-all cursor-pointer shadow-md active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: inputText.trim() || attachment ? accentColor : '#27272A',
+                color: '#FFFFFF',
+              }}
+            >
+              <Send size={13} className={isSending ? 'animate-pulse' : ''} />
+            </button>
+          </FloatingTooltip>
         </div>
       </div>
     </div>
   );
 };
-

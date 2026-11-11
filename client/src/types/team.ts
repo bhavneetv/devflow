@@ -64,6 +64,7 @@ export interface TeamConversation {
   teamId: number;
   type: 'GROUP' | 'DIRECT';
   name: string;
+  icon?: string | null;
   participantIds?: string | null;
   isPinned?: boolean;
   otherUser?: TeamUser | null;

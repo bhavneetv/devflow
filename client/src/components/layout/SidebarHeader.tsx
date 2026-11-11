@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   ChevronDown,
   Search,
@@ -13,6 +14,7 @@ import { useAccentTheme } from '../../services/accentTheme.service';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { OrgAvatar } from '../organization/OrgAvatar';
 import { AVATAR_ICON_COMPONENTS } from '../onboarding/StepProfile';
+import { FloatingTooltip } from '../common/FloatingTooltip';
 import { cn } from '../../lib/utils';
 
 interface SidebarHeaderProps {
@@ -30,6 +32,17 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
   } = useNavigation();
   const { currentOrganization } = useOrganization();
   const { accentColor } = useAccentTheme();
+  const location = useLocation();
+
+  const urlProjectMatch = location.pathname.match(/\/projects\/(\d+)/);
+  const targetProjectId = urlProjectMatch
+    ? parseInt(urlProjectMatch[1], 10)
+    : (activeProject?.id || null);
+  const isProjectMode = mode === 'project' || Boolean(urlProjectMatch);
+
+  const isProjectHeaderLoading =
+    isProjectLoading ||
+    (Boolean(targetProjectId) && (!activeProject || activeProject.id !== targetProjectId));
 
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -81,7 +94,7 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
         isCollapsed ? 'px-2 flex items-center justify-center' : 'px-3'
       )}
     >
-      {mode === 'workspace' ? (
+      {!isProjectMode ? (
         <div
           className={cn(
             'flex items-center transition-all duration-200',
@@ -89,48 +102,54 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
           )}
         >
           {/* Organization / Workspace Selector trigger */}
-          <button
-            onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
-            className={cn(
-              'flex items-center rounded-md hover:bg-sidebar-hover text-sidebar-text-active transition-colors duration-150 group cursor-pointer',
-              isCollapsed ? 'p-1.5 justify-center' : 'gap-2 px-2 py-1.5 -ml-1 max-w-[155px]'
-            )}
-            title={currentOrganization ? `${currentOrganization.name} (${currentOrganization.slug})` : 'DevFlow Workspace'}
+          <FloatingTooltip
+            content={currentOrganization ? currentOrganization.name : 'DevFlow Workspace'}
+            enabled={Boolean(isCollapsed)}
+            side="right"
           >
-            {/* Organization Avatar or DevFlow Logo */}
-            {currentOrganization ? (
-              <OrgAvatar
-                name={currentOrganization.name}
-                logoUrl={currentOrganization.logoUrl}
-                className="w-5 h-5"
-                iconSize={11}
-                roundedClassName="rounded"
-              />
-            ) : (
-              <div className="w-5 h-5 rounded flex items-center justify-center text-white flex-shrink-0">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-200">
-                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                </svg>
-              </div>
-            )}
-
-            {!isCollapsed && (
-              <>
-                <span className="font-semibold text-[13.5px] tracking-tight truncate text-zinc-100">
-                  {currentOrganization?.name || 'DevFlow'}
-                </span>
-                <ChevronDown
-                  size={13}
-                  className={`text-sidebar-text-muted transition-transform duration-150 flex-shrink-0 ${
-                    isWorkspaceMenuOpen ? 'rotate-180' : ''
-                  }`}
+            <button
+              onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
+              className={cn(
+                'flex items-center rounded-md hover:bg-sidebar-hover text-sidebar-text-active transition-colors duration-150 group cursor-pointer',
+                isCollapsed ? 'p-1.5 justify-center' : 'gap-2 px-2 py-1.5 -ml-1 max-w-[155px]'
+              )}
+              title={!isCollapsed ? (currentOrganization ? `${currentOrganization.name} (${currentOrganization.slug})` : 'DevFlow Workspace') : undefined}
+            >
+              {/* Organization Avatar or DevFlow Logo */}
+              {currentOrganization ? (
+                <OrgAvatar
+                  name={currentOrganization.name}
+                  logoUrl={currentOrganization.logoUrl}
+                  className="w-5 h-5"
+                  iconSize={11}
+                  roundedClassName="rounded"
                 />
-              </>
-            )}
-          </button>
+              ) : (
+                <div className="w-5 h-5 rounded flex items-center justify-center text-white flex-shrink-0">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-200">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  </svg>
+                </div>
+              )}
+
+              {!isCollapsed && (
+                <>
+                  <span className="font-semibold text-[13.5px] tracking-tight truncate text-zinc-100">
+                    {currentOrganization?.name || 'DevFlow'}
+                  </span>
+                  <ChevronDown
+                    size={13}
+                    className={`text-sidebar-text-muted transition-transform duration-150 flex-shrink-0 ${
+                      isWorkspaceMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </>
+              )}
+            </button>
+          </FloatingTooltip>
 
           {/* Quick actions (Search & Quick Create) */}
           {!isCollapsed && (() => {
@@ -166,13 +185,22 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
           )}
         >
           {isCollapsed ? (
-            <button
-              onClick={() => exitProjectMode()}
-              className="p-1 rounded hover:bg-sidebar-hover transition-colors flex items-center justify-center cursor-pointer group"
-              title={`Back to Workspace (${activeProject?.title || 'Project'})`}
-            >
-              {renderProjectAvatar()}
-            </button>
+            isProjectHeaderLoading ? (
+              <div className="w-6 h-6 rounded bg-zinc-800/80 border border-zinc-700/50 animate-pulse flex items-center justify-center shrink-0" />
+            ) : (
+              <FloatingTooltip
+                content={`Back to Workspace (${activeProject?.title || 'Project'})`}
+                enabled={Boolean(isCollapsed)}
+                side="right"
+              >
+                <button
+                  onClick={() => exitProjectMode()}
+                  className="p-1 rounded hover:bg-sidebar-hover transition-colors flex items-center justify-center cursor-pointer group"
+                >
+                  {renderProjectAvatar()}
+                </button>
+              </FloatingTooltip>
+            )
           ) : (
             <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
               <button
@@ -182,12 +210,12 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ isCollapsed }) => 
               >
                 <ArrowLeft size={14} />
               </button>
-              {isProjectLoading ? (
-                <div className="flex items-center gap-2 truncate animate-pulse">
+              {isProjectHeaderLoading ? (
+                <div className="flex items-center gap-2 truncate animate-pulse flex-1 min-w-0">
                   <div className="w-5 h-5 rounded bg-zinc-800/80 border border-zinc-700/50 shrink-0" />
-                  <div className="space-y-1">
-                    <div className="w-8 h-2 bg-zinc-800/60 rounded" />
-                    <div className="w-24 h-3 bg-zinc-800/90 rounded" />
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="w-10 h-2 bg-zinc-800/70 rounded" />
+                    <div className="w-28 h-3.5 bg-zinc-800/90 rounded" />
                   </div>
                 </div>
               ) : (

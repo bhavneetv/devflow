@@ -137,7 +137,10 @@ export const SidebarOrderSettingsView: React.FC<SidebarOrderSettingsViewProps> =
   // Sync with live app sidebar
   const syncSidebar = async () => {
     try {
-      await refreshProjectModules(projectId);
+      if (refreshProjectModules) {
+        await refreshProjectModules(projectId);
+      }
+      window.dispatchEvent(new CustomEvent('devflow:modules-updated'));
     } catch {
       // non-blocking
     }

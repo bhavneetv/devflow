@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FolderTree,
+  Folder,
+  FolderPlus,
   Plus,
   Search,
   GripVertical,
@@ -72,6 +74,7 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
 
   // Modals state
   const [isCreateModuleOpen, setIsCreateModuleOpen] = useState(false);
+  const [createModuleParent, setCreateModuleParent] = useState<ProjectModule | null>(null);
   const [editingModule, setEditingModule] = useState<ProjectModule | null>(null);
   const [deletingModule, setDeletingModule] = useState<ProjectModule | null>(null);
   const [deleteModuleMode, setDeleteModuleMode] = useState<'cascade' | 'move'>('cascade');
@@ -145,6 +148,7 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
       if (refreshProjectModules) {
         await refreshProjectModules(projectId);
       }
+      window.dispatchEvent(new CustomEvent('devflow:modules-updated'));
     } catch (e) {
       console.warn('Failed to sync sidebar:', e);
     }
@@ -159,9 +163,24 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
       const matchesName = m.name.toLowerCase().includes(q);
       const matchesDesc = m.description?.toLowerCase().includes(q);
       const matchesSub = m.submodules?.some((s) => s.name.toLowerCase().includes(q));
-      return matchesName || matchesDesc || matchesSub;
+      const hasMatchingChild = modules.some(
+        (c) =>
+          c.parentId === m.id &&
+          (c.name.toLowerCase().includes(q) ||
+            c.description?.toLowerCase().includes(q) ||
+            c.submodules?.some((cs) => cs.name.toLowerCase().includes(q)))
+      );
+      return matchesName || matchesDesc || matchesSub || hasMatchingChild;
     });
   }, [modules, searchQuery]);
+
+  const rootModules = useMemo(() => {
+    return filteredModules.filter((m) => !m.parentId);
+  }, [filteredModules]);
+
+  const getChildModules = (parentId: number) => {
+    return modules.filter((m) => m.parentId === parentId);
+  };
 
   // Stats
   const totalSubmodulesCount = useMemo(() => {
@@ -409,6 +428,36 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
     }
   };
 
+  const handleToggleSubmodulePin = async (sub: ProjectSubmodule) => {
+    try {
+      const nextPin = !sub.isPinned;
+      const res = await projectModuleService.updateSubmodule(projectId, sub.id, {
+        isPinned: nextPin,
+      });
+      if (res.success) {
+        setModules((prev) =>
+          prev.map((m) =>
+            m.id === sub.moduleId
+              ? {
+                  ...m,
+                  submodules: m.submodules?.map((s) =>
+                    s.id === sub.id ? { ...s, isPinned: nextPin } : s
+                  ),
+                }
+              : m
+          )
+        );
+        await syncSidebar();
+        toast.success(
+          nextPin ? 'Submodule Pinned' : 'Submodule Unpinned',
+          `"${sub.name}" is now ${nextPin ? 'pinned at the top of the sidebar' : 'unpinned'}.`
+        );
+      }
+    } catch (err: any) {
+      toast.error('Pin toggle failed', err.message);
+    }
+  };
+
   const handleMoveSubmoduleOrder = async (
     moduleId: number,
     submoduleId: number,
@@ -621,7 +670,10 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
 
           <button
             type="button"
-            onClick={() => setIsCreateModuleOpen(true)}
+            onClick={() => {
+              setCreateModuleParent(null);
+              setIsCreateModuleOpen(true);
+            }}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-all cursor-pointer"
             style={{ backgroundColor: accentColor }}
           >
@@ -689,7 +741,10 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
           <div className="flex items-center gap-2.5 pt-2">
             <button
               type="button"
-              onClick={() => setIsCreateModuleOpen(true)}
+              onClick={() => {
+                setCreateModuleParent(null);
+                setIsCreateModuleOpen(true);
+              }}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-sm cursor-pointer"
               style={{ backgroundColor: accentColor }}
             >
@@ -713,14 +768,17 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredModules.map((module, mIdx) => {
+          {rootModules.map((module, mIdx) => {
             const isExpanded = expandedModuleIds[module.id] ?? true;
             const ModuleIcon = resolveModuleIcon(module.icon, FolderKanban);
             const submodules = module.submodules || [];
             const isFirst = mIdx === 0;
-            const isLast = mIdx === filteredModules.length - 1;
+            const isLast = mIdx === rootModules.length - 1;
             const isDragging = draggingModuleId === module.id;
             const isOver = dragOverModuleId === module.id;
+            const hasActiveDropdown =
+              activeModuleMenuId === module.id ||
+              submodules.some((s) => s.id === activeSubmoduleMenuId);
 
             return (
               <div
@@ -734,7 +792,8 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                   setDragOverModuleId(null);
                 }}
                 className={cn(
-                  'rounded-xl border bg-[#0E0F14] transition-all overflow-hidden',
+                  'rounded-xl border bg-[#0E0F14] transition-all',
+                  hasActiveDropdown ? 'overflow-visible z-30' : 'overflow-hidden',
                   isDragging ? 'opacity-40 border-dashed border-zinc-600' : 'border-[#27272A]',
                   isOver ? 'border-emerald-500/70 ring-1 ring-emerald-500/30' : '',
                   !module.isVisible && 'opacity-70 bg-[#0A0A0D]'
@@ -855,6 +914,21 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                     </button>
 
                     {/* Add Submodule Button */}
+                    {!module.parentId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreateModuleParent(module);
+                          setIsCreateModuleOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-amber-400/90 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-colors cursor-pointer shadow-sm"
+                        title={`Add a module folder inside ${module.name}`}
+                      >
+                        <FolderPlus size={12} />
+                        <span className="hidden sm:inline">Add Folder</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => setCreateSubmoduleTargetModuleId(module.id)}
@@ -868,9 +942,10 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                     <div className="relative" data-dropdown-container>
                       <button
                         type="button"
-                        onClick={() =>
-                          setActiveModuleMenuId(activeModuleMenuId === module.id ? null : module.id)
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveModuleMenuId(activeModuleMenuId === module.id ? null : module.id);
+                        }}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
                         title="Module options"
                       >
@@ -878,7 +953,12 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                       </button>
 
                       {activeModuleMenuId === module.id && (
-                        <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-[#27272A] bg-[#14151B] shadow-xl p-1 z-30 space-y-0.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
+                        <div
+                          className={cn(
+                            "absolute right-0 w-48 rounded-xl border border-[#27272A] bg-[#14151B] shadow-2xl p-1 z-50 space-y-0.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150",
+                            isLast ? "bottom-full mb-1" : "top-full mt-1"
+                          )}
+                        >
                           <button
                             type="button"
                             onClick={() => {
@@ -902,6 +982,21 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                             <Plus size={13} className="text-zinc-400" />
                             <span>Add Submodule</span>
                           </button>
+
+                          {!module.parentId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveModuleMenuId(null);
+                                setCreateModuleParent(module);
+                                setIsCreateModuleOpen(true);
+                              }}
+                              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer text-amber-400"
+                            >
+                              <FolderPlus size={13} />
+                              <span>Add Module Folder</span>
+                            </button>
+                          )}
 
                           <button
                             type="button"
@@ -1102,16 +1197,22 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                                 <div className="relative" data-dropdown-container>
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      setActiveSubmoduleMenuId(activeSubmoduleMenuId === sub.id ? null : sub.id)
-                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveSubmoduleMenuId(activeSubmoduleMenuId === sub.id ? null : sub.id);
+                                    }}
                                     className="p-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
                                   >
                                     <MoreVertical size={13} />
                                   </button>
 
                                   {activeSubmoduleMenuId === sub.id && (
-                                    <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-[#27272A] bg-[#14151B] shadow-xl p-1 z-30 space-y-0.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
+                                    <div
+                                      className={cn(
+                                        "absolute right-0 w-44 rounded-xl border border-[#27272A] bg-[#14151B] shadow-2xl p-1 z-50 space-y-0.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150",
+                                        isSubLast ? "bottom-full mb-1" : "top-full mt-1"
+                                      )}
+                                    >
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -1178,6 +1279,308 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                           );
                         })
                       )}
+
+                      {/* ── Nested Module Folders (1-Level Nesting Max) ── */}
+                      {(() => {
+                        const childFolders = getChildModules(module.id);
+                        if (childFolders.length === 0) return null;
+
+                        return (
+                          <div className="p-3 sm:p-4 bg-[#0B0C10]/80 border-t border-[#1C1D24] space-y-2.5">
+                            <div className="flex items-center justify-between px-1">
+                              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                                <Folder size={12} className="text-amber-400" />
+                                <span>Module Folders ({childFolders.length})</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCreateModuleParent(module);
+                                  setIsCreateModuleOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+                              >
+                                <Plus size={11} />
+                                <span>New Folder</span>
+                              </button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {childFolders.map((childFolder) => {
+                                const ChildIcon = resolveModuleIcon(childFolder.icon, Folder);
+                                const childSubs = childFolder.submodules || [];
+                                const isChildExpanded = expandedModuleIds[childFolder.id] ?? true;
+
+                                return (
+                                  <div
+                                    key={childFolder.id}
+                                    className="rounded-xl border border-[#27272A]/90 bg-[#12131A] shadow-md overflow-hidden transition-all"
+                                  >
+                                    {/* Child Folder Header */}
+                                    <div className="p-2.5 sm:px-3 flex items-center justify-between gap-2.5 bg-[#161722]/80 border-b border-[#22232E]">
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleModuleExpand(childFolder.id)}
+                                          className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                                        >
+                                          {isChildExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                        </button>
+
+                                        <div className="w-6 h-6 rounded-md flex items-center justify-center text-amber-300 bg-amber-500/15 border border-amber-500/30 shrink-0">
+                                          <ChildIcon size={13} />
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-xs font-semibold text-white truncate">
+                                              {childFolder.name}
+                                            </span>
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-800/80 text-zinc-400 border border-zinc-700/50">
+                                              {childSubs.length} submodules
+                                            </span>
+                                          </div>
+                                          {childFolder.description && (
+                                            <p className="text-[11px] text-zinc-400 truncate">{childFolder.description}</p>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Child Folder Actions - NO "+ Folder" button here to strictly enforce 1-level limit */}
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => setCreateSubmoduleTargetModuleId(childFolder.id)}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors cursor-pointer"
+                                          title="Add submodule inside this folder"
+                                        >
+                                          <Plus size={11} />
+                                          <span>Submodule</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleModuleVisibility(childFolder)}
+                                          className={cn(
+                                            'p-1 rounded border transition-colors cursor-pointer',
+                                            childFolder.isVisible
+                                              ? 'text-zinc-400 hover:text-white border-zinc-800 hover:bg-zinc-800'
+                                              : 'text-amber-400 border-amber-500/30 bg-amber-500/10'
+                                          )}
+                                          title={childFolder.isVisible ? 'Hide from sidebar' : 'Show in sidebar'}
+                                        >
+                                          {childFolder.isVisible ? <Eye size={12} /> : <EyeOff size={12} />}
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingModule(childFolder)}
+                                          className="p-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                                          title="Rename folder"
+                                        >
+                                          <Edit2 size={12} />
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setDeletingModule(childFolder);
+                                            setDeleteModuleMode('cascade');
+                                            const otherMods = modules.filter((m) => m.id !== childFolder.id);
+                                            setDeleteTargetModuleId(otherMods.length > 0 ? otherMods[0].id : null);
+                                          }}
+                                          className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-red-500/15 transition-colors cursor-pointer"
+                                          title="Delete folder"
+                                        >
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Child Folder Submodules */}
+                                    {isChildExpanded && (
+                                      <div
+                                        onDragOver={(e) => {
+                                          if (draggingSubmoduleId) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setDragOverModuleId(childFolder.id);
+                                          }
+                                        }}
+                                        onDrop={async (e) => {
+                                          if (draggingSubmoduleId && dragSourceModuleId && dragSourceModuleId !== childFolder.id) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const subId = draggingSubmoduleId;
+                                            setDraggingSubmoduleId(null);
+                                            setDragOverModuleId(null);
+                                            try {
+                                              setIsSaving(true);
+                                              const res = await projectModuleService.moveSubmodule(projectId, subId, childFolder.id);
+                                              if (res.success) {
+                                                toast.success('Submodule Moved', `Moved to ${childFolder.name}`);
+                                                await loadModules();
+                                                await syncSidebar();
+                                              } else {
+                                                toast.error('Move failed', res.error);
+                                              }
+                                            } catch (err: any) {
+                                              toast.error('Move failed', err.message);
+                                            } finally {
+                                              setIsSaving(false);
+                                            }
+                                          }
+                                        }}
+                                        className={cn(
+                                          'divide-y divide-[#1D1E28] bg-[#0E0F16]/60 transition-colors',
+                                          dragOverModuleId === childFolder.id && draggingSubmoduleId && 'bg-indigo-500/15 border-indigo-500/60'
+                                        )}
+                                      >
+                                        {childSubs.length === 0 ? (
+                                          <div className="py-3 px-4 text-center text-[11px] text-zinc-500 flex items-center justify-center gap-1.5">
+                                            <Info size={12} />
+                                            <span>No submodules in this folder.</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => setCreateSubmoduleTargetModuleId(childFolder.id)}
+                                              className="text-white underline hover:no-underline font-medium cursor-pointer ml-1"
+                                            >
+                                              Add one now
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          childSubs.map((sub, sIdx) => {
+                                            const SubIcon = resolveModuleIcon(sub.icon, FolderKanban);
+                                            const isSubLast = sIdx === childSubs.length - 1;
+
+                                            return (
+                                              <div
+                                                key={sub.id}
+                                                draggable
+                                                onDragStart={(e) => handleSubmoduleDragStart(e, childFolder.id, sub.id)}
+                                                onDragOver={(e) => handleSubmoduleDragOver(e, childFolder.id, sub.id)}
+                                                onDrop={(e) => handleSubmoduleDrop(e, childFolder.id, sub.id)}
+                                                onDragEnd={handleSubmoduleDragEnd}
+                                                className={cn(
+                                                  'p-2.5 pl-4 sm:pl-5 flex items-center justify-between gap-3 text-xs transition-all hover:bg-[#151622] group/row select-none',
+                                                  !sub.isVisible && 'opacity-60 bg-[#0A0A0D]',
+                                                  draggingSubmoduleId === sub.id && 'opacity-30 border-dashed border-2 border-indigo-500/50'
+                                                )}
+                                              >
+                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                  <div
+                                                    className="text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing p-1 -m-1 rounded transition-colors shrink-0"
+                                                    title="Drag to reorder or move"
+                                                  >
+                                                    <GripVertical size={12} />
+                                                  </div>
+                                                  <div className="w-5 h-5 rounded flex items-center justify-center text-zinc-300 bg-zinc-800/80 border border-zinc-700/60 shrink-0">
+                                                    <SubIcon size={11} />
+                                                  </div>
+                                                  <div className="min-w-0 flex-1">
+                                                    <span className="font-medium text-white truncate block">{sub.name}</span>
+                                                  </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleToggleSubmodulePin(sub)}
+                                                    className={cn(
+                                                      'p-1 rounded transition-colors cursor-pointer',
+                                                      sub.isPinned
+                                                        ? 'text-amber-400 bg-amber-500/10'
+                                                        : 'text-zinc-500 hover:text-zinc-300 opacity-0 group-hover/row:opacity-100'
+                                                    )}
+                                                    title={sub.isPinned ? 'Unpin' : 'Pin'}
+                                                  >
+                                                    <Pin size={11} className={sub.isPinned ? 'fill-amber-400' : ''} />
+                                                  </button>
+
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleToggleSubmoduleVisibility(sub)}
+                                                    className={cn(
+                                                      'p-1 rounded transition-colors cursor-pointer',
+                                                      sub.isVisible
+                                                        ? 'text-zinc-400 hover:text-white'
+                                                        : 'text-amber-400 bg-amber-500/10'
+                                                    )}
+                                                    title={sub.isVisible ? 'Hide' : 'Show'}
+                                                  >
+                                                    {sub.isVisible ? <Eye size={11} /> : <EyeOff size={11} />}
+                                                  </button>
+
+                                                  <div className="relative" data-dropdown-container>
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setActiveSubmoduleMenuId(activeSubmoduleMenuId === sub.id ? null : sub.id);
+                                                      }}
+                                                      className="p-1 rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                                                    >
+                                                      <MoreVertical size={12} />
+                                                    </button>
+
+                                                    {activeSubmoduleMenuId === sub.id && (
+                                                      <div
+                                                        className={cn(
+                                                          'absolute right-0 w-44 rounded-xl border border-[#27272A] bg-[#14151B] shadow-2xl p-1 z-50 space-y-0.5 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150',
+                                                          isSubLast ? 'bottom-full mb-1' : 'top-full mt-1'
+                                                        )}
+                                                      >
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            setActiveSubmoduleMenuId(null);
+                                                            setEditingSubmodule(sub);
+                                                          }}
+                                                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer"
+                                                        >
+                                                          <Edit2 size={12} className="text-zinc-400" />
+                                                          <span>Rename / Icon</span>
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            setActiveSubmoduleMenuId(null);
+                                                            setMovingSubmodule(sub);
+                                                          }}
+                                                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer"
+                                                        >
+                                                          <MoveRight size={12} className="text-zinc-400" />
+                                                          <span>Move to Module...</span>
+                                                        </button>
+                                                        <div className="h-px bg-zinc-800 my-1" />
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            setActiveSubmoduleMenuId(null);
+                                                            setDeletingSubmodule(sub);
+                                                          }}
+                                                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-red-500/15 text-red-400 text-left cursor-pointer"
+                                                        >
+                                                          <Trash2 size={12} />
+                                                          <span>Delete Submodule</span>
+                                                        </button>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1187,21 +1590,31 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
         </div>
       )}
 
-      {/* ─── MODAL 1: Create Module ─────────────────────────────────────────── */}
-      {isCreateModuleOpen && (
-        <CreateModuleModal
-          projectId={projectId}
-          accentColor={accentColor}
-          existingNames={modules.map((m) => m.name)}
-          onClose={() => setIsCreateModuleOpen(false)}
-          onCreated={async (newMod) => {
-            setIsCreateModuleOpen(false);
-            await loadModules();
-            await syncSidebar();
-            toast.success('Module Created', `Created module "${newMod.name}"`);
-          }}
-        />
-      )}
+      {/* ─── MODAL 1: Create Module Drawer ─────────────────────────────────── */}
+      <AnimatePresence>
+        {isCreateModuleOpen && (
+          <CreateModuleModal
+            projectId={projectId}
+            parentModule={createModuleParent}
+            accentColor={accentColor}
+            existingNames={modules.map((m) => m.name)}
+            onClose={() => {
+              setIsCreateModuleOpen(false);
+              setCreateModuleParent(null);
+            }}
+            onCreated={async (newMod) => {
+              setIsCreateModuleOpen(false);
+              setCreateModuleParent(null);
+              await loadModules();
+              await syncSidebar();
+              toast.success(
+                createModuleParent ? 'Folder Created' : 'Module Created',
+                `Created ${createModuleParent ? 'module folder' : 'module'} "${newMod.name}"`
+              );
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ─── MODAL 2: Edit Module ───────────────────────────────────────────── */}
       {editingModule && (
@@ -1235,38 +1648,42 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
         />
       )}
 
-      {/* ─── MODAL 4: Create Submodule ───────────────────────────────────────── */}
-      {createSubmoduleTargetModuleId && (
-        <CreateSubmoduleModal
-          projectId={projectId}
-          moduleId={createSubmoduleTargetModuleId}
-          parentModule={modules.find((m) => m.id === createSubmoduleTargetModuleId)}
-          accentColor={accentColor}
-          onClose={() => setCreateSubmoduleTargetModuleId(null)}
-          onCreated={async () => {
-            setCreateSubmoduleTargetModuleId(null);
-            await loadModules();
-            await syncSidebar();
-            toast.success('Submodule Added', 'New submodule added to module.');
-          }}
-        />
-      )}
+      {/* ─── MODAL 4: Create Submodule Drawer ─────────────────────────────────── */}
+      <AnimatePresence>
+        {createSubmoduleTargetModuleId && (
+          <CreateSubmoduleModal
+            projectId={projectId}
+            moduleId={createSubmoduleTargetModuleId}
+            parentModule={modules.find((m) => m.id === createSubmoduleTargetModuleId)}
+            accentColor={accentColor}
+            onClose={() => setCreateSubmoduleTargetModuleId(null)}
+            onCreated={async () => {
+              setCreateSubmoduleTargetModuleId(null);
+              await loadModules();
+              await syncSidebar();
+              toast.success('Submodule Added', 'New submodule added to module.');
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* ─── MODAL 5: Edit Submodule ─────────────────────────────────────────── */}
-      {editingSubmodule && (
-        <EditSubmoduleModal
-          projectId={projectId}
-          submodule={editingSubmodule}
-          accentColor={accentColor}
-          onClose={() => setEditingSubmodule(null)}
-          onUpdated={async () => {
-            setEditingSubmodule(null);
-            await loadModules();
-            await syncSidebar();
-            toast.success('Submodule Updated', 'Submodule details updated.');
-          }}
-        />
-      )}
+      {/* ─── MODAL 5: Edit Submodule Drawer ───────────────────────────────────── */}
+      <AnimatePresence>
+        {editingSubmodule && (
+          <EditSubmoduleModal
+            projectId={projectId}
+            submodule={editingSubmodule}
+            accentColor={accentColor}
+            onClose={() => setEditingSubmodule(null)}
+            onUpdated={async () => {
+              setEditingSubmodule(null);
+              await loadModules();
+              await syncSidebar();
+              toast.success('Submodule Updated', 'Submodule details updated.');
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ─── MODAL 6: Move Submodule ─────────────────────────────────────────── */}
       {movingSubmodule && (
@@ -1299,6 +1716,7 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
 
 interface CreateModuleModalProps {
   projectId: number;
+  parentModule?: ProjectModule | null;
   accentColor: string;
   existingNames: string[];
   onClose: () => void;
@@ -1307,6 +1725,7 @@ interface CreateModuleModalProps {
 
 const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
   projectId,
+  parentModule,
   accentColor,
   existingNames,
   onClose,
@@ -1320,18 +1739,29 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const isFolder = Boolean(parentModule);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     const trimmed = name.trim();
     if (!trimmed) {
-      setError('Module name is required');
+      setError(isFolder ? 'Folder name is required' : 'Module name is required');
       return;
     }
 
     if (existingNames.some((n) => n.trim().toLowerCase() === trimmed.toLowerCase())) {
-      setError(`A module named "${trimmed}" already exists in this project`);
+      setError(`A module or folder named "${trimmed}" already exists in this project`);
       return;
     }
 
@@ -1341,8 +1771,9 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
         name: trimmed,
         description: description.trim() || null,
         icon,
+        parentId: parentModule ? parentModule.id : null,
         isVisible,
-        isPinned,
+        isPinned: isFolder ? false : isPinned,
       });
 
       if (res.success && res.data) {
@@ -1358,34 +1789,56 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="w-full max-w-xl max-h-[90vh] flex flex-col rounded-2xl border border-[#27272A] bg-[#121319] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs"
+    >
+      {/* Backdrop click to close */}
+      <div className="absolute inset-0" onClick={onClose} />
+
+      {/* Right-Side Slide-Over Drawer with Spring Animation */}
+      <motion.div
+        initial={{ x: '100%', opacity: 0.5 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '100%', opacity: 0.5 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 280, mass: 0.85 }}
+        className="relative w-full max-w-lg h-full bg-[#0F1015] border-l border-[#27272A] shadow-2xl flex flex-col z-10"
+      >
         {/* Sticky Header */}
-        <div className="shrink-0 p-4 px-5 border-b border-[#27272A] flex items-center justify-between bg-[#121319]">
-          <div className="flex items-center gap-2">
+        <div className="shrink-0 h-14 px-5 border-b border-[#27272A] flex items-center justify-between bg-[#121319]">
+          <div className="flex items-center gap-2.5">
             <div
-              className="w-6 h-6 rounded-lg flex items-center justify-center"
+              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
               style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
             >
-              <Boxes size={14} strokeWidth={2.5} />
+              {isFolder ? <FolderPlus size={15} strokeWidth={2.2} /> : <Boxes size={15} strokeWidth={2.2} />}
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Create New Module</h2>
-              <p className="text-[11px] text-zinc-400">Group related features and submodules</p>
+              <h2 className="text-xs font-semibold text-white">
+                {isFolder ? 'Create Module Folder' : 'Create New Module'}
+              </h2>
+              <p className="text-[11px] text-zinc-400">
+                {isFolder
+                  ? `Inside parent: ${parentModule?.name} (1 level max)`
+                  : 'Group related features and submodules'}
+              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+            className="text-zinc-500 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
+        {/* Scrollable Form Body - NO scrollbar */}
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto p-5 space-y-4.5 scrollbar-thin scrollbar-thumb-zinc-700">
+          <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-none">
             {error && (
               <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-start gap-2">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
@@ -1393,10 +1846,19 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
               </div>
             )}
 
-            {/* Module Name */}
+            {isFolder && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2">
+                <FolderPlus size={14} className="shrink-0 mt-0.5 text-amber-400" />
+                <span>
+                  This folder will be nested inside <strong>{parentModule?.name}</strong>. Strictly 1-level limit: this child folder cannot contain further module folders.
+                </span>
+              </div>
+            )}
+
+            {/* Name */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-zinc-300">
-                Module Name <span className="text-red-400">*</span>
+                {isFolder ? 'Folder Name' : 'Module Name'} <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -1404,8 +1866,9 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
                 maxLength={60}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Planning, Development, QA..."
+                placeholder={isFolder ? 'e.g. Services, APIs, Workflows...' : 'e.g. Planning, Development, QA...'}
                 className="w-full px-3 py-2 text-xs bg-[#0E0F14] border border-[#27272A] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors"
+                autoFocus
               />
             </div>
 
@@ -1417,14 +1880,14 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
                 maxLength={200}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Brief description of this module's scope..."
+                placeholder="Brief description of this scope..."
                 className="w-full px-3 py-2 text-xs bg-[#0E0F14] border border-[#27272A] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 resize-none transition-colors"
               />
             </div>
 
             {/* Icon Picker */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-300">Choose Module Icon</label>
+              <label className="text-xs font-medium text-zinc-300">Choose Icon</label>
               <ModuleIconPicker value={icon} onChange={setIcon} accentColor={accentColor} />
             </div>
 
@@ -1442,22 +1905,24 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
               />
             </div>
 
-            {/* Pin to Top Toggle */}
-            <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#27272A] bg-[#0E0F14]">
-              <div className="flex items-center gap-2">
-                <Pin size={14} className={isPinned ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'} />
-                <div>
-                  <p className="text-xs font-medium text-white">Pin to Top of Sidebar</p>
-                  <p className="text-[11px] text-zinc-400">Position this module prominently at the top of the sidebar</p>
+            {/* Pin to Top Toggle (only for root modules) */}
+            {!isFolder && (
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#27272A] bg-[#0E0F14]">
+                <div className="flex items-center gap-2">
+                  <Pin size={14} className={isPinned ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'} />
+                  <div>
+                    <p className="text-xs font-medium text-white">Pin to Top of Sidebar</p>
+                    <p className="text-[11px] text-zinc-400">Position this module prominently at the top of the sidebar</p>
+                  </div>
                 </div>
+                <input
+                  type="checkbox"
+                  checked={isPinned}
+                  onChange={(e) => setIsPinned(e.target.checked)}
+                  className="w-4 h-4 rounded text-amber-500 focus:ring-0 cursor-pointer"
+                />
               </div>
-              <input
-                type="checkbox"
-                checked={isPinned}
-                onChange={(e) => setIsPinned(e.target.checked)}
-                className="w-4 h-4 rounded text-amber-500 focus:ring-0 cursor-pointer"
-              />
-            </div>
+            )}
           </div>
 
           {/* Sticky Footer */}
@@ -1481,13 +1946,13 @@ const CreateModuleModal: React.FC<CreateModuleModalProps> = ({
                   <span>Creating...</span>
                 </>
               ) : (
-                <span>Create Module</span>
+                <span>{isFolder ? 'Create Folder' : 'Create Module'}</span>
               )}
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 
@@ -1781,7 +2246,15 @@ const DeleteModuleModal: React.FC<DeleteModuleModalProps> = ({
   );
 };
 
-// ─── Create Submodule Modal ───────────────────────────────────────────────────
+// ─── Create Submodule Drawer ───────────────────────────────────────────────────
+
+const BUILT_IN_CATEGORIES: { id: string; label: string; keys?: string[] }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'git', label: 'Git', keys: ['git-overview', 'repositories', 'pulls', 'git-commits', 'git-code'] },
+  { id: 'development', label: 'Development', keys: ['overview', 'issues', 'board', 'cycles', 'milestones'] },
+  { id: 'testing', label: 'Testing', keys: ['test-cases', 'defects'] },
+  { id: 'collaboration', label: 'Collaboration', keys: ['docs', 'whiteboard', 'activity'] },
+];
 
 interface CreateSubmoduleModalProps {
   projectId: number;
@@ -1802,11 +2275,25 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
 }) => {
   const [subType, setSubType] = useState<'built_in' | 'composite' | 'custom'>('built_in');
   const [selectedBuiltInKey, setSelectedBuiltInKey] = useState<string>('issues');
+  const [builtInCategory, setBuiltInCategory] = useState<string>('all');
+  const [moduleSearch, setModuleSearch] = useState<string>('');
   const [name, setName] = useState('Issues');
   const [icon, setIcon] = useState('circle-dot');
-  const [isVisible, setIsVisible] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   // Composite builder state
   const [compositeFeatures, setCompositeFeatures] = useState<GitFeatureKey[]>([
@@ -1828,6 +2315,8 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
     setIcon(def.defaultIcon);
   };
 
+
+
   const handleToggleCompositeFeature = (key: GitFeatureKey) => {
     setCompositeFeatures((prev) =>
       prev.includes(key) ? (prev.length > 1 ? prev.filter((k) => k !== key) : prev) : [...prev, key]
@@ -1839,6 +2328,26 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
       prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
     );
   };
+
+  const filteredBuiltIns = useMemo(() => {
+    let list = BUILT_IN_SUBMODULE_DEFINITIONS;
+    if (builtInCategory !== 'all') {
+      const cat = BUILT_IN_CATEGORIES.find((c) => c.id === builtInCategory);
+      if (cat?.keys) {
+        list = list.filter((item) => cat.keys!.includes(item.key));
+      }
+    }
+    if (moduleSearch.trim()) {
+      const q = moduleSearch.toLowerCase();
+      list = list.filter(
+        (item) =>
+          item.defaultName.toLowerCase().includes(q) ||
+          item.description.toLowerCase().includes(q) ||
+          item.key.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [builtInCategory, moduleSearch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1875,7 +2384,7 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
         builtInKey: subType === 'built_in' ? selectedBuiltInKey : null,
         config: configJson,
         icon,
-        isVisible,
+        isVisible: true,
       });
 
       if (res.success) {
@@ -1891,315 +2400,451 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="w-full max-w-xl max-h-[90vh] flex flex-col rounded-2xl border border-[#27272A] bg-[#121319] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
-        {/* Sticky Header */}
-        <div className="shrink-0 p-4 px-5 border-b border-[#27272A] flex items-center justify-between bg-[#121319]">
-          <div className="flex items-center gap-2">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs"
+    >
+      {/* Backdrop click to close */}
+      <div className="absolute inset-0" onClick={onClose} />
+
+      {/* Right-Side Slide-Over Drawer with Spring Animation */}
+      <motion.div
+        initial={{ x: '100%', opacity: 0.5 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '100%', opacity: 0.5 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 280, mass: 0.85 }}
+        className="relative w-full max-w-2xl h-full bg-[#0F1015] border-l border-[#27272A] shadow-2xl flex flex-col z-10"
+      >
+        {/* Drawer Header */}
+        <div className="shrink-0 h-14 px-5 border-b border-[#27272A] flex items-center justify-between bg-[#121319]">
+          <div className="flex items-center gap-2.5">
             <div
-              className="w-6 h-6 rounded-lg flex items-center justify-center"
+              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
               style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
             >
-              <Plus size={14} strokeWidth={2.5} />
+              <Plus size={15} strokeWidth={2.5} />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">
-                Add Submodule to {parentModule?.name || 'Module'}
+              <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
+                <span>Add Submodule</span>
+                <span className="text-zinc-500 font-normal">to</span>
+                <span className="text-zinc-300 font-medium truncate max-w-[220px]">
+                  {parentModule?.name || 'Module'}
+                </span>
               </h2>
-              <p className="text-[11px] text-zinc-400">Configure feature type, identity, and sidebar presence</p>
+              <p className="text-[11px] text-zinc-400">Choose type, pick preset, and configure identity</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+            className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Close (Esc)"
           >
             <X size={16} />
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
+        {/* Drawer Body - Split Left Sidebar & Right Content */}
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto p-5 space-y-4.5 scrollbar-thin scrollbar-thumb-zinc-700">
-            {error && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-start gap-2">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                <span>{error}</span>
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            {/* Left Submodule Type Sidebar */}
+            <div className="w-36 sm:w-40 bg-[#0C0D11] border-r border-[#27272A] p-2.5 space-y-1.5 shrink-0 select-none flex flex-col">
+              <div className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider px-2 pt-1 pb-1">
+                Submodule Type
               </div>
-            )}
 
-            {/* Submodule Type Switch */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-300">Submodule Type</label>
-              <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[#0E0F14] border border-[#27272A]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSubType('built_in');
-                    const def = BUILT_IN_SUBMODULE_DEFINITIONS[0];
-                    setSelectedBuiltInKey(def.key);
-                    setName(def.defaultName);
-                    setIcon(def.defaultIcon);
-                  }}
-                  className={cn(
-                    'py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5',
+              {/* Built-in Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSubType('built_in');
+                  const def =
+                    BUILT_IN_SUBMODULE_DEFINITIONS.find((d) => d.key === selectedBuiltInKey) ||
+                    BUILT_IN_SUBMODULE_DEFINITIONS[0];
+                  setName(def.defaultName);
+                  setIcon(def.defaultIcon);
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-medium transition-all cursor-pointer border',
+                  subType === 'built_in'
+                    ? 'text-white border-zinc-700 bg-zinc-800/90 shadow-xs'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                )}
+                style={
+                  subType === 'built_in'
+                    ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` }
+                    : undefined
+                }
+              >
+                <div
+                  className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 border transition-colors"
+                  style={
                     subType === 'built_in'
-                      ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700 font-semibold'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  )}
+                      ? { backgroundColor: `${accentColor}25`, borderColor: `${accentColor}60`, color: accentColor }
+                      : { backgroundColor: '#18191E', borderColor: '#27272A', color: '#71717A' }
+                  }
                 >
-                  <Sparkles size={13} style={{ color: subType === 'built_in' ? accentColor : undefined }} />
-                  <span>Built-in</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSubType('composite');
-                    setName('Git Dev Hub');
-                    setIcon('boxes');
-                  }}
-                  className={cn(
-                    'py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5',
+                  <Sparkles size={13} />
+                </div>
+                <div className="min-w-0">
+                  <span className="block font-semibold text-[11.5px] leading-tight">Built-in</span>
+                  <span className="text-[9.5px] text-zinc-500 block">Predefined tool</span>
+                </div>
+              </button>
+
+              {/* Composite Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSubType('composite');
+                  setName('Git Dev Hub');
+                  setIcon('boxes');
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-medium transition-all cursor-pointer border',
+                  subType === 'composite'
+                    ? 'text-white border-zinc-700 bg-zinc-800/90 shadow-xs'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                )}
+                style={
+                  subType === 'composite'
+                    ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` }
+                    : undefined
+                }
+              >
+                <div
+                  className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 border transition-colors"
+                  style={
                     subType === 'composite'
-                      ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700 font-semibold'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  )}
+                      ? { backgroundColor: `${accentColor}25`, borderColor: `${accentColor}60`, color: accentColor }
+                      : { backgroundColor: '#18191E', borderColor: '#27272A', color: '#71717A' }
+                  }
                 >
-                  <Boxes size={13} style={{ color: subType === 'composite' ? accentColor : undefined }} />
-                  <span>Composite</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSubType('custom');
-                    setName('');
-                    setIcon('circle-dot');
-                  }}
-                  className={cn(
-                    'py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5',
+                  <Boxes size={13} />
+                </div>
+                <div className="min-w-0">
+                  <span className="block font-semibold text-[11.5px] leading-tight">Composite</span>
+                  <span className="text-[9.5px] text-zinc-500 block">Multi-Git hub</span>
+                </div>
+              </button>
+
+              {/* Placeholder Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSubType('custom');
+                  setName('');
+                  setIcon('folder-kanban');
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-medium transition-all cursor-pointer border',
+                  subType === 'custom'
+                    ? 'text-white border-zinc-700 bg-zinc-800/90 shadow-xs'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+                )}
+                style={
+                  subType === 'custom'
+                    ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` }
+                    : undefined
+                }
+              >
+                <div
+                  className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 border transition-colors"
+                  style={
                     subType === 'custom'
-                      ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700 font-semibold'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  )}
+                      ? { backgroundColor: `${accentColor}25`, borderColor: `${accentColor}60`, color: accentColor }
+                      : { backgroundColor: '#18191E', borderColor: '#27272A', color: '#71717A' }
+                  }
                 >
-                  <FolderKanban size={13} style={{ color: subType === 'custom' ? accentColor : undefined }} />
-                  <span>Placeholder</span>
-                </button>
-              </div>
+                  <FolderKanban size={13} />
+                </div>
+                <div className="min-w-0">
+                  <span className="block font-semibold text-[11.5px] leading-tight">Placeholder</span>
+                  <span className="text-[9.5px] text-zinc-500 block">Custom route</span>
+                </div>
+              </button>
             </div>
 
-            {/* If Built-In: Select feature from supported list */}
-            {subType === 'built_in' ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-zinc-300">Select Supported Feature</label>
-                  <span className="text-[11px] text-zinc-500">Auto-routes to project tool</span>
+            {/* Right Main Content Form */}
+            <div className="flex-1 min-w-0 overflow-y-auto p-4 space-y-4 scrollbar-none">
+              {error && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-start gap-2">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  <span>{error}</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[190px] overflow-y-auto p-1.5 rounded-xl border border-[#27272A] bg-[#0E0F14] scrollbar-thin scrollbar-thumb-zinc-700">
-                  {BUILT_IN_SUBMODULE_DEFINITIONS.map((def) => {
-                    const Icon = def.iconComponent;
-                    const isSelected = selectedBuiltInKey === def.key;
-                    return (
+              )}
+
+              {/* If Built-in: Search & Category Group Filter & Predefined Modules */}
+              {subType === 'built_in' && (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-zinc-200">Predefined Modules</label>
+                    <span className="text-[11px] text-zinc-500">{filteredBuiltIns.length} available</span>
+                  </div>
+
+                  {/* Search Predefined Modules */}
+                  <div className="relative">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type="text"
+                      value={moduleSearch}
+                      onChange={(e) => setModuleSearch(e.target.value)}
+                      placeholder="Search predefined modules (e.g. git, issues, kanban, whiteboard)..."
+                      className="w-full pl-8 pr-7 py-1.5 text-xs bg-[#0E0F14] border border-[#27272A] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors"
+                    />
+                    {moduleSearch && (
                       <button
-                        key={def.key}
                         type="button"
-                        onClick={() => handleSelectBuiltIn(def)}
-                        className={cn(
-                          'flex items-start gap-2.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer group',
-                          isSelected
-                            ? 'text-white shadow-sm ring-1'
-                            : 'border-[#27272A]/70 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
-                        )}
-                        style={
-                          isSelected
-                            ? {
-                                borderColor: accentColor,
-                                backgroundColor: `${accentColor}18`,
-                              }
-                            : undefined
-                        }
+                        onClick={() => setModuleSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white p-0.5 cursor-pointer"
                       >
-                        <div
-                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border transition-colors mt-0.5"
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Group Filter Chips: All, Git, Development, Testing, Collaboration */}
+                  <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none">
+                    {BUILT_IN_CATEGORIES.map((cat) => {
+                      const isActive = builtInCategory === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setBuiltInCategory(cat.id)}
+                          className={cn(
+                            'px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-all cursor-pointer border',
+                            isActive
+                              ? 'text-white border-zinc-700 bg-zinc-800 shadow-xs'
+                              : 'text-zinc-400 hover:text-zinc-200 border-transparent hover:bg-zinc-800/60'
+                          )}
                           style={
-                            isSelected
-                              ? { backgroundColor: `${accentColor}30`, borderColor: accentColor, color: '#FFFFFF' }
-                              : { backgroundColor: '#17181D', borderColor: '#27272A', color: '#A1A1AA' }
+                            isActive
+                              ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}25` }
+                              : undefined
                           }
                         >
-                          <Icon size={14} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <p className="font-semibold text-xs text-white truncate">{def.defaultName}</p>
-                            {isSelected && (
-                              <div
-                                className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-white shrink-0 shadow-xs"
-                                style={{ backgroundColor: accentColor }}
-                              >
-                                <Check size={8} strokeWidth={3.5} />
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-[10.5px] text-zinc-400 line-clamp-2 leading-relaxed mt-0.5">
-                            {def.description}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : subType === 'composite' ? (
-              /* Composite Submodule Builder UI */
-              <div className="space-y-4 p-4 rounded-xl border border-zinc-800 bg-[#0E0F14]">
-                {/* 1. Feature Selection */}
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-                    <Boxes size={13} className="text-indigo-400" />
-                    <span>Included Git Features</span>
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {GIT_FEATURES_REGISTRY.map((feat) => {
-                      const isChecked = compositeFeatures.includes(feat.key);
+                          {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Predefined Modules Grid with Increased Height */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[290px] sm:max-h-[320px] overflow-y-auto p-1.5 rounded-xl border border-[#27272A] bg-[#0E0F14] scrollbar-none">
+                    {filteredBuiltIns.map((def) => {
+                      const Icon = def.iconComponent;
+                      const isSelected = selectedBuiltInKey === def.key;
                       return (
-                        <button
-                          key={feat.key}
-                          type="button"
-                          onClick={() => handleToggleCompositeFeature(feat.key)}
+                        <div
+                          key={def.key}
+                          onClick={() => handleSelectBuiltIn(def)}
                           className={cn(
-                            'p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2',
-                            isChecked
-                              ? 'border-indigo-500/60 bg-indigo-500/10 text-white'
-                              : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                            'group relative flex items-start gap-2.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer',
+                            isSelected
+                              ? 'text-white shadow-xs'
+                              : 'border-[#27272A]/70 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
                           )}
+                          style={
+                            isSelected
+                              ? {
+                                  borderColor: accentColor,
+                                  backgroundColor: `${accentColor}18`,
+                                }
+                              : undefined
+                          }
                         >
                           <div
+                            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border mt-0.5"
+                            style={
+                              isSelected
+                                ? { backgroundColor: `${accentColor}30`, borderColor: accentColor, color: '#FFFFFF' }
+                                : { backgroundColor: '#17181D', borderColor: '#27272A', color: '#A1A1AA' }
+                            }
+                          >
+                            <Icon size={14} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="font-semibold text-[12px] text-white truncate">{def.defaultName}</p>
+
+                              {isSelected && (
+                                <div
+                                  className="w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0 shadow-xs"
+                                  style={{ backgroundColor: accentColor }}
+                                >
+                                  <Check size={9} strokeWidth={3.5} />
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-[10.5px] text-zinc-400 line-clamp-1 mt-0.5 leading-snug">
+                              {def.description}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {filteredBuiltIns.length === 0 && (
+                      <div className="col-span-full py-8 text-center text-xs text-zinc-500">
+                        No predefined modules matching "{moduleSearch}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* If Composite: Builder UI */}
+              {subType === 'composite' && (
+                <div className="space-y-3.5 p-3.5 rounded-xl border border-zinc-800 bg-[#0E0F14]">
+                  {/* Features Selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                      <Boxes size={13} style={{ color: accentColor }} />
+                      <span>Included Git Features</span>
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {GIT_FEATURES_REGISTRY.map((feat) => {
+                        const isChecked = compositeFeatures.includes(feat.key);
+                        return (
+                          <button
+                            key={feat.key}
+                            type="button"
+                            onClick={() => handleToggleCompositeFeature(feat.key)}
                             className={cn(
-                              'w-4 h-4 rounded mt-0.5 flex items-center justify-center border shrink-0',
-                              isChecked ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-zinc-700 bg-zinc-800'
+                              'p-2 rounded-lg border text-left transition-all cursor-pointer flex items-start gap-2',
+                              isChecked
+                                ? 'text-white border-zinc-700 bg-zinc-800/70'
+                                : 'border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                            )}
+                            style={isChecked ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` } : undefined}
+                          >
+                            <div
+                              className={cn(
+                                'w-4 h-4 rounded mt-0.5 flex items-center justify-center border shrink-0',
+                                isChecked ? 'text-white' : 'border-zinc-700 bg-zinc-800'
+                              )}
+                              style={isChecked ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
+                            >
+                              {isChecked && <Check size={10} strokeWidth={3} />}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[11.5px] font-semibold block leading-tight">{feat.title}</span>
+                              <span className="text-[9.5px] text-zinc-400 line-clamp-1">{feat.description}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Layout */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-200">Submodule Layout</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(['tabs', 'stacked', 'split'] as const).map((l) => (
+                        <button
+                          key={l}
+                          type="button"
+                          onClick={() => setCompositeLayout(l)}
+                          className={cn(
+                            'py-1 rounded-md text-xs font-medium capitalize transition-all cursor-pointer text-center border',
+                            compositeLayout === l
+                              ? 'bg-zinc-800 text-white border-zinc-700 font-semibold shadow-xs'
+                              : 'border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                          )}
+                          style={
+                            compositeLayout === l
+                              ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}25` }
+                              : undefined
+                          }
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Summary Metric Cards */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-zinc-200">Summary Metric Cards</label>
+                      <span className="text-[10px] text-zinc-500">{compositeCards.length} selected</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {GIT_SUMMARY_CARD_DEFINITIONS.map((c) => {
+                        const isSelected = compositeCards.includes(c.id);
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => handleToggleSummaryCard(c.id)}
+                            className={cn(
+                              'px-2 py-0.5 rounded-md text-[11px] font-medium border transition-all cursor-pointer flex items-center gap-1.5',
+                              isSelected
+                                ? 'bg-zinc-800 text-white border-zinc-600 shadow-xs'
+                                : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200'
                             )}
                           >
-                            {isChecked && <Check size={10} strokeWidth={3} />}
-                          </div>
-                          <div className="min-w-0">
-                            <span className="text-xs font-semibold block">{feat.title}</span>
-                            <span className="text-[10px] text-zinc-400 line-clamp-1">{feat.description}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
+                            <span
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: isSelected ? c.color : '#52525B' }}
+                            />
+                            <span>{c.title}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
+              )}
 
-                {/* 2. Layout Mode */}
+              {/* If Placeholder / Custom */}
+              {subType === 'custom' && (
+                <div className="p-3.5 rounded-xl border border-zinc-800 bg-[#0E0F14] text-xs text-zinc-400 space-y-1">
+                  <p className="font-medium text-white flex items-center gap-1.5">
+                    <Info size={13} style={{ color: accentColor }} />
+                    <span>Custom Structural Placeholder</span>
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    Custom submodules act as placeholders in your project navigation tree. When clicked,
+                    they display an informative overview and placeholder route.
+                  </p>
+                </div>
+              )}
+
+              {/* Display Name & Icon Section */}
+              <div className="space-y-3 pt-2 border-t border-[#27272A]/80">
+                <label className="text-xs font-semibold text-zinc-200 block">
+                  Display Name <span className="text-red-400">*</span>
+                </label>
+
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-200">Submodule Layout</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['tabs', 'stacked', 'split'] as const).map((l) => (
-                      <button
-                        key={l}
-                        type="button"
-                        onClick={() => setCompositeLayout(l)}
-                        className={cn(
-                          'py-1.5 rounded-lg text-xs font-medium capitalize transition-all cursor-pointer text-center border',
-                          compositeLayout === l
-                            ? 'bg-zinc-800 text-white border-zinc-700 font-semibold shadow-xs'
-                            : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                        )}
-                      >
-                        {l}
-                      </button>
-                    ))}
-                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={60}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Issues, Sprint Backlog, Quality Audits..."
+                    className="w-full px-3 py-2 text-xs bg-[#0E0F14] border border-[#27272A] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors"
+                  />
                 </div>
 
-                {/* 3. Summary Cards Selection */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-zinc-200">Summary Metric Cards</label>
-                    <span className="text-[10px] text-zinc-500">
-                      {compositeCards.length} selected
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {GIT_SUMMARY_CARD_DEFINITIONS.map((c) => {
-                      const isSelected = compositeCards.includes(c.id);
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => handleToggleSummaryCard(c.id)}
-                          className={cn(
-                            'px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all cursor-pointer flex items-center gap-1.5',
-                            isSelected
-                              ? 'bg-zinc-800 text-white border-zinc-600 shadow-xs'
-                              : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200'
-                          )}
-                        >
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: isSelected ? c.color : '#52525B' }}
-                          />
-                          <span>{c.title}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                {/* Compact Icon Picker with Increased Height */}
+                <div className="space-y-1.5">
+                  <ModuleIconPicker value={icon} onChange={setIcon} accentColor={accentColor} gridHeight="max-h-[220px]" />
                 </div>
               </div>
-            ) : (
-              <div className="p-3.5 rounded-xl border border-zinc-800 bg-[#0E0F14] text-xs text-zinc-400 space-y-1">
-                <p className="font-medium text-white flex items-center gap-1.5">
-                  <Info size={13} style={{ color: accentColor }} />
-                  <span>Custom Structural Placeholder</span>
-                </p>
-                <p className="text-[11.5px] leading-relaxed text-zinc-400">
-                  Custom submodules act as placeholders in your project navigation tree. When clicked,
-                  they display an informative placeholder page.
-                </p>
-              </div>
-            )}
-
-            {/* Submodule Display Name */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-300">
-                Display Name <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                maxLength={60}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Issues, Sprint Backlog, Quality Audits..."
-                className="w-full px-3 py-2 text-xs bg-[#0E0F14] border border-[#27272A] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors"
-              />
-            </div>
-
-            {/* Icon Picker */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-300">Icon</label>
-              <ModuleIconPicker value={icon} onChange={setIcon} accentColor={accentColor} />
-            </div>
-
-            {/* Visibility Checkbox */}
-            <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#27272A] bg-[#0E0F14]">
-              <div>
-                <p className="text-xs font-medium text-white">Show in Project Sidebar</p>
-                <p className="text-[11px] text-zinc-400">Can be hidden anytime without losing data</p>
-              </div>
-              <input
-                type="checkbox"
-                checked={isVisible}
-                onChange={(e) => setIsVisible(e.target.checked)}
-                className="w-4 h-4 rounded text-purple-600 focus:ring-0 cursor-pointer"
-              />
             </div>
           </div>
 
-          {/* Sticky Actions Footer */}
-          <div className="shrink-0 p-4 px-5 border-t border-[#27272A] bg-[#121319] flex items-center justify-end gap-2.5">
+          {/* Sticky Drawer Actions Footer */}
+          <div className="shrink-0 h-14 px-5 border-t border-[#27272A] bg-[#121319] flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
@@ -2224,8 +2869,8 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 
@@ -2250,6 +2895,17 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
   const [icon, setIcon] = useState(submodule.icon || 'circle-dot');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   // Parse existing config if composite
   const initialConfig: CompositeSubmoduleConfig = (() => {
@@ -2324,13 +2980,29 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="w-full max-w-xl max-h-[90vh] flex flex-col rounded-2xl border border-[#27272A] bg-[#121319] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
-        {/* Sticky Header */}
-        <div className="shrink-0 p-4 px-5 border-b border-[#27272A] flex items-center justify-between bg-[#121319]">
-          <div className="flex items-center gap-2">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs"
+    >
+      {/* Backdrop click to close */}
+      <div className="absolute inset-0" onClick={onClose} />
+
+      {/* Right-Side Slide-Over Drawer with Spring Animation */}
+      <motion.div
+        initial={{ x: '100%', opacity: 0.5 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '100%', opacity: 0.5 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 280, mass: 0.85 }}
+        className="relative w-full max-w-xl h-full bg-[#0F1015] border-l border-[#27272A] shadow-2xl flex flex-col z-10"
+      >
+        {/* Drawer Header */}
+        <div className="shrink-0 h-14 px-5 border-b border-[#27272A] flex items-center justify-between bg-[#121319]">
+          <div className="flex items-center gap-2.5">
             <div
-              className="w-6 h-6 rounded-lg flex items-center justify-center"
+              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
               style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
             >
               <Edit2 size={13} strokeWidth={2.5} />
@@ -2343,7 +3015,8 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="text-zinc-500 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+            className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Close (Esc)"
           >
             <X size={16} />
           </button>
@@ -2351,7 +3024,7 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
 
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto p-5 space-y-4.5 scrollbar-thin scrollbar-thumb-zinc-700">
+          <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-none">
             {error && (
               <div className="text-xs text-red-400 p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-start gap-2">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
@@ -2373,7 +3046,7 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-zinc-300">Icon</label>
-              <ModuleIconPicker value={icon} onChange={setIcon} accentColor={accentColor} />
+              <ModuleIconPicker value={icon} onChange={setIcon} accentColor={accentColor} gridHeight="max-h-[220px]" />
             </div>
 
             {/* If Composite, show configuration editors */}
@@ -2396,12 +3069,14 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
                               ? 'border-indigo-500/60 bg-indigo-500/10 text-white'
                               : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
                           )}
+                          style={isChecked ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` } : undefined}
                         >
                           <div
                             className={cn(
                               'w-4 h-4 rounded mt-0.5 flex items-center justify-center border shrink-0',
-                              isChecked ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-zinc-700 bg-zinc-800'
+                              isChecked ? 'text-white' : 'border-zinc-700 bg-zinc-800'
                             )}
+                            style={isChecked ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
                           >
                             {isChecked && <Check size={10} strokeWidth={3} />}
                           </div>
@@ -2429,6 +3104,11 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
                             ? 'bg-zinc-800 text-white border-zinc-700 font-semibold shadow-xs'
                             : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
                         )}
+                        style={
+                          compositeLayout === l
+                            ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}25` }
+                            : undefined
+                        }
                       >
                         {l}
                       </button>
@@ -2469,7 +3149,7 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
           </div>
 
           {/* Sticky Actions Footer */}
-          <div className="shrink-0 p-4 px-5 border-t border-[#27272A] bg-[#121319] flex items-center justify-end gap-2.5">
+          <div className="shrink-0 h-14 px-5 border-t border-[#27272A] bg-[#121319] flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
@@ -2487,8 +3167,8 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

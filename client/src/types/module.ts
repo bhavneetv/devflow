@@ -44,6 +44,8 @@ export interface ProjectModule {
   position: number;
   isVisible: boolean;
   isPinned?: boolean;
+  parentId?: number | null;
+  children?: ProjectModule[];
   createdById?: number | null;
   createdAt?: string;
   updatedAt?: string;
@@ -54,6 +56,7 @@ export interface CreateModuleInput {
   name: string;
   description?: string | null;
   icon?: string;
+  parentId?: number | null;
   isVisible?: boolean;
   isPinned?: boolean;
 }
@@ -62,6 +65,7 @@ export interface UpdateModuleInput {
   name?: string;
   description?: string | null;
   icon?: string;
+  parentId?: number | null;
   isVisible?: boolean;
   isPinned?: boolean;
   position?: number;

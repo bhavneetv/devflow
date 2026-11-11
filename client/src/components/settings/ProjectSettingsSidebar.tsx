@@ -18,6 +18,7 @@ import {
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { useNavigation } from '../../context/NavigationContext';
 import { UserMenu } from '../layout/UserMenu';
+import { FloatingTooltip } from '../common/FloatingTooltip';
 import { cn } from '../../lib/utils';
 import { organizationService } from '../../services/organization.service';
 
@@ -155,51 +156,57 @@ export const ProjectSettingsSidebar: React.FC<ProjectSettingsSidebarProps> = ({
     >
       {/* Top Header / Back navigation to Project */}
       <div className={cn('p-3 border-b border-[var(--sidebar-border)]/80', isCollapsed && 'px-2 text-center')}>
-        <motion.button
-          type="button"
-          onClick={handleBackClick}
-          whileHover={{ x: -4 }}
-          whileTap={{ scale: 0.88, x: -8 }}
-          animate={
-            isBouncing
-              ? {
-                  x: [0, -12, 6, -8, 3, 0],
-                  scale: [1, 0.88, 1.08, 0.96, 1],
-                }
-              : {}
-          }
-          transition={{
-            type: 'spring',
-            stiffness: 500,
-            damping: 12,
-            mass: 0.8,
-          }}
-          className={cn(
-            'inline-flex items-center text-xs font-semibold text-sidebar-text hover:text-sidebar-text-active transition-colors py-1.5 rounded-md hover:bg-sidebar-hover cursor-pointer select-none group',
-            isCollapsed ? 'justify-center w-full px-0' : 'gap-2 px-2'
-          )}
-          title="Back to Project"
+        <FloatingTooltip
+          content={`Back to ${projectTitle || 'Project'}`}
+          enabled={Boolean(isCollapsed)}
+          side="right"
         >
-          <motion.span
+          <motion.button
+            type="button"
+            onClick={handleBackClick}
+            whileHover={{ x: -4 }}
+            whileTap={{ scale: 0.88, x: -8 }}
             animate={
               isBouncing
                 ? {
-                    x: [0, -8, 4, -4, 0],
-                    rotate: [0, -14, 6, -4, 0],
+                    x: [0, -12, 6, -8, 3, 0],
+                    scale: [1, 0.88, 1.08, 0.96, 1],
                   }
                 : {}
             }
             transition={{
               type: 'spring',
-              stiffness: 600,
-              damping: 10,
+              stiffness: 500,
+              damping: 12,
+              mass: 0.8,
             }}
-            className="flex items-center justify-center transition-transform group-hover:-translate-x-1 duration-150"
+            className={cn(
+              'inline-flex items-center text-xs font-semibold text-sidebar-text hover:text-sidebar-text-active transition-colors py-1.5 rounded-md hover:bg-sidebar-hover cursor-pointer select-none group',
+              isCollapsed ? 'justify-center w-full px-0' : 'gap-2 px-2'
+            )}
+            title={!isCollapsed ? 'Back to Project' : undefined}
           >
-            <ArrowLeft size={16} strokeWidth={2.4} />
-          </motion.span>
-          {!isCollapsed && <span>Back to Project</span>}
-        </motion.button>
+            <motion.span
+              animate={
+                isBouncing
+                  ? {
+                      x: [0, -8, 4, -4, 0],
+                      rotate: [0, -14, 6, -4, 0],
+                    }
+                  : {}
+              }
+              transition={{
+                type: 'spring',
+                stiffness: 600,
+                damping: 10,
+              }}
+              className="flex items-center justify-center transition-transform group-hover:-translate-x-1 duration-150"
+            >
+              <ArrowLeft size={16} strokeWidth={2.4} />
+            </motion.span>
+            {!isCollapsed && <span>Back to Project</span>}
+          </motion.button>
+        </FloatingTooltip>
 
         {/* Settings Title (Enlarged, prominent header matching Account Settings) */}
         {!isCollapsed && (
@@ -218,7 +225,7 @@ export const ProjectSettingsSidebar: React.FC<ProjectSettingsSidebarProps> = ({
       </div>
 
       {/* Navigation Menu */}
-      <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+      <div className={cn('flex-1 overflow-y-auto overflow-x-hidden scrollbar-none px-2 py-3 space-y-4', isCollapsed && 'px-1')}>
         <div>
           {/* Section heading: PROJECT SETTINGS ▾ (Interactive Collapsible Trigger) */}
           {!isCollapsed && (
@@ -265,48 +272,54 @@ export const ProjectSettingsSidebar: React.FC<ProjectSettingsSidebarProps> = ({
                   location.pathname.startsWith(`${targetPath}/`);
 
                 return (
-                  <NavLink
+                  <FloatingTooltip
                     key={item.id}
-                    to={targetPath}
-                    onClick={onNavigate}
-                    title={isCollapsed ? item.label : undefined}
-                    className={cn(
-                      'group relative flex items-center h-[36px] rounded-md transition-all duration-150 text-[13.5px] select-none outline-none focus-visible:ring-1 focus-visible:ring-zinc-500',
-                      isCollapsed ? 'justify-center px-0 w-10 mx-auto' : 'justify-between px-2.5 w-full',
-                      isItemActive
-                        ? 'bg-sidebar-active text-sidebar-text-active font-medium shadow-sm'
-                        : 'text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover'
-                    )}
+                    content={item.label}
+                    enabled={Boolean(isCollapsed)}
+                    side="right"
                   >
-                    {/* Left accent bar on active */}
-                    {isItemActive && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r"
-                        style={{
-                          backgroundColor: accentColor,
-                          boxShadow: `0 0 8px ${accentColor}80`,
-                        }}
-                      />
-                    )}
-
-                    <div className={cn('flex items-center gap-2.5 min-w-0', isCollapsed && 'justify-center')}>
-                      <Icon
-                        size={16}
-                        className={cn(
-                          'flex-shrink-0 transition-colors duration-150',
-                          isItemActive
-                            ? 'text-sidebar-icon-active'
-                            : 'text-sidebar-icon group-hover:text-sidebar-text-active'
-                        )}
-                        style={isItemActive ? { color: accentColor } : undefined}
-                      />
-
-                      {!isCollapsed && (
-                        <span className="truncate tracking-[-0.01em]">{item.label}</span>
+                    <NavLink
+                      to={targetPath}
+                      onClick={onNavigate}
+                      title={!isCollapsed ? undefined : undefined}
+                      className={cn(
+                        'group relative flex items-center h-[36px] rounded-md transition-all duration-150 text-[13.5px] select-none outline-none focus-visible:ring-1 focus-visible:ring-zinc-500',
+                        isCollapsed ? 'justify-center px-0 w-10 mx-auto' : 'justify-between px-2.5 w-full',
+                        isItemActive
+                          ? 'bg-sidebar-active text-sidebar-text-active font-medium shadow-sm'
+                          : 'text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover'
                       )}
-                    </div>
-                  </NavLink>
+                    >
+                      {/* Left accent bar on active */}
+                      {isItemActive && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r"
+                          style={{
+                            backgroundColor: accentColor,
+                            boxShadow: `0 0 8px ${accentColor}80`,
+                          }}
+                        />
+                      )}
+
+                      <div className={cn('flex items-center gap-2.5 min-w-0', isCollapsed && 'justify-center')}>
+                        <Icon
+                          size={16}
+                          className={cn(
+                            'flex-shrink-0 transition-colors duration-150',
+                            isItemActive
+                              ? 'text-sidebar-icon-active'
+                              : 'text-sidebar-icon group-hover:text-sidebar-text-active'
+                          )}
+                          style={isItemActive ? { color: accentColor } : undefined}
+                        />
+
+                        {!isCollapsed && (
+                          <span className="truncate tracking-[-0.01em]">{item.label}</span>
+                        )}
+                      </div>
+                    </NavLink>
+                  </FloatingTooltip>
                 );
               })}
             </nav>

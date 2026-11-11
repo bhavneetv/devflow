@@ -47,12 +47,59 @@ async function checkProjectPermission(projectId: number, userId: number | null) 
   return { allowed: true, notFound: false, project };
 }
 
+// ─── NESTING & METADATA HELPERS ──────────────────────────────────────────────
+
+export function parseModuleMeta(rawDesc: string | null | undefined): {
+  parentId: number | null;
+  description: string | null;
+} {
+  if (!rawDesc) return { parentId: null, description: null };
+  try {
+    if (rawDesc.startsWith('{') && rawDesc.endsWith('}')) {
+      const parsed = JSON.parse(rawDesc);
+      if (parsed && typeof parsed === 'object') {
+        const parentId = typeof parsed.parentId === 'number' ? parsed.parentId : null;
+        const text =
+          typeof parsed.text === 'string'
+            ? parsed.text
+            : typeof parsed.description === 'string'
+            ? parsed.description
+            : null;
+        return { parentId, description: text };
+      }
+    }
+  } catch {
+    // fallback plain text
+  }
+  return { parentId: null, description: rawDesc };
+}
+
+export function encodeModuleMeta(
+  parentId: number | null | undefined,
+  text: string | null | undefined
+): string | null {
+  if (parentId) {
+    return JSON.stringify({ parentId, text: text || null });
+  }
+  return text || null;
+}
+
+export function formatModuleItem<T extends { description: string | null }>(item: T) {
+  const meta = parseModuleMeta(item.description);
+  return {
+    ...item,
+    parentId: meta.parentId,
+    description: meta.description,
+  };
+}
+
 // ─── ZOD SCHEMAS ─────────────────────────────────────────────────────────────
 
 const createModuleSchema = z.object({
   name: z.string().trim().min(1, 'Module name is required').max(60, 'Module name must be under 60 characters'),
   description: z.string().trim().max(500).optional().nullable(),
   icon: z.string().trim().optional().default('folder'),
+  parentId: z.number().int().positive().optional().nullable(),
   isVisible: z.boolean().optional().default(true),
   isPinned: z.boolean().optional().default(false),
 });
@@ -61,6 +108,7 @@ const updateModuleSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   description: z.string().trim().max(500).optional().nullable(),
   icon: z.string().trim().optional(),
+  parentId: z.number().int().positive().optional().nullable(),
   isVisible: z.boolean().optional(),
   isPinned: z.boolean().optional(),
   position: z.number().int().optional(),
@@ -116,7 +164,7 @@ projectModulesRouter.get('/:projectId/modules', async (req: Request, res: Respon
       },
     });
 
-    res.json({ success: true, data: modules });
+    res.json({ success: true, data: modules.map(formatModuleItem) });
   } catch (error: any) {
     console.error('Error fetching modules:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -149,6 +197,26 @@ projectModulesRouter.post('/:projectId/modules', async (req: Request, res: Respo
       });
     }
 
+    // If parentId provided, validate 1-level nesting limit
+    if (parsed.data.parentId) {
+      const parentModule = await prisma.projectModule.findFirst({
+        where: { id: parsed.data.parentId, projectId },
+      });
+      if (!parentModule) {
+        return res.status(404).json({
+          success: false,
+          error: 'Parent module not found in this project',
+        });
+      }
+      const parentMeta = parseModuleMeta(parentModule.description);
+      if (parentMeta.parentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Nesting is limited to 1 level. Cannot create a module folder inside a child module folder.',
+        });
+      }
+    }
+
     const trimmedName = parsed.data.name;
 
     // Check duplicate name within project (case-insensitive & trimmed)
@@ -173,11 +241,13 @@ projectModulesRouter.post('/:projectId/modules', async (req: Request, res: Respo
     });
     const nextPosition = lastModule ? lastModule.position + 1 : 0;
 
+    const encodedDescription = encodeModuleMeta(parsed.data.parentId, parsed.data.description);
+
     const module = await prisma.projectModule.create({
       data: {
         projectId,
         name: trimmedName,
-        description: parsed.data.description || null,
+        description: encodedDescription,
         icon: parsed.data.icon || 'folder',
         isVisible: parsed.data.isVisible,
         isPinned: parsed.data.isPinned ?? false,
@@ -189,7 +259,7 @@ projectModulesRouter.post('/:projectId/modules', async (req: Request, res: Respo
       },
     });
 
-    res.status(201).json({ success: true, data: module });
+    res.status(201).json({ success: true, data: formatModuleItem(module) });
   } catch (error: any) {
     console.error('Error creating module:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -247,11 +317,39 @@ projectModulesRouter.patch('/:projectId/modules/:moduleId', async (req: Request,
       }
     }
 
+    let newDescription = parsed.data.description;
+    if (parsed.data.parentId !== undefined || parsed.data.description !== undefined) {
+      const currentMeta = parseModuleMeta(module.description);
+      const targetParentId = parsed.data.parentId !== undefined ? parsed.data.parentId : currentMeta.parentId;
+      if (targetParentId) {
+        if (targetParentId === moduleId) {
+          return res.status(400).json({ success: false, error: 'Module cannot be its own parent' });
+        }
+        const parentModule = await prisma.projectModule.findFirst({
+          where: { id: targetParentId, projectId },
+        });
+        if (!parentModule) {
+          return res.status(404).json({ success: false, error: 'Target parent module not found' });
+        }
+        const pMeta = parseModuleMeta(parentModule.description);
+        if (pMeta.parentId) {
+          return res.status(400).json({
+            success: false,
+            error: 'Nesting is limited to 1 level. Cannot nest inside a child module folder.',
+          });
+        }
+      }
+      const text = parsed.data.description !== undefined ? parsed.data.description : currentMeta.description;
+      newDescription = encodeModuleMeta(targetParentId, text);
+    }
+
     const updated = await prisma.projectModule.update({
       where: { id: moduleId },
       data: {
         ...(parsed.data.name !== undefined && { name: parsed.data.name }),
-        ...(parsed.data.description !== undefined && { description: parsed.data.description }),
+        ...((parsed.data.description !== undefined || parsed.data.parentId !== undefined) && {
+          description: newDescription,
+        }),
         ...(parsed.data.icon !== undefined && { icon: parsed.data.icon }),
         ...(parsed.data.isVisible !== undefined && { isVisible: parsed.data.isVisible }),
         ...(parsed.data.isPinned !== undefined && { isPinned: parsed.data.isPinned }),
@@ -264,7 +362,7 @@ projectModulesRouter.patch('/:projectId/modules/:moduleId', async (req: Request,
       },
     });
 
-    res.json({ success: true, data: updated });
+    res.json({ success: true, data: formatModuleItem(updated) });
   } catch (error: any) {
     console.error('Error updating module:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -295,6 +393,21 @@ projectModulesRouter.delete('/:projectId/modules/:moduleId', async (req: Request
     });
     if (!module) {
       return res.status(404).json({ success: false, error: 'Module not found in this project' });
+    }
+
+    // Cascade delete any child module folders that belong to this module
+    const allModules = await prisma.projectModule.findMany({
+      where: { projectId },
+      include: { submodules: true },
+    });
+    const childModules = allModules.filter((m) => {
+      const meta = parseModuleMeta(m.description);
+      return meta.parentId === moduleId;
+    });
+
+    for (const child of childModules) {
+      await prisma.projectSubmodule.deleteMany({ where: { moduleId: child.id } });
+      await prisma.projectModule.delete({ where: { id: child.id } });
     }
 
     const targetModuleIdParam = req.query.targetModuleId ? parseId(req.query.targetModuleId as string) : null;

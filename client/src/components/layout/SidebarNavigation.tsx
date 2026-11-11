@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -45,6 +45,8 @@ import {
 import { NavigationItem } from './NavigationItem';
 import { NavigationGroup } from './NavigationGroup';
 import { SidebarProjectModules } from './SidebarProjectModules';
+import { projectModuleService } from '../../services/projectModule.service';
+import type { ProjectModule } from '../../types/module';
 import { resolveModuleIcon } from '../project/ModuleIconPicker';
 import { AVATAR_ICON_COMPONENTS } from '../onboarding/StepProfile';
 import { cn } from '../../lib/utils';
@@ -173,13 +175,125 @@ export const SidebarNavigation: React.FC = () => {
   const orgSlug = currentOrganization?.slug;
 
   const urlProjectMatch = location.pathname.match(/\/projects\/(\d+)/);
-  const currentProjectId = activeProject?.id || (urlProjectMatch ? parseInt(urlProjectMatch[1], 10) : 1);
+  const targetProjectId = urlProjectMatch
+    ? parseInt(urlProjectMatch[1], 10)
+    : (activeProject?.id || null);
+  const currentProjectId = targetProjectId || 1;
+
   const projectSettingsPath = orgSlug
     ? `/organizations/${orgSlug}/projects/${currentProjectId}/settings`
     : `/projects/${currentProjectId}/settings`;
   const projectOverviewPath = orgSlug
     ? `/organizations/${orgSlug}/projects/${currentProjectId}`
     : `/projects/${currentProjectId}`;
+
+  const isProjectMode = mode === 'project' || Boolean(urlProjectMatch);
+
+  // Track project-specific modules with instant skeleton on project switch
+  const [sidebarModules, setSidebarModules] = useState<ProjectModule[] | null>(() => {
+    if (
+      targetProjectId &&
+      projectModules &&
+      projectModules.length > 0 &&
+      projectModules[0]?.projectId === targetProjectId
+    ) {
+      return projectModules;
+    }
+    return null;
+  });
+  const [loadedProjectId, setLoadedProjectId] = useState<number | null>(() => {
+    if (
+      targetProjectId &&
+      projectModules &&
+      projectModules.length > 0 &&
+      projectModules[0]?.projectId === targetProjectId
+    ) {
+      return targetProjectId;
+    }
+    return null;
+  });
+  const [isFetchingSidebarModules, setIsFetchingSidebarModules] = useState(false);
+  const lastFetchedProjectIdRef = useRef<number | null>(loadedProjectId);
+
+  useEffect(() => {
+    if (!targetProjectId) {
+      setSidebarModules(null);
+      setLoadedProjectId(null);
+      setIsFetchingSidebarModules(false);
+      lastFetchedProjectIdRef.current = null;
+      return;
+    }
+
+    if (lastFetchedProjectIdRef.current !== targetProjectId) {
+      lastFetchedProjectIdRef.current = targetProjectId;
+      if (!sidebarModules || loadedProjectId !== targetProjectId) {
+        setSidebarModules(null);
+        setLoadedProjectId(null);
+      }
+    }
+
+    let isMounted = true;
+    setIsFetchingSidebarModules(true);
+
+    projectModuleService
+      .getModules(targetProjectId)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.success && Array.isArray(res.data)) {
+          setSidebarModules(res.data);
+        } else {
+          setSidebarModules([]);
+        }
+        setLoadedProjectId(targetProjectId);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.warn('Failed to load project modules:', err);
+        setSidebarModules([]);
+        setLoadedProjectId(targetProjectId);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsFetchingSidebarModules(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      setIsFetchingSidebarModules(false);
+    };
+  }, [targetProjectId]);
+
+  // Keep in sync with NavigationContext updates for the current project
+  useEffect(() => {
+    if (
+      targetProjectId &&
+      projectModules &&
+      projectModules.length > 0 &&
+      projectModules[0]?.projectId === targetProjectId
+    ) {
+      setSidebarModules(projectModules);
+      setLoadedProjectId(targetProjectId);
+      setIsFetchingSidebarModules(false);
+    }
+  }, [projectModules, targetProjectId]);
+
+  // Listen for created/edited module notifications
+  useEffect(() => {
+    const handleModulesUpdated = () => {
+      if (targetProjectId) {
+        projectModuleService.getModules(targetProjectId).then((res) => {
+          if (res.success && Array.isArray(res.data)) {
+            setSidebarModules(res.data);
+            setLoadedProjectId(targetProjectId);
+            setIsFetchingSidebarModules(false);
+          }
+        });
+      }
+    };
+    window.addEventListener('devflow:modules-updated', handleModulesUpdated);
+    return () => window.removeEventListener('devflow:modules-updated', handleModulesUpdated);
+  }, [targetProjectId]);
 
   const [orgProjects, setOrgProjects] = useState<any[]>([]);
   const [orgTeams, setOrgTeams] = useState<any[]>([]);
@@ -235,17 +349,23 @@ export const SidebarNavigation: React.FC = () => {
     return () => window.removeEventListener('devflow-sidebar-config-changed', onConfigChange);
   }, []);
 
-  const isOverviewVisible = activeProject
-    ? localStorage.getItem(`devflow_proj_${activeProject.id}_overview_visible`) !== 'false'
+  const isOverviewVisible = targetProjectId
+    ? localStorage.getItem(`devflow_proj_${targetProjectId}_overview_visible`) !== 'false'
     : true;
 
-  const hasOverviewSubmodule = projectModules?.some((m) =>
+  const hasOverviewSubmodule = sidebarModules?.some((m) =>
     m.submodules?.some((s) => s.builtInKey === 'overview' && s.isVisible)
   );
 
+  const isModuleLoadingState =
+    isProjectLoading ||
+    (isFetchingSidebarModules && sidebarModules === null) ||
+    sidebarModules === null ||
+    (targetProjectId !== null && loadedProjectId !== targetProjectId);
+
   return (
-    <div className="flex-1 overflow-y-auto px-2 space-y-2 py-1.5 text-sidebar-text">
-      {mode === 'workspace' ? (
+    <div className={cn('flex-1 overflow-y-auto overflow-x-hidden scrollbar-none space-y-2 py-1.5 text-sidebar-text', isCollapsed ? 'px-1' : 'px-2')}>
+      {!isProjectMode ? (
         <>
           {/* Main Organization Shortcuts */}
           {orgSlug ? (
@@ -554,7 +674,7 @@ export const SidebarNavigation: React.FC = () => {
             />
           </div>
         </>
-      ) : isProjectLoading || (isLoadingModules && projectModules.length === 0) ? (
+      ) : isModuleLoadingState ? (
         /* Skeleton Effect in Project Sidebar */
         <div className="space-y-5 px-1 py-1 animate-in fade-in duration-200 select-none">
           {/* Skeleton Group 1 */}
@@ -592,26 +712,14 @@ export const SidebarNavigation: React.FC = () => {
               </div>
             ))}
           </div>
-
-          {/* Skeleton Quick Links */}
-          <div className="pt-2 border-t border-sidebar-border/40 space-y-1">
-            <div className="flex items-center gap-2.5 h-[32px] px-2 rounded-md">
-              <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
-              {!isCollapsed && <div className="h-3 w-24 bg-zinc-800/60 rounded animate-pulse" />}
-            </div>
-            <div className="flex items-center gap-2.5 h-[32px] px-2 rounded-md">
-              <div className="w-4 h-4 rounded bg-zinc-800/80 animate-pulse shrink-0" />
-              {!isCollapsed && <div className="h-3 w-32 bg-zinc-800/60 rounded animate-pulse" />}
-            </div>
-          </div>
         </div>
       ) : (
         /* Project Context Navigation Mode */
         <>
-          {activeProject && (
+          {targetProjectId && (
             <>
               {/* Dynamic Project Modules & Submodules OR Custom Reordered Sidebar Items */}
-              {projectModules && projectModules.length > 0 ? (
+              {sidebarModules && sidebarModules.length > 0 ? (
                 <>
                   {/* Preserved Project Overview at Top if not hidden and not placed inside custom modules */}
                   {isOverviewVisible && !hasOverviewSubmodule && (
@@ -623,7 +731,7 @@ export const SidebarNavigation: React.FC = () => {
                       />
                     </div>
                   )}
-                  <SidebarProjectModules projectId={activeProject.id} />
+                  <SidebarProjectModules projectId={targetProjectId} modules={sidebarModules} />
                 </>
               ) : (
                 /* Custom Reordered Navigation Items from Project Layout */
@@ -648,42 +756,6 @@ export const SidebarNavigation: React.FC = () => {
               )}
             </>
           )}
-
-          {/* Project Bottom Quick Links */}
-          <div className="mt-3 pt-2.5 border-t border-sidebar-border/60 space-y-0.5">
-            <NavigationItem
-              title="Chat"
-              path="#"
-              icon={MessageSquare}
-              badge={unreadTotal > 0 ? unreadTotal : undefined}
-              badgeVariant="accent"
-              onClick={(e: React.MouseEvent) => {
-                e.preventDefault();
-                toggleChat();
-              }}
-            />
-            <NavigationItem
-              title="Project Settings"
-              path={projectSettingsPath}
-              icon={Settings}
-            />
-            <button
-              onClick={() => exitProjectMode()}
-              className={cn(
-                'group flex items-center h-[34px] rounded-md text-[13.5px] text-zinc-400 hover:text-white hover:bg-sidebar-hover transition-colors cursor-pointer relative',
-                isCollapsed ? 'justify-center px-0 w-10 mx-auto' : 'w-full px-2 gap-2.5'
-              )}
-              title={isCollapsed ? 'Back to Workspace' : undefined}
-            >
-              <ArrowLeft size={16} className="text-zinc-500 group-hover:text-white shrink-0" />
-              {!isCollapsed && <span>Back to Workspace</span>}
-              {isCollapsed && (
-                <div className="absolute left-full ml-2 px-2 py-1 bg-[#1C1C1F] border border-sidebar-border text-white text-xs font-medium rounded shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                  Back to Workspace
-                </div>
-              )}
-            </button>
-          </div>
         </>
       )}
     </div>

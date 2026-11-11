@@ -197,6 +197,11 @@ model User {
   gitConnections          GitProviderConnection[]
   createdGitRecordLinks   GitRecordLink[]          @relation("GitRecordLinkCreator")
   gitMemberMappings       GitMemberMapping[]       @relation("UserGitMappings")
+  uploadedDocuments       ProjectDocument[]        @relation("DocumentUploader")
+  createdDocumentCategories DocumentCategory[]     @relation("DocumentCategoryCreator")
+  documentSharesCreated   DocumentShare[]          @relation("DocumentShareCreator")
+  documentSharesReceived  DocumentShare[]          @relation("DocumentShareRecipient")
+  documentActivities      DocumentActivity[]       @relation("DocumentActivityActor")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -310,6 +315,11 @@ model Project {
   gitRepositories       GitRepositoryConnection[]
   gitRecordLinks        GitRecordLink[]
   gitMemberMappings     GitMemberMapping[]
+  storageConnection     ProjectStorageConnection?
+  documents             ProjectDocument[]
+  documentCategories    DocumentCategory[]
+  documentSettings      DocumentModuleSettings?
+  documentActivities    DocumentActivity[]
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
@@ -835,7 +845,8 @@ model GitProviderConnection {
   createdAt      DateTime                  @default(now()) @map("created_at")
   updatedAt      DateTime                  @updatedAt @map("updated_at")
 
-  repositories   GitRepositoryConnection[]
+  repositories       GitRepositoryConnection[]
+  storageConnections ProjectStorageConnection[]
 
   @@index([projectId])
   @@index([userId])
@@ -881,7 +892,7 @@ model GitRecordLink {
   recordId     String                   @map("record_id")
   recordTitle  String?                  @map("record_title")
   recordUrl    String?                  @map("record_url")
-  targetType   String                   @map("target_type") // "task" | "requirement" | "defect"
+    targetType   String                   @map("target_type") // "task" | "requirement" | "defect"
   targetId     Int                      @map("target_id")
   createdById  Int?                     @map("created_by")
   createdBy    User?                    @relation("GitRecordLinkCreator", fields: [createdById], references: [id], onDelete: SetNull)
@@ -911,6 +922,154 @@ model GitMemberMapping {
   @@index([projectId])
   @@index([userId])
   @@map("git_member_mappings")
+}
+
+model ProjectStorageConnection {
+  id                   Int                       @id @default(autoincrement())
+  projectId            Int                       @unique @map("project_id")
+  project              Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  provider             String                    @default("github")
+  providerAccountId    String?                   @map("provider_account_id")
+  providerOwner        String                    @map("provider_owner")
+  providerRepoId       String                    @map("provider_repo_id")
+  repositoryName       String                    @map("repository_name")
+  repositoryUrl        String                    @map("repository_url")
+  defaultBranch        String                    @default("main") @map("default_branch")
+  connectionStatus     String                    @default("connected") @map("connection_status")
+  lastSyncAt           DateTime?                 @map("last_sync_at")
+  trackedSizeBytes     BigInt                    @default(0) @map("tracked_size_bytes")
+  providerConnectionId Int?                      @map("provider_connection_id")
+  providerConnection   GitProviderConnection?    @relation(fields: [providerConnectionId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+
+  documents            ProjectDocument[]
+  settings             DocumentModuleSettings?
+
+  @@index([providerOwner, repositoryName])
+  @@index([providerConnectionId])
+  @@map("project_storage_connections")
+}
+
+model DocumentCategory {
+  id          Int               @id @default(autoincrement())
+  projectId   Int               @map("project_id")
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  description String?           @db.Text
+  icon        String?
+  color       String?
+  position    Int               @default(0)
+  createdById Int?              @map("created_by")
+  createdBy   User?             @relation("DocumentCategoryCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  documents   ProjectDocument[]
+
+  @@unique([projectId, slug])
+  @@index([projectId])
+  @@map("document_categories")
+}
+
+model ProjectDocument {
+  id                  Int                       @id @default(autoincrement())
+  organizationId      Int?                      @map("organization_id")
+  projectId           Int                       @map("project_id")
+  project             Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  storageConnectionId Int?                      @map("storage_connection_id")
+  storageConnection   ProjectStorageConnection? @relation(fields: [storageConnectionId], references: [id], onDelete: SetNull)
+  uploadedById        Int                       @map("uploaded_by")
+  uploadedBy          User                      @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Cascade)
+  originalName        String                    @map("original_name")
+  displayName         String                    @map("display_name")
+  storageKey          String                    @unique @map("storage_key")
+  repositoryPath      String                    @map("repository_path")
+  providerFileSha     String?                   @map("provider_file_sha")
+  mimeType            String                    @map("mime_type")
+  extension           String
+  sizeBytes           Int                       @map("size_bytes")
+  categoryId          Int?                      @map("category_id")
+  category            DocumentCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  description         String?                   @db.Text
+  tags                String?                   @db.Text
+  visibility          String                    @default("project")
+  uploadStatus        String                    @default("uploaded") @map("upload_status")
+  providerSyncStatus  String                    @default("synced") @map("provider_sync_status")
+  deletedAt           DateTime?                 @map("deleted_at")
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
+
+  shares              DocumentShare[]
+  activities          DocumentActivity[]
+
+  @@index([projectId])
+  @@index([categoryId])
+  @@index([uploadedById])
+  @@index([storageConnectionId])
+  @@map("project_documents")
+}
+
+model DocumentShare {
+  id                 Int             @id @default(autoincrement())
+  documentId         Int             @map("document_id")
+  document           ProjectDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  shareType          String          @map("share_type") // "internal_member" | "internal_team" | "external_link"
+  recipientUserId    Int?            @map("recipient_user_id")
+  recipientUser      User?           @relation("DocumentShareRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  recipientTeamId    Int?            @map("recipient_team_id")
+  tokenHash          String?         @unique @map("token_hash")
+  accessPasswordHash String?         @map("access_password_hash")
+  permissionLevel    String          @default("view") @map("permission_level") // "view" | "download" | "full"
+  expiresAt          DateTime?       @map("expires_at")
+  revokedAt          DateTime?       @map("revoked_at")
+  createdById        Int             @map("created_by")
+  createdBy          User            @relation("DocumentShareCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt          DateTime        @default(now()) @map("created_at")
+
+  @@index([documentId])
+  @@index([recipientUserId])
+  @@index([tokenHash])
+  @@map("document_shares")
+}
+
+model DocumentActivity {
+  id         Int              @id @default(autoincrement())
+  documentId Int?             @map("document_id")
+  document   ProjectDocument? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  projectId  Int              @map("project_id")
+  project    Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actorId    Int?             @map("actor_id")
+  actor      User?            @relation("DocumentActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action     String           // "upload" | "download" | "preview" | "rename" | "category_change" | "share_created" | "share_revoked" | "delete" | "github_sync"
+  metadata   String?          @db.Text
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  @@index([projectId])
+  @@index([documentId])
+  @@index([actorId])
+  @@map("document_activities")
+}
+
+model DocumentModuleSettings {
+  id                      Int                       @id @default(autoincrement())
+  projectId               Int                       @unique @map("project_id")
+  project                 Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  storageConnectionId     Int?                      @unique @map("storage_connection_id")
+  storageConnection       ProjectStorageConnection? @relation(fields: [storageConnectionId], references: [id], onDelete: SetNull)
+  maxFileSizeBytes        Int                       @default(26214400) @map("max_file_size_bytes") // 25 MB
+  maxFilesPerBatch        Int                       @default(10) @map("max_files_per_batch")
+  allowedExtensions       String                    @default("*") @map("allowed_extensions")
+  allowedMimeTypes        String                    @default("*") @map("allowed_mime_types")
+  duplicatePolicy         String                    @default("rename") @map("duplicate_policy") // "rename" | "replace" | "reject"
+  externalSharingEnabled  Boolean                   @default(true) @map("external_sharing_enabled")
+  providerDeletionEnabled Boolean                   @default(true) @map("provider_deletion_enabled")
+  defaultCategoryId       Int?                      @map("default_category_id")
+  updatedById             Int?                      @map("updated_by")
+  updatedAt               DateTime                  @updatedAt @map("updated_at")
+
+  @@map("document_module_settings")
 }
 
 

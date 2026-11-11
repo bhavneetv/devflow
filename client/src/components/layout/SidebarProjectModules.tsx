@@ -64,6 +64,13 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
       if (sub.builtInKey === 'whiteboard') {
         return `${projectBase}/whiteboard/${sub.id}`;
       }
+      if (
+        sub.builtInKey === 'documents.knowledge_base' ||
+        sub.builtInKey === 'docs' ||
+        sub.builtInKey === 'documents'
+      ) {
+        return `${projectBase}/documents`;
+      }
       return `${projectBase}/${sub.builtInKey}`;
     }
     return `${projectBase}/submodules/${sub.id}`;

@@ -127,12 +127,20 @@ export const BUILT_IN_SUBMODULE_DEFINITIONS: BuiltInSubmoduleDefinition[] = [
     subpath: 'issues',
   },
   {
+    key: 'documents.knowledge_base',
+    defaultName: 'Documents & Knowledge',
+    description: 'Project documents, assets, and technical specs stored in a dedicated private GitHub repository',
+    defaultIcon: 'file-text',
+    iconComponent: FileText,
+    subpath: 'documents',
+  },
+  {
     key: 'docs',
     defaultName: 'Documents',
     description: 'Project technical specs, wikis, and guidelines',
     defaultIcon: 'file-text',
     iconComponent: FileText,
-    subpath: 'docs',
+    subpath: 'documents',
   },
   {
     key: 'repositories',

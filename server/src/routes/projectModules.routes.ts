@@ -137,6 +137,90 @@ const updateSubmoduleSchema = z.object({
 
 // ─── MODULE ENDPOINTS ────────────────────────────────────────────────────────
 
+const TESTING_QA_SUBMODULE_DEFS = [
+  { name: 'Testing Overview', builtInKey: 'testing-overview', icon: 'bar-chart-2' },
+  { name: 'Test Cases', builtInKey: 'test-cases', icon: 'check-square' },
+  { name: 'Test Suites', builtInKey: 'test-suites', icon: 'layers' },
+  { name: 'Test Plans', builtInKey: 'test-plans', icon: 'clipboard-list' },
+  { name: 'Test Runs', builtInKey: 'test-runs', icon: 'play-circle' },
+  { name: 'Defects', builtInKey: 'defects', icon: 'bug' },
+  { name: 'Test Reports', builtInKey: 'test-reports', icon: 'pie-chart' },
+  { name: 'Testing Settings', builtInKey: 'testing-settings', icon: 'sliders' },
+];
+
+async function ensureTestingQaSubmodules(projectId: number, userId: number | null) {
+  let testingConfig = await (prisma as any).testingConfiguration.findUnique({ where: { projectId } });
+  if (testingConfig?.modulesProvisioned) {
+    return;
+  }
+
+  let qaModule = await prisma.projectModule.findFirst({
+    where: {
+      projectId,
+      OR: [
+        { name: 'Testing & QA' },
+        { submodules: { some: { builtInKey: { in: TESTING_QA_SUBMODULE_DEFS.map((d) => d.builtInKey) } } } },
+      ],
+    },
+    include: { submodules: true },
+  });
+
+  if (!qaModule) {
+    const maxPos = await prisma.projectModule.aggregate({
+      where: { projectId },
+      _max: { position: true },
+    });
+    qaModule = await prisma.projectModule.create({
+      data: {
+        projectId,
+        name: 'Testing & QA',
+        description: 'Modular quality assurance, test execution, defect tracking, and test reporting',
+        icon: 'check-square',
+        position: (maxPos._max.position ?? -1) + 1,
+        isVisible: true,
+        isPinned: false,
+        createdById: userId ?? undefined,
+      },
+      include: { submodules: true },
+    });
+  }
+
+  const existingSubmodules = await prisma.projectSubmodule.findMany({
+    where: { projectId },
+    select: { id: true, builtInKey: true, moduleId: true, position: true },
+  });
+  const existingKeys = new Set(existingSubmodules.map((s) => s.builtInKey).filter(Boolean));
+
+  let nextPos = existingSubmodules
+    .filter((s) => s.moduleId === qaModule!.id)
+    .reduce((max, s) => Math.max(max, s.position), -1) + 1;
+
+  for (const def of TESTING_QA_SUBMODULE_DEFS) {
+    if (!existingKeys.has(def.builtInKey)) {
+      await prisma.projectSubmodule.create({
+        data: {
+          projectId,
+          moduleId: qaModule.id,
+          name: def.name,
+          type: 'built_in',
+          builtInKey: def.builtInKey,
+          icon: def.icon,
+          position: nextPos++,
+          isVisible: true,
+          isPinned: false,
+          createdById: userId ?? undefined,
+        },
+      });
+    }
+  }
+
+  await (prisma as any).testingConfiguration.upsert({
+    where: { projectId },
+    create: { projectId, modulesProvisioned: true },
+    update: { modulesProvisioned: true },
+  });
+}
+
 // GET /api/projects/:projectId/modules — List all modules and submodules
 projectModulesRouter.get('/:projectId/modules', async (req: Request, res: Response) => {
   try {
@@ -154,7 +238,7 @@ projectModulesRouter.get('/:projectId/modules', async (req: Request, res: Respon
       return res.status(403).json({ success: false, error: 'Unauthorized to view project modules' });
     }
 
-    const modules = await prisma.projectModule.findMany({
+    let modules = await prisma.projectModule.findMany({
       where: { projectId },
       orderBy: { position: 'asc' },
       include: {
@@ -164,10 +248,65 @@ projectModulesRouter.get('/:projectId/modules', async (req: Request, res: Respon
       },
     });
 
+    if (modules.length > 0) {
+      const cfg = await (prisma as any).testingConfiguration.findUnique({
+        where: { projectId },
+        select: { modulesProvisioned: true },
+      });
+      if (!cfg?.modulesProvisioned) {
+        await ensureTestingQaSubmodules(projectId, userId);
+        modules = await prisma.projectModule.findMany({
+          where: { projectId },
+          orderBy: { position: 'asc' },
+          include: {
+            submodules: {
+              orderBy: { position: 'asc' },
+            },
+          },
+        });
+      }
+    }
+
     res.json({ success: true, data: modules.map(formatModuleItem) });
   } catch (error: any) {
     console.error('Error fetching modules:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/projects/:projectId/modules/ensure-testing — Explicitly provision Testing & QA module & submodules
+projectModulesRouter.post('/:projectId/modules/ensure-testing', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    if (isNaN(projectId)) {
+      return res.status(400).json({ success: false, error: 'Invalid project ID' });
+    }
+
+    const userId = getUserIdFromToken(req);
+    const { allowed, notFound } = await checkProjectPermission(projectId, userId);
+    if (notFound) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+    if (!allowed) {
+      return res.status(403).json({ success: false, error: 'Unauthorized to manage project modules' });
+    }
+
+    await (prisma as any).testingConfiguration.upsert({
+      where: { projectId },
+      create: { projectId, modulesProvisioned: false },
+      update: { modulesProvisioned: false },
+    });
+    await ensureTestingQaSubmodules(projectId, userId);
+
+    const modules = await prisma.projectModule.findMany({
+      where: { projectId },
+      orderBy: { position: 'asc' },
+      include: { submodules: { orderBy: { position: 'asc' } } },
+    });
+    return res.json({ success: true, data: modules.map(formatModuleItem) });
+  } catch (error: any) {
+    console.error('Error provisioning Testing & QA modules:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 

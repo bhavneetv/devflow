@@ -221,12 +221,17 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
         },
         {
           name: 'Testing & QA',
-          description: 'Test scenarios, defect tracking, and release verification',
+          description: 'Modular quality assurance, test execution, defect tracking, and test reporting',
           icon: 'check-square',
           submodules: [
+            { name: 'Testing Overview', type: 'built_in' as const, builtInKey: 'testing-overview', icon: 'bar-chart-2' },
             { name: 'Test Cases', type: 'built_in' as const, builtInKey: 'test-cases', icon: 'check-square' },
-            { name: 'Defects', type: 'built_in' as const, builtInKey: 'defects', icon: 'alert-circle' },
-            { name: 'Activity Logs', type: 'built_in' as const, builtInKey: 'activity', icon: 'activity' },
+            { name: 'Test Suites', type: 'built_in' as const, builtInKey: 'test-suites', icon: 'layers' },
+            { name: 'Test Plans', type: 'built_in' as const, builtInKey: 'test-plans', icon: 'clipboard-list' },
+            { name: 'Test Runs', type: 'built_in' as const, builtInKey: 'test-runs', icon: 'play-circle' },
+            { name: 'Defects', type: 'built_in' as const, builtInKey: 'defects', icon: 'bug' },
+            { name: 'Test Reports', type: 'built_in' as const, builtInKey: 'test-reports', icon: 'pie-chart' },
+            { name: 'Testing Settings', type: 'built_in' as const, builtInKey: 'testing-settings', icon: 'sliders' },
           ],
         },
       ];
@@ -2253,7 +2258,7 @@ const DeleteModuleModal: React.FC<DeleteModuleModalProps> = ({
 const BUILT_IN_CATEGORIES: { id: string; label: string; keys?: string[] }[] = [
   { id: 'all', label: 'All' },
   { id: 'git', label: 'Git', keys: ['git-overview', 'repositories', 'pulls', 'git-commits', 'git-code'] },
-  { id: 'development', label: 'Development', keys: ['overview', 'issues', 'board', 'cycles', 'milestones'] },
+  { id: 'development', label: 'Development', keys: ['overview', 'development', 'issues', 'board', 'cycles', 'milestones'] },
   { id: 'testing', label: 'Testing', keys: ['test-cases', 'defects'] },
   { id: 'collaboration', label: 'Collaboration', keys: ['docs', 'documents.knowledge_base', 'whiteboard', 'activity'] },
 ];

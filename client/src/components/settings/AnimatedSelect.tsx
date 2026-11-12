@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Search, Check, X, Plus } from 'lucide-react';
+import { ChevronDown, Search, Check, X, Plus, Loader2, Lock } from 'lucide-react';
 
 export interface SelectOption {
   value: string;
   label: string;
   icon?: string | React.ReactNode;
   sublabel?: string;
+  group?: string;
+  disabled?: boolean;
 }
 
 interface AnimatedSelectProps {
@@ -21,6 +23,13 @@ interface AnimatedSelectProps {
   dropdownAlign?: 'left' | 'right';
   dropdownMinWidth?: string;
   hideSublabelInTrigger?: boolean;
+  emptyMessage?: string;
+  footerAction?: {
+    label: string;
+    onClick: () => void;
+  };
+  onCreateOption?: (name: string) => Promise<void> | void;
+  createOptionLabel?: (name: string) => string;
 }
 
 export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
@@ -35,10 +44,15 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
   dropdownAlign = 'left',
   dropdownMinWidth = 'w-full sm:min-w-[270px]',
   hideSublabelInTrigger = false,
+  emptyMessage = 'No matching options found',
+  footerAction,
+  onCreateOption,
+  createOptionLabel,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [animatingValue, setAnimatingValue] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -76,6 +90,23 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
       opt.value.toLowerCase().includes(query)
     );
   });
+
+  const trimmedQuery = searchQuery.trim();
+  const canCreateInline =
+    Boolean(onCreateOption && trimmedQuery) &&
+    !options.some((opt) => opt.label.trim().toLowerCase() === trimmedQuery.toLowerCase());
+
+  const handleCreateInline = async () => {
+    if (!onCreateOption || !trimmedQuery || isCreating) return;
+    setIsCreating(true);
+    try {
+      await onCreateOption(trimmedQuery);
+      setIsOpen(false);
+      setSearchQuery('');
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const handleSelect = (optValue: string) => {
     setAnimatingValue(optValue);
@@ -187,18 +218,24 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
 
             {/* Options List */}
             <div className="overflow-y-auto space-y-0.5 pr-1 scrollbar-thin scrollbar-thumb-zinc-700 max-h-64">
-              {filteredOptions.length === 0 ? (
-                <div className="py-4 text-center text-xs text-[#71717A]">
-                  No matching options found
+              {filteredOptions.length === 0 && !canCreateInline ? (
+                <div className="py-4 px-2 text-center text-xs text-[#71717A]">
+                  {emptyMessage}
                 </div>
               ) : (
-                filteredOptions.map((opt) => {
+                filteredOptions.map((opt, idx) => {
                   const isSelected = opt.value === value;
                   const isBeingSelected = animatingValue === opt.value;
+                  const showGroupHeader = Boolean(opt.group && (idx === 0 || filteredOptions[idx - 1]?.group !== opt.group));
 
                   return (
+                    <React.Fragment key={opt.value}>
+                      {showGroupHeader && (
+                        <div className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 ${idx > 0 ? 'mt-1.5 border-t border-white/[0.06] pt-2' : ''}`}>
+                          {opt.group}
+                        </div>
+                      )}
                     <motion.button
-                      key={opt.value}
                       type="button"
                       whileTap={{ scale: 0.98 }}
                       onClick={() => handleSelect(opt.value)}
@@ -245,10 +282,52 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
                         />
                       )}
                     </motion.button>
+                    </React.Fragment>
                   );
                 })
               )}
+              {canCreateInline && (
+                <button
+                  type="button"
+                  disabled={isCreating}
+                  onClick={handleCreateInline}
+                  className="w-full mt-1 flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-left transition-colors border border-dashed cursor-pointer disabled:opacity-60"
+                  style={{
+                    backgroundColor: `${accentColor}15`,
+                    borderColor: `${accentColor}45`,
+                    color: '#FFFFFF',
+                  }}
+                >
+                  {isCreating ? (
+                    <Loader2 size={13} className="animate-spin shrink-0" style={{ color: accentColor }} />
+                  ) : (
+                    <Plus size={13} className="shrink-0" style={{ color: accentColor }} />
+                  )}
+                  <span className="truncate">
+                    {createOptionLabel
+                      ? createOptionLabel(trimmedQuery)
+                      : `Add "${trimmedQuery}"`}
+                  </span>
+                </button>
+              )}
             </div>
+            {footerAction && (
+              <div className="mt-1.5 pt-1.5 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    setSearchQuery('');
+                    footerAction.onClick();
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer hover:bg-white/[0.06]"
+                  style={{ color: accentColor }}
+                >
+                  <Plus size={13} />
+                  <span>{footerAction.label}</span>
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -481,22 +560,32 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
                   No matching options found
                 </div>
               ) : (
-                filteredOptions.map((opt) => {
+                filteredOptions.map((opt, idx) => {
                   const isSelected = values.includes(opt.value);
+                  const isOptDisabled = Boolean(opt.disabled);
+                  const showGroupHeader = Boolean(opt.group && (idx === 0 || filteredOptions[idx - 1]?.group !== opt.group));
 
                   return (
+                    <React.Fragment key={opt.value}>
+                      {showGroupHeader && (
+                        <div className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 ${idx > 0 ? 'mt-1.5 border-t border-white/[0.06] pt-2' : ''}`}>
+                          {opt.group}
+                        </div>
+                      )}
                     <motion.button
-                      key={opt.value}
                       type="button"
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => handleToggle(opt.value)}
+                      disabled={isOptDisabled}
+                      whileTap={isOptDisabled ? undefined : { scale: 0.98 }}
+                      onClick={() => !isOptDisabled && handleToggle(opt.value)}
                       className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-xs sm:text-[12.5px] text-left transition-all ${
-                        isSelected
+                        isOptDisabled
+                          ? 'opacity-45 cursor-not-allowed text-zinc-500'
+                          : isSelected
                           ? 'font-medium'
                           : 'text-[#D4D4D8] hover:bg-white/[0.06] hover:text-white'
                       }`}
                       style={
-                        isSelected
+                        isSelected && !isOptDisabled
                           ? {
                               backgroundColor: `${accentColor}18`,
                               color: '#FFFFFF',
@@ -508,7 +597,13 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
                         <div
                           className="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors"
                           style={
-                            isSelected
+                            isOptDisabled
+                              ? {
+                                  borderColor: '#27272A',
+                                  backgroundColor: '#121318',
+                                  color: '#71717A',
+                                }
+                              : isSelected
                               ? {
                                   backgroundColor: accentColor,
                                   borderColor: accentColor,
@@ -520,7 +615,11 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
                                 }
                           }
                         >
-                          {isSelected && <Check size={11} strokeWidth={3} />}
+                          {isOptDisabled ? (
+                            <Lock size={9} />
+                          ) : (
+                            isSelected && <Check size={11} strokeWidth={3} />
+                          )}
                         </div>
 
                         {opt.icon && (
@@ -528,7 +627,7 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
                             {opt.icon}
                           </div>
                         )}
-                        <span className="font-semibold text-white truncate shrink-0">
+                        <span className={`font-semibold truncate shrink-0 ${isOptDisabled ? 'text-zinc-400' : 'text-white'}`}>
                           {opt.label}
                         </span>
                         {opt.sublabel && (
@@ -538,6 +637,7 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
                         )}
                       </div>
                     </motion.button>
+                    </React.Fragment>
                   );
                 })
               )}

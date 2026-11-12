@@ -71,6 +71,9 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
       ) {
         return `${projectBase}/documents/${sub.id}`;
       }
+      if (sub.builtInKey === 'development' || sub.builtInKey === 'development.management') {
+        return `${projectBase}/development`;
+      }
       return `${projectBase}/${sub.builtInKey}`;
     }
     return `${projectBase}/submodules/${sub.id}`;

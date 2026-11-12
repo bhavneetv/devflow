@@ -64,6 +64,7 @@ import { SidebarOrderSettingsView } from './SidebarOrderSettingsView';
 import { ProjectGitHubLinker } from '../../components/git/ProjectGitHubLinker';
 import { ProjectGitMemberMapping } from '../../components/git/ProjectGitMemberMapping';
 import { ProjectStorageSettingsTab } from '../../components/settings/ProjectStorageSettingsTab';
+import { ProjectMasterDataTab } from '../../components/settings/ProjectMasterDataTab';
 
 // ─── CONSTANTS & DICTIONARIES ────────────────────────────────────────────────
 
@@ -1668,6 +1669,11 @@ export const ProjectSettingsView: React.FC = () => {
       {/* ─── TAB: STORAGE (REPO, BRANCH USAGE, UNLINK & RELINK) ─────────── */}
       {activeSection === 'storage' && (
         <ProjectStorageSettingsTab projectId={projectId} />
+      )}
+
+      {/* ─── TAB: PROJECT MASTER DATA (MODULES / SUBMODULES / PRIORITY / STATUS) */}
+      {activeSection === 'master-data' && (
+        <ProjectMasterDataTab projectId={projectId} />
       )}
 
       {/* ─── TAB 3: SECURITY & ACCESS ─────────────────────────────────────── */}

@@ -14,6 +14,7 @@ import {
   PanelLeft,
   UserCheck,
   HardDrive,
+  Database,
   LucideIcon,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
@@ -80,6 +81,13 @@ export const PROJECT_NAV_ITEMS: ProjectNavSection[] = [
     subpath: 'storage',
     icon: HardDrive,
     description: 'Linked repo, branch storage usage, unlink & relink',
+  },
+  {
+    id: 'master-data',
+    label: 'Project Master Data',
+    subpath: 'master-data',
+    icon: Database,
+    description: 'Modules, submodules, priorities & statuses',
   },
   {
     id: 'labels',

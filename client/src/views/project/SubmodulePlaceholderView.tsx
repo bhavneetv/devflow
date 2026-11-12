@@ -25,6 +25,15 @@ import { GitOverview } from '../../components/git/GitOverview';
 import { GitIssuesView } from '../../components/git/GitIssuesView';
 import { WhiteboardView } from './WhiteboardView';
 import { DocumentsKnowledgeBaseModule } from '../../components/documents/DocumentsKnowledgeBaseModule';
+import { DevelopmentManagementModule } from '../../components/development/DevelopmentManagementModule';
+import { TestingOverviewView } from './testing/TestingOverviewView';
+import { TestCasesView } from './testing/TestCasesView';
+import { TestSuitesView } from './testing/TestSuitesView';
+import { TestPlansView } from './testing/TestPlansView';
+import { TestRunsView } from './testing/TestRunsView';
+import { DefectsView } from './testing/DefectsView';
+import { TestReportsView } from './testing/TestReportsView';
+import { TestingSettingsView } from './testing/TestingSettingsView';
 
 export const SubmodulePlaceholderView: React.FC = () => {
   const { id, submoduleId, moduleId } = useParams<{ id: string; submoduleId?: string; moduleId?: string }>();
@@ -125,6 +134,38 @@ export const SubmodulePlaceholderView: React.FC = () => {
           <DocumentsKnowledgeBaseModule
             projectId={projectId}
             submoduleId={submodule.id}
+            submoduleName={submodule.name}
+          />
+        </div>
+      );
+    } else if (key === 'testing-overview') {
+      return <TestingOverviewView projectId={projectId} />;
+    } else if (key === 'test-cases') {
+      return <TestCasesView projectId={projectId} />;
+    } else if (key === 'test-suites') {
+      return <TestSuitesView projectId={projectId} />;
+    } else if (key === 'test-plans') {
+      return <TestPlansView projectId={projectId} />;
+    } else if (key === 'test-runs') {
+      return <TestRunsView projectId={projectId} />;
+    } else if (key === 'defects') {
+      return <DefectsView projectId={projectId} />;
+    } else if (key === 'test-reports') {
+      return <TestReportsView projectId={projectId} />;
+    } else if (key === 'testing-settings') {
+      return <TestingSettingsView projectId={projectId} />;
+    } else if (key === 'development' || key === 'development.management') {
+      return (
+        <div className="p-4 sm:p-6 max-w-[1600px] mx-auto space-y-6">
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <Link to={`/projects/${projectId}`} className="hover:text-white transition-colors">
+              {activeProject?.title || 'Project'}
+            </Link>
+            <span>/</span>
+            <span className="text-white font-medium">{submodule.name}</span>
+          </div>
+          <DevelopmentManagementModule
+            projectId={projectId}
             submoduleName={submodule.name}
           />
         </div>

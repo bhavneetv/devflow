@@ -1423,11 +1423,25 @@ gitRoutes.get('/links', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Populate target entity details (Task or Requirement)
+    // Populate target entity details (Task, QA Defect, or Requirement)
     const enriched = await Promise.all(
       links.map(async (l: any) => {
         let targetDetails = null;
-        if (l.targetType === 'task' || l.targetType === 'defect') {
+        if (l.targetType === 'defect') {
+          const defect = await (prisma as any).qaDefect.findUnique({
+            where: { id: l.targetId },
+            select: { id: true, defectKey: true, title: true, status: true, priority: true, severity: true },
+          });
+          if (defect) {
+            targetDetails = defect;
+          } else {
+            const task = await prisma.task.findUnique({
+              where: { id: l.targetId },
+              select: { id: true, title: true, status: true, priority: true },
+            });
+            if (task) targetDetails = task;
+          }
+        } else if (l.targetType === 'task') {
           const task = await prisma.task.findUnique({
             where: { id: l.targetId },
             select: { id: true, title: true, status: true, priority: true },

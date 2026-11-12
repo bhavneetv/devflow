@@ -126,6 +126,7 @@ const renderTeamSidebarAvatar = (team: any) => {
 
 const PROJECT_SIDEBAR_ICONS: Record<SidebarItemId, any> = {
   overview: LayoutDashboard,
+  development: Layers,
   board: Kanban,
   backlog: Layers,
   sprints: RotateCcw,

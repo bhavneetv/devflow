@@ -21,6 +21,11 @@ interface AnimatedSelectProps {
   dropdownAlign?: 'left' | 'right';
   dropdownMinWidth?: string;
   hideSublabelInTrigger?: boolean;
+  emptyMessage?: string;
+  footerAction?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
 export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
@@ -35,6 +40,8 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
   dropdownAlign = 'left',
   dropdownMinWidth = 'w-full sm:min-w-[270px]',
   hideSublabelInTrigger = false,
+  emptyMessage = 'No matching options found',
+  footerAction,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -188,8 +195,8 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
             {/* Options List */}
             <div className="overflow-y-auto space-y-0.5 pr-1 scrollbar-thin scrollbar-thumb-zinc-700 max-h-64">
               {filteredOptions.length === 0 ? (
-                <div className="py-4 text-center text-xs text-[#71717A]">
-                  No matching options found
+                <div className="py-4 px-2 text-center text-xs text-[#71717A]">
+                  {emptyMessage}
                 </div>
               ) : (
                 filteredOptions.map((opt) => {
@@ -249,6 +256,23 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
                 })
               )}
             </div>
+            {footerAction && (
+              <div className="mt-1.5 pt-1.5 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    setSearchQuery('');
+                    footerAction.onClick();
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer hover:bg-white/[0.06]"
+                  style={{ color: accentColor }}
+                >
+                  <Plus size={13} />
+                  <span>{footerAction.label}</span>
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

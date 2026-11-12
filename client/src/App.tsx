@@ -22,6 +22,7 @@ import { ProjectOverviewView } from './views/project/ProjectOverviewView';
 import { WhiteboardView } from './views/project/WhiteboardView';
 import { PublicWhiteboardView } from './views/public/PublicWhiteboardView';
 import { DocumentsKnowledgeBaseView } from './views/project/DocumentsKnowledgeBaseView';
+import { DevelopmentManagementView } from './views/project/DevelopmentManagementView';
 import { PublicDocumentShareView } from './views/public/PublicDocumentShareView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
@@ -188,6 +189,7 @@ export const App: React.FC = () => {
                             <Route path="/organizations/:organizationSlug/projects/:id/documents" element={<DocumentsKnowledgeBaseView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/documents/:submoduleId" element={<DocumentsKnowledgeBaseView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/docs" element={<DocumentsKnowledgeBaseView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/development" element={<DevelopmentManagementView />} />
 
                             <Route path="/organizations/:organizationSlug/activity" element={<OrganizationActivityView />} />
                             <Route path="/organizations/:organizationSlug/settings" element={<OrganizationSettingsView />} />
@@ -252,6 +254,7 @@ export const App: React.FC = () => {
                             <Route path="/projects/:id/documents" element={<DocumentsKnowledgeBaseView />} />
                             <Route path="/projects/:id/documents/:submoduleId" element={<DocumentsKnowledgeBaseView />} />
                             <Route path="/projects/:id/docs" element={<DocumentsKnowledgeBaseView />} />
+                            <Route path="/projects/:id/development" element={<DevelopmentManagementView />} />
                             <Route path="/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />

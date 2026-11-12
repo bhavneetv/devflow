@@ -230,5 +230,13 @@ export const BUILT_IN_SUBMODULE_DEFINITIONS: BuiltInSubmoduleDefinition[] = [
     iconComponent: PenTool,
     subpath: 'whiteboard',
   },
+  {
+    key: 'development',
+    defaultName: 'Development Management',
+    description: 'Manage development work items, module/submodule masters, priorities, deadlines, and team workload',
+    defaultIcon: 'check-square',
+    iconComponent: CheckSquare,
+    subpath: 'development',
+  },
 ];
 

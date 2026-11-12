@@ -4,7 +4,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 // Saved in localStorage. To sync across devices, replace read()/write() with API calls.
 
 export type SidebarItemId =
-  | 'overview' | 'board' | 'backlog' | 'sprints' | 'timeline' | 'whiteboard' | 'requirements'
+  | 'overview' | 'development' | 'board' | 'backlog' | 'sprints' | 'timeline' | 'whiteboard' | 'requirements'
   | 'issues' | 'defects' | 'repository' | 'releases' | 'team' | 'settings';
 
 export type SectionId = 'summary' | 'timeline' | 'engineering' | 'team' | 'quality' | 'work' | 'traceability';
@@ -26,6 +26,7 @@ export interface ProjectLayout {
 // `path` is relative to /projects/:projectId. `locked` items cannot be hidden.
 export const SIDEBAR_ITEMS: Record<SidebarItemId, { label: string; path: string; locked?: boolean }> = {
   overview: { label: 'Overview', path: '', locked: true },
+  development: { label: 'Development', path: '/development' },
   board: { label: 'Board', path: '/board' },
   backlog: { label: 'Backlog', path: '/backlog' },
   sprints: { label: 'Sprints', path: '/cycles' },

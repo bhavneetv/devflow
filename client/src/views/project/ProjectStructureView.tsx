@@ -2253,7 +2253,7 @@ const DeleteModuleModal: React.FC<DeleteModuleModalProps> = ({
 const BUILT_IN_CATEGORIES: { id: string; label: string; keys?: string[] }[] = [
   { id: 'all', label: 'All' },
   { id: 'git', label: 'Git', keys: ['git-overview', 'repositories', 'pulls', 'git-commits', 'git-code'] },
-  { id: 'development', label: 'Development', keys: ['overview', 'issues', 'board', 'cycles', 'milestones'] },
+  { id: 'development', label: 'Development', keys: ['overview', 'development', 'issues', 'board', 'cycles', 'milestones'] },
   { id: 'testing', label: 'Testing', keys: ['test-cases', 'defects'] },
   { id: 'collaboration', label: 'Collaboration', keys: ['docs', 'documents.knowledge_base', 'whiteboard', 'activity'] },
 ];

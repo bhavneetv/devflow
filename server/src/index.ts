@@ -16,6 +16,7 @@ import { notificationsRouter } from './routes/notifications.routes.js';
 import { projectModulesRouter } from './routes/projectModules.routes.js';
 import { gitRoutes } from './routes/git.routes.js';
 import { documentsRouter, publicShareRouter } from './routes/documents.routes.js';
+import { developmentRouter } from './routes/development.routes.js';
 import { initSocketIO } from './lib/socket.js';
 
 dotenv.config();
@@ -88,6 +89,7 @@ app.use('/api/favorites', favoritesRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/projects/:projectId/git', gitRoutes);
 app.use('/api/projects/:projectId/documents', documentsRouter);
+app.use('/api/projects/:projectId/development', developmentRouter);
 app.use('/api/documents/public-share', publicShareRouter);
 
 // Root route

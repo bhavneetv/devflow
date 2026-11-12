@@ -202,6 +202,14 @@ model User {
   documentSharesCreated   DocumentShare[]          @relation("DocumentShareCreator")
   documentSharesReceived  DocumentShare[]          @relation("DocumentShareRecipient")
   documentActivities      DocumentActivity[]       @relation("DocumentActivityActor")
+  createdDevModules       DevelopmentModule[]      @relation("DevModuleCreator")
+  createdDevSubmodules    DevelopmentSubmodule[]   @relation("DevSubmoduleCreator")
+  createdDevTasks         DevelopmentTask[]        @relation("DevTaskCreator")
+  devTaskAssignments      DevelopmentTaskAssignee[] @relation("DevTaskAssigneeUser")
+  devTasksAssignedBy      DevelopmentTaskAssignee[] @relation("DevTaskAssignedByUser")
+  devTaskAttachments      DevelopmentTaskAttachment[] @relation("DevTaskAttachmentUploader")
+  devTaskComments         DevelopmentTaskComment[] @relation("DevTaskCommentAuthor")
+  devTaskActivities       DevelopmentTaskActivity[] @relation("DevTaskActivityActor")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
@@ -320,6 +328,12 @@ model Project {
   documentCategories    DocumentCategory[]
   documentSettings      DocumentModuleSettings?
   documentActivities    DocumentActivity[]
+  developmentModules    DevelopmentModule[]
+  developmentSubmodules DevelopmentSubmodule[]
+  developmentTasks      DevelopmentTask[]
+  developmentAttachments DevelopmentTaskAttachment[]
+  developmentActivities DevelopmentTaskActivity[]
+  developmentConfig     DevelopmentProjectConfig?
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
@@ -1012,6 +1026,7 @@ model ProjectDocument {
 
   shares              DocumentShare[]
   activities          DocumentActivity[]
+  developmentAttachments DevelopmentTaskAttachment[]
 
   @@index([projectId])
   @@index([submoduleId])
@@ -1086,6 +1101,183 @@ model DocumentModuleSettings {
   updatedAt               DateTime                  @updatedAt @map("updated_at")
 
   @@map("document_module_settings")
+}
+
+// ─── DEVELOPMENT MANAGEMENT MODULE ─────────────────────────────────────────────
+
+model DevelopmentModule {
+  id          Int                    @id @default(autoincrement())
+  projectId   Int                    @map("project_id")
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  description String?                @db.Text
+  icon        String?
+  color       String?
+  position    Int                    @default(0)
+  isArchived  Boolean                @default(false) @map("is_archived")
+  archivedAt  DateTime?              @map("archived_at")
+  createdById Int?                   @map("created_by")
+  createdBy   User?                  @relation("DevModuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  submodules  DevelopmentSubmodule[]
+  tasks       DevelopmentTask[]
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+
+  @@unique([projectId, slug])
+  @@index([projectId, isArchived])
+  @@map("development_modules")
+}
+
+model DevelopmentSubmodule {
+  id          Int               @id @default(autoincrement())
+  projectId   Int               @map("project_id")
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  moduleId    Int               @map("module_id")
+  module      DevelopmentModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  description String?           @db.Text
+  icon        String?
+  position    Int               @default(0)
+  isArchived  Boolean           @default(false) @map("is_archived")
+  archivedAt  DateTime?         @map("archived_at")
+  createdById Int?              @map("created_by")
+  createdBy   User?             @relation("DevSubmoduleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  tasks       DevelopmentTask[]
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  @@unique([moduleId, slug])
+  @@index([projectId, moduleId, isArchived])
+  @@map("development_submodules")
+}
+
+model DevelopmentTask {
+  id              Int                         @id @default(autoincrement())
+  projectId       Int                         @map("project_id")
+  project         Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskKey         String                      @map("task_key")
+  sequenceNumber  Int                         @map("sequence_number")
+  title           String
+  description     String?                     @db.Text
+  taskType        String                      @default("Task") @map("task_type")
+  moduleId        Int                         @map("module_id")
+  module          DevelopmentModule           @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  submoduleId     Int                         @map("submodule_id")
+  submodule       DevelopmentSubmodule        @relation(fields: [submoduleId], references: [id], onDelete: Restrict)
+  priority        String                      @default("Medium")
+  status          String                      @default("Not Started")
+  startDate       DateTime?                   @map("start_date")
+  dueDate         DateTime?                   @map("due_date")
+  estimatedEffort Float?                      @map("estimated_effort")
+  effortUnit      String                      @default("hours") @map("effort_unit")
+  actualEffort    Float?                      @map("actual_effort")
+  labelsJson      String?                     @map("labels_json") @db.Text
+  position        Int                         @default(0)
+  createdById     Int                         @map("created_by")
+  createdBy       User                        @relation("DevTaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  completedAt     DateTime?                   @map("completed_at")
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
+
+  assignees       DevelopmentTaskAssignee[]
+  attachments     DevelopmentTaskAttachment[]
+  comments        DevelopmentTaskComment[]
+  activities      DevelopmentTaskActivity[]
+
+  @@unique([projectId, taskKey])
+  @@index([projectId, status])
+  @@index([projectId, priority])
+  @@index([projectId, moduleId, submoduleId])
+  @@index([projectId, dueDate])
+  @@index([createdById])
+  @@map("development_tasks")
+}
+
+model DevelopmentTaskAssignee {
+  id           Int             @id @default(autoincrement())
+  taskId       Int             @map("task_id")
+  task         DevelopmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId       Int             @map("user_id")
+  user         User            @relation("DevTaskAssigneeUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedById Int?            @map("assigned_by")
+  assignedBy   User?           @relation("DevTaskAssignedByUser", fields: [assignedById], references: [id], onDelete: SetNull)
+  assignedAt   DateTime        @default(now()) @map("assigned_at")
+
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@map("development_task_assignees")
+}
+
+model DevelopmentTaskAttachment {
+  id           Int              @id @default(autoincrement())
+  taskId       Int              @map("task_id")
+  task         DevelopmentTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  projectId    Int              @map("project_id")
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  documentId   Int?             @map("document_id")
+  document     ProjectDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  fileName     String           @map("file_name")
+  fileUrl      String?          @map("file_url") @db.Text
+  fileSize     Int?             @map("file_size")
+  mimeType     String?          @map("mime_type")
+  uploadedById Int?             @map("uploaded_by")
+  uploadedBy   User?            @relation("DevTaskAttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@index([taskId])
+  @@index([projectId])
+  @@index([documentId])
+  @@map("development_task_attachments")
+}
+
+model DevelopmentTaskComment {
+  id        Int             @id @default(autoincrement())
+  taskId    Int             @map("task_id")
+  task      DevelopmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  Int             @map("author_id")
+  author    User            @relation("DevTaskCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String          @db.Text
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  @@index([taskId, createdAt])
+  @@map("development_task_comments")
+}
+
+model DevelopmentTaskActivity {
+  id            Int              @id @default(autoincrement())
+  projectId     Int              @map("project_id")
+  project       Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId        Int?             @map("task_id")
+  task          DevelopmentTask? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorId       Int?             @map("actor_id")
+  actor         User?            @relation("DevTaskActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action        String
+  field         String?
+  previousValue String?          @map("previous_value") @db.Text
+  newValue      String?          @map("new_value") @db.Text
+  metadata      String?          @db.Text
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  @@index([projectId, createdAt])
+  @@index([taskId, createdAt])
+  @@map("development_task_activities")
+}
+
+model DevelopmentProjectConfig {
+  id                  Int      @id @default(autoincrement())
+  projectId           Int      @unique @map("project_id")
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskPrefix          String   @default("DEV") @map("task_prefix")
+  customTaskTypesJson String?  @map("custom_task_types_json") @db.Text
+  customStatusesJson  String?  @map("custom_statuses_json") @db.Text
+  defaultEffortUnit   String   @default("hours") @map("default_effort_unit")
+  updatedById         Int?     @map("updated_by")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("development_project_configs")
 }
 
 

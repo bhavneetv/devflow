@@ -461,9 +461,10 @@ async function main() {
     assert(
       csvRes.status === 200 &&
         typeof csvRes.json === 'string' &&
-        csvRes.json.includes('TC-001') &&
-        csvRes.json.includes('BUG-001'),
-      'CSV export should include TC-001 and BUG-001 rows'
+        csvRes.json.includes('SECTION,METRIC,VALUE') &&
+        csvRes.json.includes('Pass Rate (%)') &&
+        csvRes.json.includes('REQ-901'),
+      'CSV export should include Summary metrics and Requirement coverage rows'
     );
 
     console.log('✅ All Testing & QA integration assertions passed!');

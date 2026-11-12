@@ -176,6 +176,24 @@ export interface DevelopmentTaskItem {
   gitCommit?: DevGitCommitLink | null;
   startedAt?: string | null;
   completedAt?: string | null;
+  testCoverage?: {
+    linkedTestCases: Array<{
+      id: number;
+      caseKey: string;
+      title: string;
+      status: string;
+      priority: string;
+      testType: string;
+    }>;
+    linkedDefects: Array<{
+      id: number;
+      defectKey: string;
+      title: string;
+      status: string;
+      severity: string;
+      priority: string;
+    }>;
+  };
   createdAt: string;
   updatedAt: string;
 }

@@ -23,6 +23,14 @@ import { WhiteboardView } from './views/project/WhiteboardView';
 import { PublicWhiteboardView } from './views/public/PublicWhiteboardView';
 import { DocumentsKnowledgeBaseView } from './views/project/DocumentsKnowledgeBaseView';
 import { DevelopmentManagementView } from './views/project/DevelopmentManagementView';
+import { TestingOverviewView } from './views/project/testing/TestingOverviewView';
+import { TestCasesView } from './views/project/testing/TestCasesView';
+import { TestSuitesView } from './views/project/testing/TestSuitesView';
+import { TestPlansView } from './views/project/testing/TestPlansView';
+import { TestRunsView } from './views/project/testing/TestRunsView';
+import { DefectsView } from './views/project/testing/DefectsView';
+import { TestReportsView } from './views/project/testing/TestReportsView';
+import { TestingSettingsView } from './views/project/testing/TestingSettingsView';
 import { PublicDocumentShareView } from './views/public/PublicDocumentShareView';
 import { TeamView } from './views/TeamView';
 import { SettingsView } from './views/SettingsView';
@@ -190,6 +198,15 @@ export const App: React.FC = () => {
                             <Route path="/organizations/:organizationSlug/projects/:id/documents/:submoduleId" element={<DocumentsKnowledgeBaseView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/docs" element={<DocumentsKnowledgeBaseView />} />
                             <Route path="/organizations/:organizationSlug/projects/:id/development" element={<DevelopmentManagementView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/testing-overview" element={<TestingOverviewView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/test-cases" element={<TestCasesView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/test-suites" element={<TestSuitesView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/test-plans" element={<TestPlansView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/test-runs" element={<TestRunsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/test-runs/:runId" element={<TestRunsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/defects" element={<DefectsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/test-reports" element={<TestReportsView />} />
+                            <Route path="/organizations/:organizationSlug/projects/:id/testing-settings" element={<TestingSettingsView />} />
 
                             <Route path="/organizations/:organizationSlug/activity" element={<OrganizationActivityView />} />
                             <Route path="/organizations/:organizationSlug/settings" element={<OrganizationSettingsView />} />
@@ -255,6 +272,15 @@ export const App: React.FC = () => {
                             <Route path="/projects/:id/documents/:submoduleId" element={<DocumentsKnowledgeBaseView />} />
                             <Route path="/projects/:id/docs" element={<DocumentsKnowledgeBaseView />} />
                             <Route path="/projects/:id/development" element={<DevelopmentManagementView />} />
+                            <Route path="/projects/:id/testing-overview" element={<TestingOverviewView />} />
+                            <Route path="/projects/:id/test-cases" element={<TestCasesView />} />
+                            <Route path="/projects/:id/test-suites" element={<TestSuitesView />} />
+                            <Route path="/projects/:id/test-plans" element={<TestPlansView />} />
+                            <Route path="/projects/:id/test-runs" element={<TestRunsView />} />
+                            <Route path="/projects/:id/test-runs/:runId" element={<TestRunsView />} />
+                            <Route path="/projects/:id/defects" element={<DefectsView />} />
+                            <Route path="/projects/:id/test-reports" element={<TestReportsView />} />
+                            <Route path="/projects/:id/testing-settings" element={<TestingSettingsView />} />
                             <Route path="/projects/:id/settings" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/settings/:section" element={<ProjectSettingsView />} />
                             <Route path="/projects/:id/modules/:moduleId" element={<SubmodulePlaceholderView />} />

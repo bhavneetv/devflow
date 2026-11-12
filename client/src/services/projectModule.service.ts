@@ -186,5 +186,19 @@ export const projectModuleService = {
       return { success: false, error: err.message || 'Failed to delete submodule' };
     }
   },
+
+  async ensureTestingQaModules(
+    projectId: number
+  ): Promise<{ success: boolean; data?: ProjectModule[]; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/modules/ensure-testing`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to provision Testing & QA modules' };
+    }
+  },
 };
 

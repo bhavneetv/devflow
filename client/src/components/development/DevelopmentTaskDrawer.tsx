@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  Bug,
   Calendar,
   Check,
   CheckCircle2,
@@ -13,6 +15,7 @@ import {
   ExternalLink,
   FileText,
   Flag,
+  FlaskConical,
   GitCommitHorizontal,
   GripHorizontal,
   Layers,
@@ -367,6 +370,11 @@ export const DevelopmentTaskDrawer: React.FC<DevelopmentTaskDrawerProps> = ({
   onTaskDeleted,
 }) => {
   const { accentColor } = useAccentTheme();
+  const navigate = useNavigate();
+  const { organizationSlug } = useParams<{ organizationSlug?: string }>();
+  const projectBasePath = organizationSlug
+    ? `/organizations/${organizationSlug}/projects/${projectId}`
+    : `/projects/${projectId}`;
   const currentUser = useMemo(() => authService.getUser(), []);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<DrawerTab>('details');
@@ -1010,6 +1018,68 @@ export const DevelopmentTaskDrawer: React.FC<DevelopmentTaskDrawerProps> = ({
                     )}
                   </div>
                 )}
+
+                {detailTask?.testCoverage &&
+                  (detailTask.testCoverage.linkedTestCases.length > 0 ||
+                    detailTask.testCoverage.linkedDefects.length > 0) && (
+                    <div className="p-4 rounded-2xl bg-[#12141B] border border-[#27272A] space-y-3">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 inline-flex items-center gap-1.5">
+                        <FlaskConical size={12} style={{ color: accentColor }} />
+                        QA Test Coverage &amp; Linked Defects
+                      </span>
+                      {detailTask.testCoverage.linkedTestCases.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[11px] text-zinc-500">
+                            Test Cases ({detailTask.testCoverage.linkedTestCases.length})
+                          </div>
+                          {detailTask.testCoverage.linkedTestCases.map((tc) => (
+                            <button
+                              key={tc.id}
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                navigate(`${projectBasePath}/test-cases?caseId=${tc.id}`);
+                              }}
+                              className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[#0D0F14] border border-white/10 hover:border-emerald-500/35 text-xs text-left"
+                            >
+                              <span className="text-white truncate">
+                                <span className="font-mono text-emerald-400 mr-2">{tc.caseKey}</span>
+                                {tc.title}
+                              </span>
+                              <span className="text-[11px] text-zinc-400 shrink-0">{tc.status}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {detailTask.testCoverage.linkedDefects.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[11px] text-zinc-500 flex items-center gap-1">
+                            <Bug size={11} className="text-rose-400" />
+                            <span>Defects ({detailTask.testCoverage.linkedDefects.length})</span>
+                          </div>
+                          {detailTask.testCoverage.linkedDefects.map((df) => (
+                            <button
+                              key={df.id}
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                navigate(`${projectBasePath}/defects?defectId=${df.id}`);
+                              }}
+                              className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[#0D0F14] border border-white/10 hover:border-rose-500/35 text-xs text-left"
+                            >
+                              <span className="text-white truncate">
+                                <span className="font-mono text-rose-400 mr-2">{df.defectKey}</span>
+                                {df.title}
+                              </span>
+                              <span className="text-[11px] text-rose-300 shrink-0">
+                                {df.severity} · {df.status}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
               </>
             )}
 

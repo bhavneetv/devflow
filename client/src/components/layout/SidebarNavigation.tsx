@@ -27,6 +27,12 @@ import {
   Rocket,
   AlertCircle,
   PenTool,
+  BarChart2,
+  ClipboardList,
+  PlayCircle,
+  Bug,
+  PieChart,
+  Sliders,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useChat } from '../../context/ChatContext';
@@ -753,6 +759,30 @@ export const SidebarNavigation: React.FC = () => {
                         />
                       );
                     })}
+
+                  {/* Testing & QA Built-In Submodules Section */}
+                  {!isCollapsed && (
+                    <div className="pt-3 pb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      Testing &amp; QA
+                    </div>
+                  )}
+                  {[
+                    { title: 'Testing Overview', sub: 'testing-overview', icon: BarChart2 },
+                    { title: 'Test Cases', sub: 'test-cases', icon: CheckSquare },
+                    { title: 'Test Suites', sub: 'test-suites', icon: Layers },
+                    { title: 'Test Plans', sub: 'test-plans', icon: ClipboardList },
+                    { title: 'Test Runs', sub: 'test-runs', icon: PlayCircle },
+                    { title: 'Defects', sub: 'defects', icon: Bug },
+                    { title: 'Test Reports', sub: 'test-reports', icon: PieChart },
+                    { title: 'Testing Settings', sub: 'testing-settings', icon: Sliders },
+                  ].map((qaItem) => (
+                    <NavigationItem
+                      key={qaItem.sub}
+                      title={qaItem.title}
+                      path={`${projectOverviewPath}/${qaItem.sub}`}
+                      icon={qaItem.icon}
+                    />
+                  ))}
                 </div>
               )}
             </>

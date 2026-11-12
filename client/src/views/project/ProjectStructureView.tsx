@@ -221,12 +221,17 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
         },
         {
           name: 'Testing & QA',
-          description: 'Test scenarios, defect tracking, and release verification',
+          description: 'Modular quality assurance, test execution, defect tracking, and test reporting',
           icon: 'check-square',
           submodules: [
+            { name: 'Testing Overview', type: 'built_in' as const, builtInKey: 'testing-overview', icon: 'bar-chart-2' },
             { name: 'Test Cases', type: 'built_in' as const, builtInKey: 'test-cases', icon: 'check-square' },
-            { name: 'Defects', type: 'built_in' as const, builtInKey: 'defects', icon: 'alert-circle' },
-            { name: 'Activity Logs', type: 'built_in' as const, builtInKey: 'activity', icon: 'activity' },
+            { name: 'Test Suites', type: 'built_in' as const, builtInKey: 'test-suites', icon: 'layers' },
+            { name: 'Test Plans', type: 'built_in' as const, builtInKey: 'test-plans', icon: 'clipboard-list' },
+            { name: 'Test Runs', type: 'built_in' as const, builtInKey: 'test-runs', icon: 'play-circle' },
+            { name: 'Defects', type: 'built_in' as const, builtInKey: 'defects', icon: 'bug' },
+            { name: 'Test Reports', type: 'built_in' as const, builtInKey: 'test-reports', icon: 'pie-chart' },
+            { name: 'Testing Settings', type: 'built_in' as const, builtInKey: 'testing-settings', icon: 'sliders' },
           ],
         },
       ];

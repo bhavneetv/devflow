@@ -2497,7 +2497,7 @@ developmentRouter.get('/tasks/:taskId', async (req: Request, res: Response) => {
     const access = await checkDevelopmentAccess(projectId, userId);
     if (!access.allowed) return sendAccessError(res, access);
 
-    const [task, config] = await Promise.all([
+    const [task, config, linkedTestCases, linkedDefects] = await Promise.all([
       prisma.developmentTask.findFirst({
         where: { id: taskId, projectId },
         include: {
@@ -2530,6 +2530,16 @@ developmentRouter.get('/tasks/:taskId', async (req: Request, res: Response) => {
         },
       }),
       getOrBuildProjectConfig(projectId),
+      (prisma as any).testCase.findMany({
+        where: { projectId, linkedDevTaskId: taskId, isArchived: false },
+        select: { id: true, caseKey: true, title: true, status: true, priority: true, testType: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      (prisma as any).qaDefect.findMany({
+        where: { projectId, linkedDevTaskId: taskId, isArchived: false },
+        select: { id: true, defectKey: true, title: true, status: true, severity: true, priority: true },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
 
     if (!task) {
@@ -2565,6 +2575,10 @@ developmentRouter.get('/tasks/:taskId', async (req: Request, res: Response) => {
           ...a,
           createdAt: a.createdAt.toISOString(),
         })),
+        testCoverage: {
+          linkedTestCases,
+          linkedDefects,
+        },
       },
     });
   } catch (error: any) {

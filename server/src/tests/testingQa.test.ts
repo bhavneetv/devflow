@@ -451,10 +451,10 @@ async function main() {
     const overview = await api('/testing/overview', 'GET');
     assert(
       overview.status === 200 &&
-        overview.json.data.cards.totalTestCases === 4 &&
-        overview.json.data.cards.openDefects === 1 &&
-        overview.json.data.cards.criticalDefects === 1,
-      `Overview counts mismatch: ${JSON.stringify(overview.json.data?.cards)}`
+        overview.json.data.summary.totalTestCases === 4 &&
+        overview.json.data.summary.openDefects === 1 &&
+        overview.json.data.summary.criticalDefects === 1,
+      `Overview counts mismatch: ${JSON.stringify(overview.json.data?.summary)}`
     );
 
     const csvRes = await api('/testing/reports/export', 'GET');

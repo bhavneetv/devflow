@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import {
   BarChart3,
   CheckCircle2,
-  FolderCog,
   ListTodo,
   Plus,
   ShieldCheck,
@@ -17,7 +16,6 @@ interface DevelopmentOverviewSidebarProps {
   onCreateTaskClick: () => void;
   onAllTasksClick: () => void;
   onAnalyticsClick: () => void;
-  onMastersClick: () => void;
 }
 
 export const DevelopmentOverviewSidebar: React.FC<DevelopmentOverviewSidebarProps> = ({
@@ -25,7 +23,6 @@ export const DevelopmentOverviewSidebar: React.FC<DevelopmentOverviewSidebarProp
   onCreateTaskClick,
   onAllTasksClick,
   onAnalyticsClick,
-  onMastersClick,
 }) => {
   const { accentColor } = useAccentTheme();
   const { projectMeta, metrics, permissions } = data;
@@ -41,36 +38,53 @@ export const DevelopmentOverviewSidebar: React.FC<DevelopmentOverviewSidebarProp
 
   const total = metrics.totalWorkItems;
   const activeCount = Math.max(0, total - metrics.completedCount);
+  const activeContributors = metrics.teamWorkload.filter((m) => m.totalAssigned > 0).length;
   const scheduleHealth =
-    activeCount > 0 ? Math.max(0, Math.round(((activeCount - metrics.overdueCount) / activeCount) * 100)) : 100;
+    total === 0
+      ? 0
+      : activeCount > 0
+      ? Math.max(0, Math.round(((activeCount - metrics.overdueCount) / activeCount) * 100))
+      : 100;
   const assignmentCoverage =
-    total > 0 ? Math.max(0, Math.round(((total - metrics.unassignedCount) / total) * 100)) : 100;
+    total === 0 ? 0 : Math.max(0, Math.round(((total - metrics.unassignedCount) / total) * 100));
   const flowScore =
-    total > 0 ? Math.max(0, Math.round(((total - metrics.blockedCount) / total) * 100)) : 100;
+    total === 0 ? 0 : Math.max(0, Math.round(((total - metrics.blockedCount) / total) * 100));
 
   const signals = [
     {
       label: 'Completion Rate',
-      score: metrics.completionRate,
-      detail: `${metrics.completedCount} completed of ${total} items`,
+      score: total === 0 ? 0 : metrics.completionRate,
+      detail:
+        total === 0
+          ? 'No work items recorded yet'
+          : `${metrics.completedCount} completed of ${total} items`,
       color: '#10B981',
     },
     {
       label: 'On-Time Schedule',
       score: scheduleHealth,
-      detail: `${metrics.overdueCount} overdue · ${metrics.dueSoonCount} due within 7d`,
-      color: scheduleHealth >= 80 ? '#10B981' : '#F59E0B',
+      detail:
+        total === 0
+          ? 'No scheduled items yet'
+          : `${metrics.overdueCount} overdue · ${metrics.dueSoonCount} due within 7d`,
+      color: scheduleHealth >= 80 ? '#10B981' : scheduleHealth >= 50 ? '#F59E0B' : '#EF4444',
     },
     {
       label: 'Ownership Coverage',
       score: assignmentCoverage,
-      detail: `${total - metrics.unassignedCount} assigned · ${metrics.unassignedCount} unassigned`,
+      detail:
+        total === 0
+          ? 'No assignments yet'
+          : `${total - metrics.unassignedCount} assigned · ${metrics.unassignedCount} unassigned`,
       color: '#3B82F6',
     },
     {
       label: 'Unblocked Flow',
       score: flowScore,
-      detail: `${metrics.blockedCount} blocked · ${metrics.inReviewCount} in review`,
+      detail:
+        total === 0
+          ? 'No active pipeline items'
+          : `${metrics.blockedCount} blocked · ${metrics.inReviewCount} in review`,
       color: metrics.blockedCount > 0 ? '#F97316' : '#10B981',
     },
   ];
@@ -107,16 +121,18 @@ export const DevelopmentOverviewSidebar: React.FC<DevelopmentOverviewSidebarProp
           </div>
         </div>
 
-        {/* 4 Quick Action Tiles */}
-        <div className="grid grid-cols-4 gap-1.5">
+        {/* Quick Action Tiles */}
+        <div className="grid grid-cols-3 gap-1.5">
           {permissions.canEditTasks && (
             <button
               type="button"
               onClick={onCreateTaskClick}
+              title="Create Task (Shift+T)"
               className="flex flex-col items-center justify-center gap-1 py-2.5 px-1.5 rounded-xl bg-[#16171D] border border-[#27272A] hover:border-zinc-600 text-zinc-300 hover:text-white transition-all cursor-pointer"
             >
               <Plus size={15} style={{ color: accentColor }} />
               <span className="text-[10px] font-medium">New Task</span>
+              <span className="text-[9px] font-mono text-zinc-500">Shift+T</span>
             </button>
           )}
           <button
@@ -135,14 +151,6 @@ export const DevelopmentOverviewSidebar: React.FC<DevelopmentOverviewSidebarProp
             <BarChart3 size={15} className="text-zinc-400" />
             <span className="text-[10px] font-medium">Analytics</span>
           </button>
-          <button
-            type="button"
-            onClick={onMastersClick}
-            className="flex flex-col items-center justify-center gap-1 py-2.5 px-1.5 rounded-xl bg-[#16171D] border border-[#27272A] hover:border-zinc-600 text-zinc-300 hover:text-white transition-all cursor-pointer"
-          >
-            <FolderCog size={15} className="text-zinc-400" />
-            <span className="text-[10px] font-medium">Masters</span>
-          </button>
         </div>
 
         <dl className="space-y-2.5 text-xs pt-3 border-t border-[#27272A]/70">
@@ -152,7 +160,7 @@ export const DevelopmentOverviewSidebar: React.FC<DevelopmentOverviewSidebarProp
               <span>Lead</span>
             </dt>
             <dd className="font-medium text-zinc-200 truncate">
-              {projectMeta.lead?.name || 'Project Owner'}
+              {projectMeta.lead?.name || 'Not assigned'}
             </dd>
           </div>
           <div className="flex items-center justify-between gap-2">
@@ -161,7 +169,8 @@ export const DevelopmentOverviewSidebar: React.FC<DevelopmentOverviewSidebarProp
               <span>Active Contributors</span>
             </dt>
             <dd className="font-mono font-medium text-zinc-200">
-              {metrics.teamWorkload.length}
+              {activeContributors}
+              <span className="text-zinc-500"> / {metrics.teamWorkload.length}</span>
             </dd>
           </div>
         </dl>
@@ -191,7 +200,9 @@ export const DevelopmentOverviewSidebar: React.FC<DevelopmentOverviewSidebarProp
               <div className="h-1.5 rounded-full bg-[#1C1E26] overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${total === 0 ? 0 : Math.max(4, sig.score)}%` }}
+                  animate={{
+                    width: `${total === 0 || sig.score === 0 ? 0 : Math.max(3, sig.score)}%`,
+                  }}
                   transition={{ duration: 0.5, delay: idx * 0.06 }}
                   className="h-full rounded-full"
                   style={{ backgroundColor: sig.color }}

@@ -11,12 +11,11 @@ import {
   Paperclip,
   Trash2,
 } from 'lucide-react';
-import type { DevelopmentTaskItem } from '../../types/development';
+import type { DevAssigneeGroups, DevelopmentTaskItem } from '../../types/development';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import {
   DevAvatarStack,
   formatDevDate,
-  formatEffort,
   PriorityBadge,
   StatusBadge,
   TaskTypeBadge,
@@ -24,6 +23,7 @@ import {
 
 interface DevelopmentListViewProps {
   tasks: DevelopmentTaskItem[];
+  assigneeGroups?: DevAssigneeGroups;
   canEditTasks: boolean;
   onSelectTask: (task: DevelopmentTaskItem) => void;
   onEditTask: (task: DevelopmentTaskItem) => void;
@@ -33,6 +33,7 @@ interface DevelopmentListViewProps {
 
 export const DevelopmentListView: React.FC<DevelopmentListViewProps> = ({
   tasks,
+  assigneeGroups,
   canEditTasks,
   onSelectTask,
   onEditTask,
@@ -84,7 +85,6 @@ export const DevelopmentListView: React.FC<DevelopmentListViewProps> = ({
               <th className="py-3 px-3">Priority</th>
               <th className="py-3 px-3">Assignees</th>
               <th className="py-3 px-3">Due Date</th>
-              <th className="py-3 px-3">Effort</th>
               <th className="py-3 px-4 text-right">Actions</th>
             </tr>
           </thead>
@@ -160,7 +160,12 @@ export const DevelopmentListView: React.FC<DevelopmentListViewProps> = ({
                 </td>
 
                 <td className="py-3 px-3 whitespace-nowrap">
-                  <DevAvatarStack users={task.assignees} max={3} size="xs" />
+                  <DevAvatarStack
+                    users={task.assignees}
+                    assignedTeams={task.assignedTeams}
+                    max={3}
+                    size="xs"
+                  />
                 </td>
 
                 <td className="py-3 px-3 whitespace-nowrap">
@@ -192,10 +197,6 @@ export const DevelopmentListView: React.FC<DevelopmentListViewProps> = ({
                       </span>
                     )}
                   </div>
-                </td>
-
-                <td className="py-3 px-3 whitespace-nowrap font-mono text-[11px] text-zinc-400">
-                  {formatEffort(task.estimatedEffort, task.effortUnit)}
                 </td>
 
                 <td

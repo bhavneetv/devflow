@@ -8,13 +8,24 @@ import {
   CheckCircle2,
   Circle,
   Clock,
+  Code2,
+  FileText,
+  FlaskConical,
   Layers,
   Minus,
   Sparkles,
+  Users,
   Wrench,
   Zap,
 } from 'lucide-react';
-import type { DevTaskPriority, DevUser } from '../../types/development';
+import type {
+  DevAssigneeGroups,
+  DevMasterChoiceItem,
+  DevTaskPriority,
+  DevTeamOption,
+  DevUser,
+} from '../../types/development';
+import { getMasterIconComponent } from './devIcons';
 
 export const PRIORITY_STYLES: Record<
   DevTaskPriority,
@@ -93,6 +104,20 @@ export function getStatusStyle(status: string): {
   };
 }
 
+export function isEndStatusName(
+  status: string,
+  statusItems?: DevMasterChoiceItem[]
+): boolean {
+  const lower = status.trim().toLowerCase();
+  if (lower === 'completed') return true;
+  if (!statusItems || statusItems.length === 0) return false;
+  return statusItems.some((s) => s.name.trim().toLowerCase() === lower && Boolean(s.isEnd));
+}
+
+export function isDevelopmentTaskType(taskType?: string | null): boolean {
+  return (taskType || '').trim().toLowerCase() === 'development';
+}
+
 export function getTaskTypeStyle(taskType: string): {
   color: string;
   bg: string;
@@ -100,6 +125,38 @@ export function getTaskTypeStyle(taskType: string): {
   icon: React.ComponentType<any>;
 } {
   const lower = taskType.trim().toLowerCase();
+  if (lower === 'development' || lower === 'dev') {
+    return {
+      color: '#34D399',
+      bg: 'rgba(16, 185, 129, 0.14)',
+      border: 'rgba(16, 185, 129, 0.34)',
+      icon: Code2,
+    };
+  }
+  if (lower === 'research') {
+    return {
+      color: '#38BDF8',
+      bg: 'rgba(56, 189, 248, 0.14)',
+      border: 'rgba(56, 189, 248, 0.34)',
+      icon: FlaskConical,
+    };
+  }
+  if (lower === 'documentation' || lower === 'docs') {
+    return {
+      color: '#F472B6',
+      bg: 'rgba(244, 114, 182, 0.12)',
+      border: 'rgba(244, 114, 182, 0.3)',
+      icon: FileText,
+    };
+  }
+  if (lower === 'testing' || lower === 'qa') {
+    return {
+      color: '#A78BFA',
+      bg: 'rgba(167, 139, 250, 0.12)',
+      border: 'rgba(167, 139, 250, 0.3)',
+      icon: CheckCircle2,
+    };
+  }
   if (lower === 'bug') {
     return {
       color: '#FCA5A5',
@@ -155,11 +212,24 @@ export function formatEffort(value?: number | null, unit?: string): string {
   return unit === 'story_points' ? `${value} pts` : `${value}h`;
 }
 
-export const PriorityBadge: React.FC<{ priority: DevTaskPriority; compact?: boolean }> = ({
+export const PriorityBadge: React.FC<{
+  priority: DevTaskPriority;
+  compact?: boolean;
+  customItem?: DevMasterChoiceItem;
+}> = ({
   priority,
   compact,
+  customItem,
 }) => {
-  const style = PRIORITY_STYLES[priority] || PRIORITY_STYLES.Medium;
+  const baseStyle = PRIORITY_STYLES[priority] || PRIORITY_STYLES.Medium;
+  const style = customItem
+    ? {
+        color: customItem.color || baseStyle.color,
+        bg: `${customItem.color || '#F59E0B'}22`,
+        border: `${customItem.color || '#F59E0B'}55`,
+        icon: getMasterIconComponent(customItem.icon, baseStyle.icon),
+      }
+    : baseStyle;
   const Icon = style.icon;
   return (
     <span
@@ -178,8 +248,20 @@ export const PriorityBadge: React.FC<{ priority: DevTaskPriority; compact?: bool
   );
 };
 
-export const StatusBadge: React.FC<{ status: string; compact?: boolean }> = ({ status, compact }) => {
-  const style = getStatusStyle(status);
+export const StatusBadge: React.FC<{
+  status: string;
+  compact?: boolean;
+  customItem?: DevMasterChoiceItem;
+}> = ({ status, compact, customItem }) => {
+  const baseStyle = getStatusStyle(status);
+  const style = customItem
+    ? {
+        color: customItem.color || baseStyle.color,
+        bg: `${customItem.color || '#71717A'}22`,
+        border: `${customItem.color || '#71717A'}55`,
+        icon: getMasterIconComponent(customItem.icon, baseStyle.icon),
+      }
+    : baseStyle;
   const Icon = style.icon;
   return (
     <span
@@ -221,22 +303,75 @@ export const TaskTypeBadge: React.FC<{ taskType: string; compact?: boolean }> = 
   );
 };
 
+export function getMatchedTeams(
+  users: DevUser[],
+  assigneeGroups?: DevAssigneeGroups
+) {
+  if (!users || users.length === 0 || !assigneeGroups) return [];
+  const assigneeIds = new Set(users.map((u) => u.id));
+  const unique = new Map<number, NonNullable<DevAssigneeGroups['teams']>[number]>();
+  [...(assigneeGroups.teams || []), ...(assigneeGroups.allTeams || [])].forEach((team) => {
+    if (!unique.has(team.id)) {
+      unique.set(team.id, team);
+    }
+  });
+  return Array.from(unique.values()).filter(
+    (team) => team.memberIds.length > 0 && team.memberIds.every((id) => assigneeIds.has(id))
+  );
+}
+
 export const DevAvatarStack: React.FC<{
   users: DevUser[];
+  assignedTeams?: DevTeamOption[];
+  assigneeGroups?: DevAssigneeGroups;
   max?: number;
   size?: 'xs' | 'sm';
-}> = ({ users, max = 3, size = 'xs' }) => {
-  if (!users || users.length === 0) {
+}> = ({ users, assignedTeams, max = 3, size = 'xs' }) => {
+  const teams = assignedTeams || [];
+  const members = users || [];
+
+  if (teams.length === 0 && members.length === 0) {
     return <span className="text-[11px] text-zinc-500 italic">Unassigned</span>;
   }
 
-  const visible = users.slice(0, max);
-  const overflow = users.length - visible.length;
+  type StackEntry =
+    | { kind: 'team'; team: DevTeamOption }
+    | { kind: 'user'; user: DevUser };
+
+  const orderedEntries: StackEntry[] = [
+    ...teams.map((team) => ({ kind: 'team' as const, team })),
+    ...members.map((user) => ({ kind: 'user' as const, user })),
+  ];
+
+  const cap = Math.max(max, teams.length > 0 ? max + Math.min(2, teams.length) : max);
+  const visibleEntries = orderedEntries.slice(0, cap);
+  const overflow = orderedEntries.length - visibleEntries.length;
   const dim = size === 'xs' ? 'w-6 h-6 text-[10px]' : 'w-7 h-7 text-[11px]';
 
   return (
     <div className="flex items-center -space-x-1.5">
-      {visible.map((u) => {
+      {visibleEntries.map((entry) => {
+        if (entry.kind === 'team') {
+          const team = entry.team;
+          const TeamIcon = getMasterIconComponent(team.icon, Users);
+          const color = team.color || '#6366F1';
+          const count = team.memberCount ?? team.memberIds?.length ?? 0;
+          return (
+            <div
+              key={`team-${team.id}`}
+              title={`${team.name} (${count} ${count === 1 ? 'member' : 'members'})`}
+              className={`${dim} rounded-full border border-[#0E0F14] flex items-center justify-center shrink-0 shadow-sm bg-[#161923]`}
+              style={{
+                backgroundColor: `${color}28`,
+                color,
+              }}
+            >
+              <TeamIcon size={size === 'xs' ? 11 : 13} />
+            </div>
+          );
+        }
+
+        const u = entry.user;
         const initials = (u.name || 'U')
           .split(/\s+/)
           .filter(Boolean)
@@ -245,7 +380,7 @@ export const DevAvatarStack: React.FC<{
           .join('');
         return (
           <div
-            key={u.id}
+            key={`user-${u.id}`}
             title={u.name}
             className={`${dim} rounded-full border border-[#0E0F14] flex items-center justify-center font-semibold text-white shrink-0 overflow-hidden shadow-sm`}
             style={{ backgroundColor: u.avatarColor || '#6366F1' }}

@@ -1,21 +1,61 @@
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getUserIdFromToken } from '../lib/auth.js';
+import { GitHubDocumentStorageService } from '../services/documents/gitHubDocumentStorage.service.js';
 
 export const developmentRouter = Router({ mergeParams: true });
 
 // ─── CONSTANTS & DEFAULTS ─────────────────────────────────────────────────────
 
-const DEFAULT_TASK_TYPES = ['Task', 'Feature', 'Bug', 'Improvement', 'Technical Debt'];
+const DEFAULT_TASK_TYPES = [
+  'Development',
+  'Research',
+  'Feature',
+  'Bug',
+  'Improvement',
+  'Documentation',
+  'Testing',
+  'Technical Debt',
+];
 const DEFAULT_STATUSES = ['Not Started', 'In Progress', 'In Review', 'Blocked', 'Completed'];
 const PRIORITY_LEVELS = ['Critical', 'High', 'Medium', 'Low'] as const;
+const REPO_SIZE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB GitHub repository soft limit
 const PRIORITY_RANK: Record<string, number> = {
   Critical: 4,
   High: 3,
   Medium: 2,
   Low: 1,
 };
+
+interface MasterChoiceItem {
+  name: string;
+  icon: string;
+  color: string;
+  isEnd?: boolean;
+}
+
+const DEFAULT_PRIORITY_ITEMS: MasterChoiceItem[] = [
+  { name: 'Critical', icon: 'Flame', color: '#EF4444' },
+  { name: 'High', icon: 'ArrowUp', color: '#F97316' },
+  { name: 'Medium', icon: 'Minus', color: '#F59E0B' },
+  { name: 'Low', icon: 'ArrowDown', color: '#3B82F6' },
+];
+
+const DEFAULT_STATUS_ITEMS: MasterChoiceItem[] = [
+  { name: 'Not Started', icon: 'Circle', color: '#71717A', isEnd: false },
+  { name: 'In Progress', icon: 'Zap', color: '#3B82F6', isEnd: false },
+  { name: 'In Review', icon: 'Eye', color: '#8B5CF6', isEnd: false },
+  { name: 'Blocked', icon: 'AlertTriangle', color: '#EF4444', isEnd: false },
+  { name: 'Completed', icon: 'CheckCircle2', color: '#10B981', isEnd: true },
+];
+
+function parseTeamIconFromDescription(desc?: string | null): string {
+  if (!desc) return 'Users';
+  const match = desc.match(/^\[icon:([^\]]+)\]/);
+  return match?.[1]?.trim() || 'Users';
+}
 
 const STATUS_COLORS: Record<string, string> = {
   'Not Started': '#71717A',
@@ -81,6 +121,44 @@ function parseJsonStringArray(raw: string | null | undefined, fallback: string[]
   return fallback;
 }
 
+function parseJsonIntArray(raw: string | null | undefined): number[] {
+  if (!raw || typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return Array.from(
+        new Set(
+          parsed
+            .map((v) => (typeof v === 'number' ? v : parseInt(String(v), 10)))
+            .filter((n) => Number.isInteger(n) && n > 0)
+        )
+      );
+    }
+  } catch {
+    // ignore malformed JSON
+  }
+  return [];
+}
+
+function buildEndStatusSet(statusItems: MasterChoiceItem[]): Set<string> {
+  const set = new Set<string>(['completed']);
+  for (const s of statusItems) {
+    if (s.isEnd) {
+      set.add(s.name.trim().toLowerCase());
+    }
+  }
+  return set;
+}
+
+function buildTeamLookup(assigneeGroups?: AssigneeGroups): Map<number, AssigneeTeamGroup> {
+  const map = new Map<number, AssigneeTeamGroup>();
+  if (!assigneeGroups) return map;
+  for (const t of [...(assigneeGroups.teams || []), ...(assigneeGroups.allTeams || [])]) {
+    if (!map.has(t.id)) map.set(t.id, t);
+  }
+  return map;
+}
+
 function parseDateOnly(raw: string | null | undefined): Date | null {
   if (!raw || typeof raw !== 'string') return null;
   const trimmed = raw.trim();
@@ -116,13 +194,20 @@ function getTodayAndSoonKeys(): { todayKey: string; soonKey: string } {
   };
 }
 
-function isCompletedStatus(status: string): boolean {
-  return status.trim().toLowerCase() === 'completed';
+function isCompletedStatus(status: string, endStatuses?: Set<string>): boolean {
+  const key = status.trim().toLowerCase();
+  return endStatuses ? endStatuses.has(key) : key === 'completed';
 }
 
-function computeDateFlags(status: string, dueDate: Date | null | undefined, todayKey: string, soonKey: string) {
+function computeDateFlags(
+  status: string,
+  dueDate: Date | null | undefined,
+  todayKey: string,
+  soonKey: string,
+  endStatuses?: Set<string>
+) {
   const dueKey = toDateKey(dueDate);
-  if (!dueKey || isCompletedStatus(status)) {
+  if (!dueKey || isCompletedStatus(status, endStatuses)) {
     return { isOverdue: false, isDueSoon: false };
   }
   return {
@@ -146,6 +231,29 @@ interface EligibleMember {
   projectRole: string;
 }
 
+interface AssigneeTeamGroup {
+  id: number;
+  name: string;
+  color: string;
+  icon: string;
+  memberIds: number[];
+  memberCount: number;
+}
+
+interface AssigneeGroups {
+  teams: AssigneeTeamGroup[];
+  projectMembers: EligibleMember[];
+  allTeams: AssigneeTeamGroup[];
+  orgMembers: EligibleMember[];
+}
+
+const EMPTY_ASSIGNEE_GROUPS: AssigneeGroups = {
+  teams: [],
+  projectMembers: [],
+  allTeams: [],
+  orgMembers: [],
+};
+
 async function checkDevelopmentAccess(projectId: number, userId: number | null) {
   if (!userId) {
     return {
@@ -160,6 +268,7 @@ async function checkDevelopmentAccess(projectId: number, userId: number | null) 
       role: 'NONE',
       eligibleMembers: [] as EligibleMember[],
       eligibleMemberIds: new Set<number>(),
+      assigneeGroups: EMPTY_ASSIGNEE_GROUPS,
     };
   }
 
@@ -182,6 +291,11 @@ async function checkDevelopmentAccess(projectId: number, userId: number | null) 
         organization: {
           include: {
             members: { include: { user: { select: userSelectFields } } },
+            teams: {
+              include: {
+                members: { include: { user: { select: userSelectFields } } },
+              },
+            },
           },
         },
       },
@@ -201,6 +315,7 @@ async function checkDevelopmentAccess(projectId: number, userId: number | null) 
       role: 'NONE',
       eligibleMembers: [] as EligibleMember[],
       eligibleMemberIds: new Set<number>(),
+      assigneeGroups: EMPTY_ASSIGNEE_GROUPS,
     };
   }
 
@@ -217,6 +332,7 @@ async function checkDevelopmentAccess(projectId: number, userId: number | null) 
       role: 'NONE',
       eligibleMembers: [] as EligibleMember[],
       eligibleMemberIds: new Set<number>(),
+      assigneeGroups: EMPTY_ASSIGNEE_GROUPS,
     };
   }
 
@@ -248,6 +364,7 @@ async function checkDevelopmentAccess(projectId: number, userId: number | null) 
       role: 'NONE',
       eligibleMembers: [] as EligibleMember[],
       eligibleMemberIds: new Set<number>(),
+      assigneeGroups: EMPTY_ASSIGNEE_GROUPS,
     };
   }
 
@@ -282,34 +399,103 @@ async function checkDevelopmentAccess(projectId: number, userId: number | null) 
     : 'MEMBER';
 
   // Build deduplicated list of eligible project members for assignee picker & validation
+  const toEligibleMember = (u: any, roleLabel: string): EligibleMember | null => {
+    if (!u || !u.id) return null;
+    return {
+      id: u.id,
+      name: u.name,
+      username: u.username ?? null,
+      email: u.email ?? null,
+      avatarUrl: u.avatarUrl ?? null,
+      avatarColor: u.avatarColor ?? null,
+      avatarType: u.avatarType ?? null,
+      avatarId: u.avatarId ?? null,
+      jobTitle: u.jobTitle ?? null,
+      projectRole: roleLabel,
+    };
+  };
+
   const memberMap = new Map<number, EligibleMember>();
   const addEligible = (u: any, roleLabel: string) => {
-    if (!u || !u.id) return;
-    if (!memberMap.has(u.id)) {
-      memberMap.set(u.id, {
-        id: u.id,
-        name: u.name,
-        username: u.username ?? null,
-        email: u.email ?? null,
-        avatarUrl: u.avatarUrl ?? null,
-        avatarColor: u.avatarColor ?? null,
-        avatarType: u.avatarType ?? null,
-        avatarId: u.avatarId ?? null,
-        jobTitle: u.jobTitle ?? null,
-        projectRole: roleLabel,
-      });
+    const entry = toEligibleMember(u, roleLabel);
+    if (entry && !memberMap.has(entry.id)) {
+      memberMap.set(entry.id, entry);
     }
   };
 
-  addEligible(project.owner, 'Owner');
-  if (project.lead) addEligible(project.lead, 'Lead');
-  for (const pm of project.members) addEligible(pm.user, pm.role || 'Member');
+  // Grouped assignee lists in display order:
+  // 1) teams assigned to project, 2) members linked to project, 3) all teams, 4) all org/eligible members
+  const mapTeamEntry = (t: any): AssigneeTeamGroup => {
+    const teamMemberIds: number[] = Array.from(
+      new Set<number>(
+        ((t.members || []) as any[])
+          .map((tm: any) => Number(tm.user?.id || tm.userId))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      )
+    );
+    return {
+      id: t.id,
+      name: t.name,
+      color: t.color || '#8B5CF6',
+      icon: parseTeamIconFromDescription(t.description),
+      memberIds: teamMemberIds,
+      memberCount: teamMemberIds.length,
+    };
+  };
+
+  const teamsGroup: AssigneeTeamGroup[] = [];
   if (project.team) {
+    teamsGroup.push(mapTeamEntry(project.team));
     for (const tm of project.team.members) addEligible(tm.user, tm.role || 'Team Member');
   }
-  if (project.organization) {
-    for (const om of project.organization.members) addEligible(om.user, om.role || 'Org Member');
+
+  const allTeamsGroup: AssigneeTeamGroup[] = [];
+  if (project.organization?.teams) {
+    for (const ot of project.organization.teams) {
+      if (project.team && ot.id === project.team.id) continue;
+      allTeamsGroup.push(mapTeamEntry(ot));
+      for (const tm of ot.members || []) addEligible(tm.user, tm.role || 'Team Member');
+    }
+    allTeamsGroup.sort((a, b) => a.name.localeCompare(b.name));
   }
+
+  const projectMemberMap = new Map<number, EligibleMember>();
+  const addProjectMember = (u: any, roleLabel: string) => {
+    const entry = toEligibleMember(u, roleLabel);
+    if (entry && !projectMemberMap.has(entry.id)) {
+      projectMemberMap.set(entry.id, entry);
+    }
+    addEligible(u, roleLabel);
+  };
+
+  addProjectMember(project.owner, 'Owner');
+  if (project.lead) addProjectMember(project.lead, 'Lead');
+  for (const pm of project.members) addProjectMember(pm.user, pm.role || 'Member');
+
+  const orgMemberMap = new Map<number, EligibleMember>();
+  if (project.organization) {
+    for (const om of project.organization.members) {
+      addEligible(om.user, om.role || 'Org Member');
+      if (projectMemberMap.has(om.userId)) continue;
+      const entry = toEligibleMember(om.user, om.role || 'Org Member');
+      if (entry && !orgMemberMap.has(entry.id)) {
+        orgMemberMap.set(entry.id, entry);
+      }
+    }
+  }
+  // Ensure any team member not in org.members or projectMembers still appears in All Members
+  for (const m of memberMap.values()) {
+    if (!projectMemberMap.has(m.id) && !orgMemberMap.has(m.id)) {
+      orgMemberMap.set(m.id, m);
+    }
+  }
+
+  const assigneeGroups: AssigneeGroups = {
+    teams: teamsGroup,
+    projectMembers: Array.from(projectMemberMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
+    allTeams: allTeamsGroup,
+    orgMembers: Array.from(orgMemberMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
+  };
 
   return {
     allowed: true,
@@ -323,6 +509,7 @@ async function checkDevelopmentAccess(projectId: number, userId: number | null) 
     role: effectiveRole,
     eligibleMembers: Array.from(memberMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
     eligibleMemberIds: new Set(memberMap.keys()),
+    assigneeGroups,
   };
 }
 
@@ -338,6 +525,45 @@ function sendAccessError(res: Response, access: Awaited<ReturnType<typeof checkD
 
 // ─── CONFIG & SERIALIZERS ─────────────────────────────────────────────────────
 
+function normalizeChoiceItems(
+  rawMetaItems: unknown,
+  names: string[],
+  defaults: MasterChoiceItem[],
+  fallbackIcon: string,
+  fallbackColor: string
+): MasterChoiceItem[] {
+  const defaultMap = new Map(defaults.map((d) => [d.name.toLowerCase(), d]));
+  const metaMap = new Map<string, Partial<MasterChoiceItem>>();
+  if (Array.isArray(rawMetaItems)) {
+    for (const item of rawMetaItems) {
+      if (item && typeof item === 'object' && typeof (item as any).name === 'string') {
+        const cleanName = (item as any).name.trim();
+        if (cleanName) {
+          metaMap.set(cleanName.toLowerCase(), {
+            name: cleanName,
+            icon: typeof (item as any).icon === 'string' && (item as any).icon.trim() ? (item as any).icon.trim() : undefined,
+            color: typeof (item as any).color === 'string' && (item as any).color.trim() ? (item as any).color.trim() : undefined,
+            isEnd: typeof (item as any).isEnd === 'boolean' ? (item as any).isEnd : undefined,
+          });
+        }
+      }
+    }
+  }
+
+  return names.map((name) => {
+    const key = name.toLowerCase();
+    const meta = metaMap.get(key);
+    const def = defaultMap.get(key);
+    const isCompletedCore = key === 'completed';
+    return {
+      name,
+      icon: meta?.icon || def?.icon || fallbackIcon,
+      color: meta?.color || def?.color || fallbackColor,
+      isEnd: isCompletedCore ? true : Boolean(meta?.isEnd ?? def?.isEnd ?? false),
+    };
+  });
+}
+
 async function getOrBuildProjectConfig(projectId: number) {
   const row = await prisma.developmentProjectConfig.findUnique({ where: { projectId } });
   const taskPrefix = (row?.taskPrefix || 'DEV').trim().toUpperCase() || 'DEV';
@@ -346,20 +572,69 @@ async function getOrBuildProjectConfig(projectId: number) {
   if (!statuses.some((s) => s.toLowerCase() === 'completed')) {
     statuses.push('Completed');
   }
+  const priorities = parseJsonStringArray(row?.customPrioritiesJson, [...PRIORITY_LEVELS]);
   const defaultEffortUnit =
     row?.defaultEffortUnit === 'story_points' ? 'story_points' : ('hours' as const);
 
+  let parsedMeta: { priorities?: unknown; statuses?: unknown } = {};
+  if (row?.customMasterMetaJson) {
+    try {
+      const obj = JSON.parse(row.customMasterMetaJson);
+      if (obj && typeof obj === 'object') parsedMeta = obj;
+    } catch {
+      // ignore invalid meta json
+    }
+  }
+
+  const finalPriorities = priorities.length > 0 ? priorities : [...PRIORITY_LEVELS];
+  const priorityItems = normalizeChoiceItems(
+    parsedMeta.priorities,
+    finalPriorities,
+    DEFAULT_PRIORITY_ITEMS,
+    'Flag',
+    '#F59E0B'
+  );
+  const statusItems = normalizeChoiceItems(
+    parsedMeta.statuses,
+    statuses,
+    DEFAULT_STATUS_ITEMS,
+    'Circle',
+    '#71717A'
+  );
+
+  const taskTypeSet = new Set<string>(['Development', 'Research', ...taskTypes]);
   return {
     taskPrefix,
-    taskTypes: taskTypes.length > 0 ? taskTypes : [...DEFAULT_TASK_TYPES],
+    taskTypes: taskTypeSet.size > 0 ? Array.from(taskTypeSet) : [...DEFAULT_TASK_TYPES],
     statuses,
+    priorities: finalPriorities,
+    priorityItems,
+    statusItems,
     defaultEffortUnit,
   };
 }
 
-function serializeTask(task: any, todayKey?: string, soonKey?: string) {
+function serializeTask(
+  task: any,
+  todayKey?: string,
+  soonKey?: string,
+  opts?: {
+    teamById?: Map<number, AssigneeTeamGroup>;
+    endStatuses?: Set<string>;
+  }
+) {
   const keys = todayKey && soonKey ? { todayKey, soonKey } : getTodayAndSoonKeys();
-  const flags = computeDateFlags(task.status, task.dueDate, keys.todayKey, keys.soonKey);
+  const flags = computeDateFlags(
+    task.status,
+    task.dueDate,
+    keys.todayKey,
+    keys.soonKey,
+    opts?.endStatuses
+  );
+  const teamIds = parseJsonIntArray(task.teamIdsJson);
+  const assignedTeams = opts?.teamById
+    ? teamIds.map((id) => opts.teamById!.get(id)).filter((t): t is AssigneeTeamGroup => Boolean(t))
+    : [];
 
   return {
     id: task.id,
@@ -397,6 +672,8 @@ function serializeTask(task: any, todayKey?: string, soonKey?: string) {
     effortUnit: task.effortUnit === 'story_points' ? 'story_points' : 'hours',
     actualEffort: task.actualEffort ?? null,
     labels: parseJsonStringArray(task.labelsJson, []),
+    teamIds,
+    assignedTeams,
     position: task.position ?? 0,
     createdById: task.createdById,
     createdBy: task.createdBy,
@@ -420,6 +697,19 @@ function serializeTask(task: any, todayKey?: string, soonKey?: string) {
     attachmentCount: task._count?.attachments ?? task.attachments?.length ?? 0,
     isOverdue: flags.isOverdue,
     isDueSoon: flags.isDueSoon,
+    isEndStatus: isCompletedStatus(task.status, opts?.endStatuses),
+    gitCommit: task.gitCommitSha
+      ? {
+          sha: task.gitCommitSha,
+          shortSha: task.gitCommitSha.slice(0, 7),
+          message: task.gitCommitMessage ?? null,
+          url: task.gitCommitUrl ?? null,
+          repoName: task.gitCommitRepoName ?? null,
+          author: task.gitCommitAuthor ?? null,
+          committedAt: task.gitCommitDate ? task.gitCommitDate.toISOString() : null,
+        }
+      : null,
+    startedAt: task.startedAt ? task.startedAt.toISOString() : null,
     completedAt: task.completedAt ? task.completedAt.toISOString() : null,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
@@ -486,14 +776,53 @@ const migrateSubmoduleSchema = z.object({
   archiveSource: z.boolean().optional().default(true),
 });
 
+const masterChoiceItemSchema = z.object({
+  name: z.string().trim().min(1).max(50),
+  icon: z.string().trim().min(1).max(40).optional().default('Circle'),
+  color: z.string().trim().min(3).max(30).optional().default('#10B981'),
+  isEnd: z.boolean().optional(),
+});
+
+const gitCommitSchema = z.object({
+  sha: z.string().trim().min(4, 'Commit SHA must be at least 4 characters').max(80),
+  message: z.string().trim().max(500).optional().nullable(),
+  url: z.string().trim().max(1000).optional().nullable(),
+  repoName: z.string().trim().max(255).optional().nullable(),
+  author: z.string().trim().max(120).optional().nullable(),
+  committedAt: z.string().trim().optional().nullable(),
+});
+
+function buildGitCommitFields(commit: z.infer<typeof gitCommitSchema> | null) {
+  if (!commit) {
+    return {
+      gitCommitSha: null,
+      gitCommitMessage: null,
+      gitCommitUrl: null,
+      gitCommitRepoName: null,
+      gitCommitAuthor: null,
+      gitCommitDate: null,
+    };
+  }
+  const parsedDate = commit.committedAt ? new Date(commit.committedAt) : null;
+  return {
+    gitCommitSha: commit.sha,
+    gitCommitMessage: commit.message ?? null,
+    gitCommitUrl: commit.url ?? null,
+    gitCommitRepoName: commit.repoName ?? null,
+    gitCommitAuthor: commit.author ?? null,
+    gitCommitDate: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null,
+  };
+}
+
 const createTaskSchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(255),
   description: z.string().max(20000).optional().nullable(),
-  taskType: z.string().trim().min(1).max(60).optional().default('Task'),
+  taskType: z.string().trim().min(1).max(60).optional().default('Development'),
   moduleId: z.number().int().positive('Module is required'),
   submoduleId: z.number().int().positive('Submodule is required'),
   assigneeIds: z.array(z.number().int().positive()).optional().default([]),
-  priority: z.enum(PRIORITY_LEVELS).optional().default('Medium'),
+  teamIds: z.array(z.number().int().positive()).optional().default([]),
+  priority: z.string().trim().min(1).max(60).optional().default('Medium'),
   status: z.string().trim().min(1).max(60).optional().default('Not Started'),
   startDate: z.string().optional().nullable(),
   dueDate: z.string().optional().nullable(),
@@ -513,6 +842,7 @@ const createTaskSchema = z.object({
     )
     .optional()
     .default([]),
+  gitCommit: gitCommitSchema.optional().nullable(),
 });
 
 const updateTaskSchema = z.object({
@@ -522,7 +852,8 @@ const updateTaskSchema = z.object({
   moduleId: z.number().int().positive().optional(),
   submoduleId: z.number().int().positive().optional(),
   assigneeIds: z.array(z.number().int().positive()).optional(),
-  priority: z.enum(PRIORITY_LEVELS).optional(),
+  teamIds: z.array(z.number().int().positive()).optional(),
+  priority: z.string().trim().min(1).max(60).optional(),
   status: z.string().trim().min(1).max(60).optional(),
   startDate: z.string().optional().nullable(),
   dueDate: z.string().optional().nullable(),
@@ -530,6 +861,7 @@ const updateTaskSchema = z.object({
   effortUnit: z.enum(['hours', 'story_points']).optional(),
   actualEffort: z.number().min(0).max(100000).optional().nullable(),
   labels: z.array(z.string().trim().min(1).max(40)).max(25).optional(),
+  gitCommit: gitCommitSchema.optional().nullable(),
 });
 
 const updateConfigSchema = z.object({
@@ -541,7 +873,10 @@ const updateConfigSchema = z.object({
     .regex(/^[A-Za-z0-9]+$/, 'Prefix must be alphanumeric')
     .optional(),
   taskTypes: z.array(z.string().trim().min(1).max(50)).min(1).max(20).optional(),
-  statuses: z.array(z.string().trim().min(1).max(50)).min(2).max(20).optional(),
+  statuses: z.array(z.string().trim().min(1).max(50)).min(1).max(25).optional(),
+  priorities: z.array(z.string().trim().min(1).max(50)).min(1).max(25).optional(),
+  statusItems: z.array(masterChoiceItemSchema).min(1).max(25).optional(),
+  priorityItems: z.array(masterChoiceItemSchema).min(1).max(25).optional(),
   defaultEffortUnit: z.enum(['hours', 'story_points']).optional(),
 });
 
@@ -601,13 +936,25 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
       }),
       prisma.developmentTask.findMany({
         where: taskWhere,
-        include: taskBaseInclude,
+        include: {
+          ...taskBaseInclude,
+          activities: {
+            where: { action: 'status_changed' },
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+            select: { createdAt: true },
+          },
+        },
         orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       }),
     ]);
 
     const { todayKey, soonKey } = getTodayAndSoonKeys();
-    const serializedTasks = tasks.map((t) => serializeTask(t, todayKey, soonKey));
+    const endStatusSet = buildEndStatusSet(config.statusItems);
+    const teamById = buildTeamLookup(access.assigneeGroups);
+    const serializedTasks = tasks.map((t) =>
+      serializeTask(t, todayKey, soonKey, { teamById, endStatuses: endStatusSet })
+    );
 
     const totalWorkItems = serializedTasks.length;
     let completedCount = 0;
@@ -646,7 +993,7 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
 
     for (const task of serializedTasks) {
       const stLower = task.status.trim().toLowerCase();
-      if (stLower === 'completed') completedCount++;
+      if (isCompletedStatus(task.status, endStatusSet)) completedCount++;
       else if (stLower === 'in progress') inProgressCount++;
       else if (stLower === 'not started') notStartedCount++;
       else if (stLower === 'in review') inReviewCount++;
@@ -683,7 +1030,7 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
           workloadMap.set(assignee.id, entry);
         }
         entry.totalAssigned++;
-        if (isCompletedStatus(task.status)) {
+        if (isCompletedStatus(task.status, endStatusSet)) {
           entry.completedCount++;
         } else {
           entry.activeCount++;
@@ -703,26 +1050,62 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
       .sort((a, b) => b.activeCount - a.activeCount || b.totalAssigned - a.totalAssigned);
 
     // Status, Priority, Type breakdowns
+    const statusItemMap = new Map(config.statusItems.map((s) => [s.name.toLowerCase(), s]));
     const allStatusesOrdered = Array.from(new Set([...config.statuses, ...statusCounts.keys()]));
     const byStatus = allStatusesOrdered.map((st) => {
       const count = statusCounts.get(st) || 0;
+      const meta = statusItemMap.get(st.toLowerCase());
       return {
         key: st,
         label: st,
         count,
         percentage: totalWorkItems > 0 ? Math.round((count / totalWorkItems) * 100) : 0,
-        color: STATUS_COLORS[st] || '#6366F1',
+        color: meta?.color || STATUS_COLORS[st] || '#6366F1',
       };
     });
 
-    const byPriority = PRIORITY_LEVELS.map((p) => {
+    const priorityItemMap = new Map(config.priorityItems.map((p) => [p.name.toLowerCase(), p]));
+    const allPrioritiesOrdered = Array.from(new Set([...config.priorities, ...priorityCounts.keys()]));
+    const byPriority = allPrioritiesOrdered.map((p) => {
       const count = priorityCounts.get(p) || 0;
+      const meta = priorityItemMap.get(p.toLowerCase());
       return {
         key: p,
         label: p,
         count,
         percentage: totalWorkItems > 0 ? Math.round((count / totalWorkItems) * 100) : 0,
-        color: PRIORITY_COLORS[p],
+        color: meta?.color || PRIORITY_COLORS[p] || '#F59E0B',
+      };
+    });
+
+    // Real 14-day Created vs Completed trend from database tasks
+    const dailyTrendMap = new Map<string, { created: number; completed: number }>();
+    const dayKeys: string[] = [];
+    for (let offset = 13; offset >= 0; offset--) {
+      const d = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      dayKeys.push(key);
+      dailyTrendMap.set(key, { created: 0, completed: 0 });
+    }
+    for (const task of serializedTasks) {
+      const createdKey = task.createdAt ? String(task.createdAt).slice(0, 10) : '';
+      if (createdKey && dailyTrendMap.has(createdKey)) {
+        dailyTrendMap.get(createdKey)!.created += 1;
+      }
+      const compKey = task.completedAt ? String(task.completedAt).slice(0, 10) : '';
+      if (compKey && dailyTrendMap.has(compKey)) {
+        dailyTrendMap.get(compKey)!.completed += 1;
+      }
+    }
+    const dailyTrend = dayKeys.map((dateKey) => {
+      const d = new Date(`${dateKey}T00:00:00Z`);
+      const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      const stats = dailyTrendMap.get(dateKey)!;
+      return {
+        date: dateKey,
+        label,
+        created: stats.created,
+        completed: stats.completed,
       };
     });
 
@@ -747,7 +1130,7 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
       .map((mod) => {
         const modTasks = serializedTasks.filter((t) => t.moduleId === mod.id);
         const modTotal = modTasks.length;
-        const modCompleted = modTasks.filter((t) => isCompletedStatus(t.status)).length;
+        const modCompleted = modTasks.filter((t) => isCompletedStatus(t.status, endStatusSet)).length;
         const modInProgress = modTasks.filter((t) => t.status.toLowerCase() === 'in progress').length;
         const modOverdue = modTasks.filter((t) => t.isOverdue).length;
 
@@ -755,7 +1138,7 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
           .map((sub) => {
             const subTasks = modTasks.filter((t) => t.submoduleId === sub.id);
             const subTotal = subTasks.length;
-            const subCompleted = subTasks.filter((t) => isCompletedStatus(t.status)).length;
+            const subCompleted = subTasks.filter((t) => isCompletedStatus(t.status, endStatusSet)).length;
             const subInProgress = subTasks.filter((t) => t.status.toLowerCase() === 'in progress').length;
             const subOverdue = subTasks.filter((t) => t.isOverdue).length;
             return {
@@ -786,6 +1169,89 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
       })
       .filter((m) => !m.isArchived || m.totalTasks > 0);
 
+    // Planned vs Actual time comparison (planned from task assignment/start -> due, actual from first status transition -> end status)
+    const plannedVsActualItems = tasks.map((rawTask) => {
+      const ser = serializedTasks.find((s) => s.id === rawTask.id)!;
+      const isEnded = isCompletedStatus(rawTask.status, endStatusSet);
+      const startKey = toDateKey(rawTask.startDate);
+      const createdKey = toDateKey(rawTask.createdAt);
+      const plannedStartMs =
+        rawTask.startDate && startKey && createdKey && startKey !== createdKey
+          ? new Date(rawTask.startDate).getTime()
+          : rawTask.createdAt.getTime();
+      const plannedEndSource = rawTask.dueDate || rawTask.startDate || rawTask.createdAt;
+      const plannedEndMs =
+        new Date(plannedEndSource).getTime() + (rawTask.dueDate || rawTask.startDate ? 24 * 60 * 60 * 1000 - 1 : 0);
+      const plannedHours = Math.max(0.5, +((Math.max(plannedEndMs, plannedStartMs) - plannedStartMs) / 3600000).toFixed(1));
+
+      const fallbackFirstMove = (rawTask as any).activities?.[0]?.createdAt ?? null;
+      const actualStartDateObj =
+        rawTask.startedAt || fallbackFirstMove || (isEnded ? rawTask.completedAt || rawTask.updatedAt : null);
+      const actualEndDateObj = isEnded ? rawTask.completedAt || rawTask.updatedAt : null;
+
+      let actualHours: number | null = null;
+      if (actualStartDateObj) {
+        const endMs = actualEndDateObj ? new Date(actualEndDateObj).getTime() : nowMs;
+        actualHours = Math.max(0.1, +((Math.max(endMs, new Date(actualStartDateObj).getTime()) - new Date(actualStartDateObj).getTime()) / 3600000).toFixed(1));
+      }
+
+      const varianceHours =
+        actualEndDateObj && actualHours !== null ? +(actualHours - plannedHours).toFixed(1) : null;
+
+      let outcome: 'ahead' | 'on_time' | 'delayed' | 'in_progress' | 'not_started' = 'not_started';
+      if (actualEndDateObj) {
+        if (new Date(actualEndDateObj).getTime() > plannedEndMs) {
+          outcome = 'delayed';
+        } else if (varianceHours !== null && varianceHours < -1) {
+          outcome = 'ahead';
+        } else {
+          outcome = 'on_time';
+        }
+      } else if (actualStartDateObj) {
+        outcome = nowMs > plannedEndMs ? 'delayed' : 'in_progress';
+      }
+
+      return {
+        id: rawTask.id,
+        taskKey: rawTask.taskKey,
+        title: rawTask.title,
+        status: rawTask.status,
+        isEndStatus: isEnded,
+        plannedStartAt: new Date(plannedStartMs).toISOString(),
+        plannedEndAt: new Date(plannedEndMs).toISOString(),
+        actualStartAt: actualStartDateObj ? new Date(actualStartDateObj).toISOString() : null,
+        actualEndAt: actualEndDateObj ? new Date(actualEndDateObj).toISOString() : null,
+        plannedHours,
+        actualHours,
+        varianceHours,
+        outcome,
+      };
+    });
+
+    const completedWithActual = plannedVsActualItems.filter((i) => i.isEndStatus && i.actualHours !== null);
+    const totalPlannedHours = +plannedVsActualItems.reduce((s, i) => s + i.plannedHours, 0).toFixed(1);
+    const totalActualHours = +completedWithActual.reduce((s, i) => s + (i.actualHours || 0), 0).toFixed(1);
+    const plannedVsActual = {
+      summary: {
+        totalTracked: plannedVsActualItems.length,
+        completedTracked: completedWithActual.length,
+        aheadOrOnTimeCount: completedWithActual.filter((i) => i.outcome === 'ahead' || i.outcome === 'on_time').length,
+        delayedCount: plannedVsActualItems.filter((i) => i.outcome === 'delayed').length,
+        inProgressCount: plannedVsActualItems.filter((i) => i.outcome === 'in_progress').length,
+        avgPlannedHours:
+          plannedVsActualItems.length > 0
+            ? +(totalPlannedHours / plannedVsActualItems.length).toFixed(1)
+            : 0,
+        avgActualHours:
+          completedWithActual.length > 0
+            ? +(totalActualHours / completedWithActual.length).toFixed(1)
+            : 0,
+        totalPlannedHours,
+        totalActualHours,
+      },
+      items: plannedVsActualItems.slice(0, 12),
+    };
+
     const overdueTasks = serializedTasks
       .filter((t) => t.isOverdue)
       .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
@@ -802,7 +1268,7 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
           title: access.project.title,
           identifier: access.project.identifier ?? null,
           status: access.project.status,
-          lead: access.project.lead ?? null,
+          lead: access.project.lead ?? access.project.owner ?? null,
           startDate: toDateKey(access.project.startDate),
           endDate: toDateKey(access.project.endDate),
         },
@@ -813,6 +1279,7 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
         },
         config,
         eligibleMembers: access.eligibleMembers,
+        assigneeGroups: access.assigneeGroups,
         metrics: {
           totalWorkItems,
           completedCount,
@@ -833,6 +1300,8 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
           byPriority,
           byTaskType,
           moduleProgress,
+          dailyTrend,
+          plannedVsActual,
           recentlyUpdatedTasks: serializedTasks.slice(0, 8),
           overdueTasks: overdueTasks.slice(0, 10),
           dueSoonTasks: dueSoonTasks.slice(0, 10),
@@ -845,7 +1314,26 @@ developmentRouter.get('/dashboard', async (req: Request, res: Response) => {
   }
 });
 
-// ─── SETTINGS (PREFIX / TYPES / STATUSES / EFFORT UNIT) ──────────────────────
+// ─── SETTINGS (PREFIX / TYPES / STATUSES / PRIORITIES / EFFORT UNIT) ────────
+
+developmentRouter.get('/settings', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    if (Number.isNaN(projectId)) {
+      return res.status(400).json({ success: false, error: 'Invalid project ID' });
+    }
+
+    const userId = getUserIdFromToken(req);
+    const access = await checkDevelopmentAccess(projectId, userId);
+    if (!access.allowed) return sendAccessError(res, access);
+
+    const config = await getOrBuildProjectConfig(projectId);
+    return res.json({ success: true, data: config });
+  } catch (error: any) {
+    console.error('[DevManagement] Failed to load settings:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load development settings' });
+  }
+});
 
 developmentRouter.put('/settings', async (req: Request, res: Response) => {
   try {
@@ -872,11 +1360,63 @@ developmentRouter.put('/settings', async (req: Request, res: Response) => {
     const existing = await getOrBuildProjectConfig(projectId);
     const nextPrefix = parsed.data.taskPrefix ? parsed.data.taskPrefix.toUpperCase() : existing.taskPrefix;
     const nextTypes = parsed.data.taskTypes || existing.taskTypes;
-    const nextStatuses = parsed.data.statuses || existing.statuses;
-    if (!nextStatuses.some((s) => s.toLowerCase() === 'completed')) {
-      nextStatuses.push('Completed');
+
+    const dedupeItems = (items: MasterChoiceItem[]): MasterChoiceItem[] => {
+      const seen = new Set<string>();
+      const out: MasterChoiceItem[] = [];
+      for (const item of items) {
+        const cleanName = item.name.trim();
+        const key = cleanName.toLowerCase();
+        if (!cleanName || seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          name: cleanName,
+          icon: item.icon || 'Circle',
+          color: item.color || '#10B981',
+          ...(typeof item.isEnd === 'boolean' || key === 'completed'
+            ? { isEnd: key === 'completed' ? true : Boolean(item.isEnd) }
+            : {}),
+        });
+      }
+      return out;
+    };
+
+    let nextStatusItems: MasterChoiceItem[] = existing.statusItems;
+    if (parsed.data.statusItems) {
+      nextStatusItems = dedupeItems(parsed.data.statusItems);
+    } else if (parsed.data.statuses) {
+      nextStatusItems = normalizeChoiceItems(
+        existing.statusItems,
+        parsed.data.statuses,
+        DEFAULT_STATUS_ITEMS,
+        'Circle',
+        '#71717A'
+      );
     }
+    if (!nextStatusItems.some((s) => s.name.toLowerCase() === 'completed')) {
+      nextStatusItems.push({ name: 'Completed', icon: 'CheckCircle2', color: '#10B981', isEnd: true });
+    }
+    const nextStatuses = nextStatusItems.map((s) => s.name);
+
+    let nextPriorityItems: MasterChoiceItem[] = existing.priorityItems;
+    if (parsed.data.priorityItems) {
+      nextPriorityItems = dedupeItems(parsed.data.priorityItems);
+    } else if (parsed.data.priorities) {
+      nextPriorityItems = normalizeChoiceItems(
+        existing.priorityItems,
+        parsed.data.priorities,
+        DEFAULT_PRIORITY_ITEMS,
+        'Flag',
+        '#F59E0B'
+      );
+    }
+    const nextPriorities = nextPriorityItems.map((p) => p.name);
     const nextUnit = parsed.data.defaultEffortUnit || existing.defaultEffortUnit;
+
+    const masterMetaJson = JSON.stringify({
+      priorities: nextPriorityItems,
+      statuses: nextStatusItems,
+    });
 
     await prisma.developmentProjectConfig.upsert({
       where: { projectId },
@@ -885,6 +1425,8 @@ developmentRouter.put('/settings', async (req: Request, res: Response) => {
         taskPrefix: nextPrefix,
         customTaskTypesJson: JSON.stringify(nextTypes),
         customStatusesJson: JSON.stringify(nextStatuses),
+        customPrioritiesJson: JSON.stringify(nextPriorities),
+        customMasterMetaJson: masterMetaJson,
         defaultEffortUnit: nextUnit,
         updatedById: userId!,
       },
@@ -892,6 +1434,8 @@ developmentRouter.put('/settings', async (req: Request, res: Response) => {
         taskPrefix: nextPrefix,
         customTaskTypesJson: JSON.stringify(nextTypes),
         customStatusesJson: JSON.stringify(nextStatuses),
+        customPrioritiesJson: JSON.stringify(nextPriorities),
+        customMasterMetaJson: masterMetaJson,
         defaultEffortUnit: nextUnit,
         updatedById: userId!,
       },
@@ -1596,10 +2140,13 @@ developmentRouter.get('/tasks', async (req: Request, res: Response) => {
     const metric = typeof req.query.metric === 'string' ? req.query.metric.trim() : '';
     const startDateFilter = parseDateOnly(typeof req.query.startDate === 'string' ? req.query.startDate : null);
     const endDateFilter = parseDateOnly(typeof req.query.endDate === 'string' ? req.query.endDate : null);
+    const rawTzOffset =
+      req.query.tzOffsetMinutes !== undefined ? parseInt(String(req.query.tzOffsetMinutes), 10) : 0;
+    const tzOffsetMinutes = Number.isNaN(rawTzOffset) ? 0 : Math.min(840, Math.max(-840, rawTzOffset));
     const sortBy = typeof req.query.sortBy === 'string' ? req.query.sortBy : 'createdAt';
     const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
-    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
+    const limit = Math.min(1000, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
 
     const where: any = { projectId };
     if (search) {
@@ -1624,31 +2171,59 @@ developmentRouter.get('/tasks', async (req: Request, res: Response) => {
     if (status) where.status = status;
     if (taskType) where.taskType = taskType;
 
+    const config = await getOrBuildProjectConfig(projectId);
+    const endStatusSet = buildEndStatusSet(config.statusItems);
+    const teamById = buildTeamLookup(access.assigneeGroups);
+    const endStatusNames = config.statusItems
+      .filter((s) => s.isEnd || s.name.trim().toLowerCase() === 'completed')
+      .map((s) => s.name);
+
     const { todayKey, soonKey } = getTodayAndSoonKeys();
     const todayDate = new Date(`${todayKey}T00:00:00.000Z`);
     const soonDate = new Date(`${soonKey}T00:00:00.000Z`);
 
     if (metric === 'overdue') {
-      where.status = { not: 'Completed' };
+      where.status = { notIn: endStatusNames.length > 0 ? endStatusNames : ['Completed'] };
       where.dueDate = { lt: todayDate };
     } else if (metric === 'due_soon') {
-      where.status = { not: 'Completed' };
+      where.status = { notIn: endStatusNames.length > 0 ? endStatusNames : ['Completed'] };
       where.dueDate = { gte: todayDate, lte: soonDate };
     } else if (startDateFilter || endDateFilter) {
-      where.dueDate = {
-        ...(startDateFilter ? { gte: startDateFilter } : {}),
-        ...(endDateFilter ? { lte: endDateFilter } : {}),
+      const rangeStart = startDateFilter
+        ? new Date(startDateFilter.getTime() + tzOffsetMinutes * 60 * 1000)
+        : undefined;
+      const rangeEnd = endDateFilter
+        ? new Date(endDateFilter.getTime() + (24 * 60 * 60 * 1000 - 1) + tzOffsetMinutes * 60 * 1000)
+        : undefined;
+      where.createdAt = {
+        ...(rangeStart ? { gte: rangeStart } : {}),
+        ...(rangeEnd ? { lte: rangeEnd } : {}),
       };
     }
 
-    // Priority needs deterministic severity sort rather than alphabetical
-    if (sortBy === 'priority') {
+    // Priority, dueDate (nulls last), and title (case-insensitive) use deterministic sorting
+    if (sortBy === 'priority' || sortBy === 'dueDate' || sortBy === 'title') {
       const allMatching = await prisma.developmentTask.findMany({
         where,
         include: taskBaseInclude,
       });
       allMatching.sort((a, b) => {
-        const diff = (PRIORITY_RANK[a.priority] || 0) - (PRIORITY_RANK[b.priority] || 0);
+        if (sortBy === 'priority') {
+          const diff = (PRIORITY_RANK[a.priority] ?? 2) - (PRIORITY_RANK[b.priority] ?? 2);
+          if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
+          return b.id - a.id;
+        }
+        if (sortBy === 'title') {
+          const diff = a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+          if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
+          return b.id - a.id;
+        }
+        const aTime = a.dueDate ? new Date(a.dueDate).getTime() : null;
+        const bTime = b.dueDate ? new Date(b.dueDate).getTime() : null;
+        if (aTime === null && bTime === null) return b.id - a.id;
+        if (aTime === null) return 1;
+        if (bTime === null) return -1;
+        const diff = aTime - bTime;
         if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
         return b.id - a.id;
       });
@@ -1657,14 +2232,13 @@ developmentRouter.get('/tasks', async (req: Request, res: Response) => {
       return res.json({
         success: true,
         data: {
-          items: paged.map((t) => serializeTask(t, todayKey, soonKey)),
+          items: paged.map((t) => serializeTask(t, todayKey, soonKey, { teamById, endStatuses: endStatusSet })),
           pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
         },
       });
     }
 
     const orderByMap: Record<string, any> = {
-      dueDate: [{ dueDate: sortOrder }, { id: 'desc' }],
       createdAt: [{ createdAt: sortOrder }, { id: sortOrder }],
       updatedAt: [{ updatedAt: sortOrder }, { id: 'desc' }],
       title: [{ title: sortOrder }, { id: 'desc' }],
@@ -1685,7 +2259,7 @@ developmentRouter.get('/tasks', async (req: Request, res: Response) => {
     return res.json({
       success: true,
       data: {
-        items: items.map((t) => serializeTask(t, todayKey, soonKey)),
+        items: items.map((t) => serializeTask(t, todayKey, soonKey, { teamById, endStatuses: endStatusSet })),
         pagination: {
           page,
           limit,
@@ -1788,8 +2362,16 @@ developmentRouter.post('/tasks', async (req: Request, res: Response) => {
     const dedupedLabels = Array.from(
       new Set((input.labels || []).map((l) => l.trim()).filter(Boolean))
     );
-    const statusValue = input.status || 'Not Started';
+    const statusValue = input.status || config.statuses[0] || 'Not Started';
     const effortUnit = input.effortUnit || config.defaultEffortUnit;
+    const endStatusSet = buildEndStatusSet(config.statusItems);
+    const teamById = buildTeamLookup(access.assigneeGroups);
+    const uniqueTeamIds = Array.from(new Set(input.teamIds || [])).filter((tid) => teamById.has(tid));
+    const initialStatus = (config.statuses[0] || 'Not Started').trim().toLowerCase();
+    const isInitialEnd = isCompletedStatus(statusValue, endStatusSet);
+    const createdTimestamp = new Date();
+    const initialStartedAt =
+      isInitialEnd || statusValue.trim().toLowerCase() !== initialStatus ? createdTimestamp : null;
 
     // Create task with transactional sequential key generation and P2002 collision retry
     let createdTask: any = null;
@@ -1822,8 +2404,11 @@ developmentRouter.post('/tasks', async (req: Request, res: Response) => {
               effortUnit,
               actualEffort: input.actualEffort ?? null,
               labelsJson: dedupedLabels.length > 0 ? JSON.stringify(dedupedLabels) : null,
+              teamIdsJson: uniqueTeamIds.length > 0 ? JSON.stringify(uniqueTeamIds) : null,
+              ...(input.gitCommit ? buildGitCommitFields(input.gitCommit) : {}),
               createdById: userId!,
-              completedAt: isCompletedStatus(statusValue) ? new Date() : null,
+              startedAt: initialStartedAt,
+              completedAt: isInitialEnd ? createdTimestamp : null,
               assignees: {
                 create: uniqueAssigneeIds.map((uid) => ({
                   userId: uid,
@@ -1892,7 +2477,7 @@ developmentRouter.post('/tasks', async (req: Request, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      data: serializeTask(createdTask),
+      data: serializeTask(createdTask, undefined, undefined, { teamById, endStatuses: endStatusSet }),
     });
   } catch (error: any) {
     console.error('[DevManagement] Failed to create task:', error);
@@ -1912,46 +2497,65 @@ developmentRouter.get('/tasks/:taskId', async (req: Request, res: Response) => {
     const access = await checkDevelopmentAccess(projectId, userId);
     if (!access.allowed) return sendAccessError(res, access);
 
-    const task = await prisma.developmentTask.findFirst({
-      where: { id: taskId, projectId },
-      include: {
-        ...taskBaseInclude,
-        attachments: {
-          include: {
-            uploadedBy: { select: userSelectFields },
-            document: {
-              select: {
-                id: true,
-                displayName: true,
-                originalName: true,
-                mimeType: true,
-                extension: true,
-                sizeBytes: true,
+    const [task, config] = await Promise.all([
+      prisma.developmentTask.findFirst({
+        where: { id: taskId, projectId },
+        include: {
+          ...taskBaseInclude,
+          attachments: {
+            include: {
+              uploadedBy: { select: userSelectFields },
+              document: {
+                select: {
+                  id: true,
+                  displayName: true,
+                  originalName: true,
+                  mimeType: true,
+                  extension: true,
+                  sizeBytes: true,
+                },
               },
             },
+            orderBy: { createdAt: 'desc' },
           },
-          orderBy: { createdAt: 'desc' },
+          comments: {
+            include: { author: { select: userSelectFields } },
+            orderBy: { createdAt: 'asc' },
+          },
+          activities: {
+            include: { actor: { select: userSelectFields } },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+          },
         },
-        comments: {
-          include: { author: { select: userSelectFields } },
-          orderBy: { createdAt: 'asc' },
-        },
-        activities: {
-          include: { actor: { select: userSelectFields } },
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-        },
-      },
-    });
+      }),
+      getOrBuildProjectConfig(projectId),
+    ]);
 
     if (!task) {
       return res.status(404).json({ success: false, error: 'Development task not found' });
     }
 
+    const endStatusSet = buildEndStatusSet(config.statusItems);
+    const teamById = buildTeamLookup(access.assigneeGroups);
+    const serialized = serializeTask(task, undefined, undefined, {
+      teamById,
+      endStatuses: endStatusSet,
+    });
+    const firstStatusChangeActivity = [...task.activities]
+      .reverse()
+      .find((a) => a.action === 'status_changed');
+    const resolvedStartedAt =
+      serialized.startedAt ||
+      (firstStatusChangeActivity
+        ? firstStatusChangeActivity.createdAt.toISOString()
+        : serialized.completedAt);
+
     return res.json({
       success: true,
       data: {
-        ...serializeTask(task),
+        ...serialized,
+        startedAt: resolvedStartedAt,
         comments: task.comments.map((c) => ({
           ...c,
           createdAt: c.createdAt.toISOString(),
@@ -2115,6 +2719,10 @@ developmentRouter.patch('/tasks/:taskId', async (req: Request, res: Response) =>
       });
     }
 
+    const config = await getOrBuildProjectConfig(projectId);
+    const endStatusSet = buildEndStatusSet(config.statusItems);
+    const teamById = buildTeamLookup(access.assigneeGroups);
+
     const updated = await prisma.$transaction(async (tx) => {
       if (uniqueAssigneeIds !== undefined) {
         const prevNames = existing.assignees.map((a) => a.user.name).sort().join(', ');
@@ -2152,11 +2760,23 @@ developmentRouter.patch('/tasks/:taskId', async (req: Request, res: Response) =>
       if (input.priority !== undefined) updateData.priority = input.priority;
       if (input.status !== undefined) {
         updateData.status = input.status;
-        if (isCompletedStatus(input.status) && !existing.completedAt) {
-          updateData.completedAt = new Date();
-        } else if (!isCompletedStatus(input.status)) {
+        const nextIsEnd = isCompletedStatus(input.status, endStatusSet);
+        const now = new Date();
+        if (input.status !== existing.status && !existing.startedAt) {
+          updateData.startedAt = now;
+        }
+        if (nextIsEnd && !existing.completedAt) {
+          updateData.completedAt = now;
+          if (!existing.startedAt && !updateData.startedAt) {
+            updateData.startedAt = now;
+          }
+        } else if (!nextIsEnd) {
           updateData.completedAt = null;
         }
+      }
+      if (input.teamIds !== undefined) {
+        const validTeamIds = Array.from(new Set(input.teamIds)).filter((tid) => teamById.has(tid));
+        updateData.teamIdsJson = validTeamIds.length > 0 ? JSON.stringify(validTeamIds) : null;
       }
       if (input.startDate !== undefined) updateData.startDate = nextStartDate;
       if (input.dueDate !== undefined) updateData.dueDate = nextDueDate;
@@ -2166,6 +2786,26 @@ developmentRouter.patch('/tasks/:taskId', async (req: Request, res: Response) =>
       if (input.labels !== undefined) {
         const cleanLabels = Array.from(new Set(input.labels.map((l) => l.trim()).filter(Boolean)));
         updateData.labelsJson = cleanLabels.length > 0 ? JSON.stringify(cleanLabels) : null;
+      }
+      if (input.gitCommit !== undefined) {
+        Object.assign(updateData, buildGitCommitFields(input.gitCommit ?? null));
+        if (input.gitCommit && input.gitCommit.sha !== existing.gitCommitSha) {
+          activityEntries.push({
+            field: 'git_commit',
+            action: 'git_commit_linked',
+            prev: existing.gitCommitSha ? existing.gitCommitSha.slice(0, 7) : null,
+            next: `${input.gitCommit.sha.slice(0, 7)}${
+              input.gitCommit.message ? ` · ${input.gitCommit.message}` : ''
+            }`,
+          });
+        } else if (input.gitCommit === null && existing.gitCommitSha) {
+          activityEntries.push({
+            field: 'git_commit',
+            action: 'git_commit_unlinked',
+            prev: existing.gitCommitSha.slice(0, 7),
+            next: null,
+          });
+        }
       }
 
       const taskRow = await tx.developmentTask.update({
@@ -2209,7 +2849,10 @@ developmentRouter.patch('/tasks/:taskId', async (req: Request, res: Response) =>
       return taskRow;
     });
 
-    return res.json({ success: true, data: serializeTask(updated) });
+    return res.json({
+      success: true,
+      data: serializeTask(updated, undefined, undefined, { teamById, endStatuses: endStatusSet }),
+    });
   } catch (error: any) {
     console.error('[DevManagement] Failed to update task:', error);
     return res.status(500).json({ success: false, error: 'Failed to update development task' });
@@ -2236,24 +2879,49 @@ developmentRouter.patch('/tasks/:taskId/status', async (req: Request, res: Respo
       return res.status(400).json({ success: false, error: 'Status is required' });
     }
 
-    const existing = await prisma.developmentTask.findFirst({ where: { id: taskId, projectId } });
+    let parsedCommit: z.infer<typeof gitCommitSchema> | null | undefined = undefined;
+    if (req.body?.gitCommit !== undefined) {
+      if (req.body.gitCommit === null) {
+        parsedCommit = null;
+      } else {
+        const commitRes = gitCommitSchema.safeParse(req.body.gitCommit);
+        if (!commitRes.success) {
+          return res.status(400).json({
+            success: false,
+            error: commitRes.error.issues[0]?.message || 'Invalid git commit payload',
+          });
+        }
+        parsedCommit = commitRes.data;
+      }
+    }
+
+    const [existing, config] = await Promise.all([
+      prisma.developmentTask.findFirst({ where: { id: taskId, projectId } }),
+      getOrBuildProjectConfig(projectId),
+    ]);
     if (!existing) {
       return res.status(404).json({ success: false, error: 'Development task not found' });
     }
+
+    const endStatusSet = buildEndStatusSet(config.statusItems);
+    const teamById = buildTeamLookup(access.assigneeGroups);
+    const isEnd = isCompletedStatus(statusRaw, endStatusSet);
+    const statusChanged = existing.status !== statusRaw;
+    const now = new Date();
 
     const updated = await prisma.$transaction(async (tx) => {
       const task = await tx.developmentTask.update({
         where: { id: taskId },
         data: {
           status: statusRaw,
-          completedAt: isCompletedStatus(statusRaw)
-            ? existing.completedAt || new Date()
-            : null,
+          startedAt: existing.startedAt || (statusChanged || isEnd ? now : null),
+          completedAt: isEnd ? existing.completedAt || now : null,
+          ...(parsedCommit !== undefined ? buildGitCommitFields(parsedCommit) : {}),
         },
         include: taskBaseInclude,
       });
 
-      if (existing.status !== statusRaw) {
+      if (statusChanged) {
         await tx.developmentTaskActivity.create({
           data: {
             projectId,
@@ -2267,10 +2935,29 @@ developmentRouter.patch('/tasks/:taskId/status', async (req: Request, res: Respo
         });
       }
 
+      if (parsedCommit && parsedCommit.sha !== existing.gitCommitSha) {
+        await tx.developmentTaskActivity.create({
+          data: {
+            projectId,
+            taskId,
+            actorId: userId!,
+            action: 'git_commit_linked',
+            field: 'git_commit',
+            previousValue: existing.gitCommitSha ? existing.gitCommitSha.slice(0, 7) : null,
+            newValue: `${parsedCommit.sha.slice(0, 7)}${
+              parsedCommit.message ? ` · ${parsedCommit.message}` : ''
+            }`,
+          },
+        });
+      }
+
       return task;
     });
 
-    return res.json({ success: true, data: serializeTask(updated) });
+    return res.json({
+      success: true,
+      data: serializeTask(updated, undefined, undefined, { teamById, endStatuses: endStatusSet }),
+    });
   } catch (error: any) {
     console.error('[DevManagement] Failed to update task status:', error);
     return res.status(500).json({ success: false, error: 'Failed to update task status' });
@@ -2532,6 +3219,190 @@ developmentRouter.delete('/tasks/:taskId/attachments/:attId', async (req: Reques
   } catch (error: any) {
     console.error('[DevManagement] Failed to remove attachment:', error);
     return res.status(500).json({ success: false, error: 'Failed to remove attachment' });
+  }
+});
+
+// Direct GitHub upload for development task attachments into module-{moduleId} folder on main branch
+developmentRouter.post('/attachments/upload', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    if (Number.isNaN(projectId)) {
+      return res.status(400).json({ success: false, error: 'Invalid project ID' });
+    }
+
+    const userId = getUserIdFromToken(req);
+    const access = await checkDevelopmentAccess(projectId, userId);
+    if (!access.allowed) return sendAccessError(res, access);
+    if (!access.canEditTasks) {
+      return res.status(403).json({ success: false, error: 'Viewers cannot upload task attachments' });
+    }
+
+    const moduleId = req.body?.moduleId ? parseInt(String(req.body.moduleId), 10) : NaN;
+    if (Number.isNaN(moduleId) || moduleId <= 0) {
+      return res.status(400).json({ success: false, error: 'Application module is required before uploading attachments' });
+    }
+
+    const mod = await prisma.developmentModule.findFirst({
+      where: { id: moduleId, projectId },
+    });
+    if (!mod) {
+      return res.status(404).json({ success: false, error: 'Selected module does not belong to this project' });
+    }
+
+    const storageConn = await (prisma as any).projectStorageConnection.findUnique({
+      where: { projectId },
+    });
+    if (storageConn && storageConn.status === 'unlinked') {
+      return res.status(423).json({
+        success: false,
+        error:
+          'Document storage repository is currently unlinked. Relink the repository in Project Settings > Storage before uploading files.',
+      });
+    }
+
+    const files = req.body?.files;
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ success: false, error: 'No files provided for upload' });
+    }
+
+    const settings = await (prisma as any).documentModuleSettings.findUnique({
+      where: { projectId },
+    });
+    const maxFileSize = settings?.maxFileSizeBytes || 26214400; // 25 MB default
+
+    const existingDocsSum = await (prisma as any).projectDocument.findMany({
+      where: { projectId, deletedAt: null },
+      select: { sizeBytes: true },
+    });
+    let combinedProjectBytes = existingDocsSum.reduce((acc: number, d: any) => acc + (d.sizeBytes || 0), 0);
+
+    const uploaderName = access.user?.name || access.user?.username || 'DevFlow User';
+    const uploadedDocuments: any[] = [];
+    const errors: Array<{ fileName: string; error: string }> = [];
+
+    for (const file of files) {
+      const name = String(file?.name || file?.fileName || 'attachment').trim();
+      const rawBase64 = file?.base64 || file?.contentBase64 || file?.data;
+      const mimeType = String(file?.mimeType || file?.type || 'application/octet-stream');
+
+      if (!name || !rawBase64) {
+        errors.push({ fileName: name || 'unknown', error: 'Missing file name or data' });
+        continue;
+      }
+
+      try {
+        const cleanedBase64 = String(rawBase64).replace(/^data:[^;]+;base64,/, '');
+        const buffer = Buffer.from(cleanedBase64, 'base64');
+        const actualSize = buffer.length;
+
+        if (actualSize > maxFileSize) {
+          const maxMB = (maxFileSize / (1024 * 1024)).toFixed(1);
+          errors.push({
+            fileName: name,
+            error: `File size (${(actualSize / (1024 * 1024)).toFixed(1)} MB) exceeds ${maxMB} MB limit.`,
+          });
+          continue;
+        }
+
+        if (combinedProjectBytes + actualSize > REPO_SIZE_LIMIT_BYTES) {
+          errors.push({
+            fileName: name,
+            error: 'Combined repository storage would exceed the 2 GB GitHub repository limit.',
+          });
+          continue;
+        }
+
+        const storageKey = crypto.randomUUID();
+        const extension = name.split('.').pop()?.toLowerCase() || '';
+
+        const gitResult = await GitHubDocumentStorageService.uploadDocumentFile({
+          projectId,
+          projectTitle: access.project?.title || 'project',
+          fileName: name,
+          storageKey,
+          categorySlug: 'attachments',
+          branchName: 'main',
+          pathPrefix: `module-${mod.id}`,
+          contentBuffer: buffer,
+          uploaderName,
+        });
+
+        const docRecord = await (prisma as any).projectDocument.create({
+          data: {
+            organizationId: access.project?.organizationId || null,
+            projectId,
+            submoduleId: null,
+            branch: gitResult.branch || 'main',
+            uploadedById: userId!,
+            originalName: name,
+            displayName: name,
+            storageKey,
+            repositoryPath: gitResult.path,
+            providerFileSha: gitResult.sha,
+            mimeType,
+            extension,
+            sizeBytes: actualSize,
+            categoryId: null,
+            description: `Development attachment uploaded for module ${mod.name} (ID ${mod.id})`,
+            uploadStatus: 'uploaded',
+            providerSyncStatus: 'synced',
+          },
+        });
+
+        combinedProjectBytes += actualSize;
+
+        await (prisma as any).documentActivity.create({
+          data: {
+            projectId,
+            documentId: docRecord.id,
+            actorId: userId!,
+            action: 'upload',
+            metadata: JSON.stringify({
+              fileName: name,
+              sizeBytes: actualSize,
+              branch: gitResult.branch || 'main',
+              folder: `module-${mod.id}`,
+              source: 'development_task',
+            }),
+          },
+        });
+
+        uploadedDocuments.push({
+          id: docRecord.id,
+          displayName: docRecord.displayName,
+          originalName: docRecord.originalName,
+          mimeType: docRecord.mimeType,
+          extension: docRecord.extension,
+          sizeBytes: docRecord.sizeBytes,
+          branch: docRecord.branch,
+          repositoryPath: docRecord.repositoryPath,
+        });
+      } catch (fileErr: any) {
+        errors.push({
+          fileName: name,
+          error: fileErr?.message || 'GitHub upload failed',
+        });
+      }
+    }
+
+    if (uploadedDocuments.length === 0 && errors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: errors[0].error,
+        errors,
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        documents: uploadedDocuments,
+        errors,
+      },
+    });
+  } catch (error: any) {
+    console.error('[DevManagement] Failed to upload attachments:', error);
+    return res.status(500).json({ success: false, error: error?.message || 'Failed to upload attachments' });
   }
 });
 

@@ -11,16 +11,29 @@ export interface DevUser {
   projectRole?: string;
 }
 
-export type DevTaskPriority = 'Critical' | 'High' | 'Medium' | 'Low';
+export type DevTaskPriority = string;
 export type DevEffortUnit = 'hours' | 'story_points';
 
 export const DEFAULT_DEV_TASK_TYPES = [
-  'Task',
+  'Development',
+  'Research',
   'Feature',
   'Bug',
   'Improvement',
+  'Documentation',
+  'Testing',
   'Technical Debt',
 ] as const;
+
+export interface DevGitCommitLink {
+  sha: string;
+  shortSha?: string;
+  message?: string | null;
+  url?: string | null;
+  repoName?: string | null;
+  author?: string | null;
+  committedAt?: string | null;
+}
 
 export const DEFAULT_DEV_STATUSES = [
   'Not Started',
@@ -152,20 +165,51 @@ export interface DevelopmentTaskItem {
   createdById: number;
   createdBy: DevUser;
   assignees: DevUser[];
+  teamIds?: number[];
+  assignedTeams?: DevTeamOption[];
   attachments?: DevelopmentTaskAttachment[];
   commentCount: number;
   attachmentCount: number;
   isOverdue: boolean;
   isDueSoon: boolean;
+  isEndStatus?: boolean;
+  gitCommit?: DevGitCommitLink | null;
+  startedAt?: string | null;
   completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DevMasterChoiceItem {
+  name: string;
+  icon: string;
+  color: string;
+  isEnd?: boolean;
+}
+
+export interface DevTeamOption {
+  id: number;
+  name: string;
+  color: string;
+  icon: string;
+  memberIds: number[];
+  memberCount: number;
+}
+
+export interface DevAssigneeGroups {
+  teams: DevTeamOption[];
+  projectMembers: DevUser[];
+  allTeams?: DevTeamOption[];
+  orgMembers: DevUser[];
 }
 
 export interface DevelopmentProjectConfig {
   taskPrefix: string;
   taskTypes: string[];
   statuses: string[];
+  priorities?: string[];
+  priorityItems?: DevMasterChoiceItem[];
+  statusItems?: DevMasterChoiceItem[];
   defaultEffortUnit: DevEffortUnit;
 }
 
@@ -208,6 +252,35 @@ export interface ModuleProgressItem {
   }[];
 }
 
+export interface PlannedVsActualItem {
+  id: number;
+  taskKey: string;
+  title: string;
+  status: string;
+  priority: string;
+  isEndStatus: boolean;
+  plannedStartAt: string;
+  plannedEndAt: string | null;
+  plannedHours: number | null;
+  actualStartAt: string | null;
+  actualEndAt: string | null;
+  actualHours: number | null;
+  varianceHours: number | null;
+  outcome: 'ahead' | 'on_time' | 'delayed' | 'in_progress' | 'not_started' | 'unscheduled';
+}
+
+export interface PlannedVsActualSummary {
+  totalTracked: number;
+  completedTracked: number;
+  aheadOrOnTimeCount: number;
+  delayedCount: number;
+  inProgressCount: number;
+  avgPlannedHours: number;
+  avgActualHours: number;
+  totalPlannedHours: number;
+  totalActualHours: number;
+}
+
 export interface DevelopmentDashboardData {
   projectMeta: {
     id: number;
@@ -225,6 +298,7 @@ export interface DevelopmentDashboardData {
   };
   config: DevelopmentProjectConfig;
   eligibleMembers: DevUser[];
+  assigneeGroups?: DevAssigneeGroups;
   metrics: {
     totalWorkItems: number;
     completedCount: number;
@@ -245,6 +319,11 @@ export interface DevelopmentDashboardData {
     byPriority: BreakdownItem[];
     byTaskType: BreakdownItem[];
     moduleProgress: ModuleProgressItem[];
+    dailyTrend?: { date: string; label: string; created: number; completed: number }[];
+    plannedVsActual?: {
+      summary: PlannedVsActualSummary;
+      items: PlannedVsActualItem[];
+    };
     recentlyUpdatedTasks: DevelopmentTaskItem[];
     overdueTasks: DevelopmentTaskItem[];
     dueSoonTasks: DevelopmentTaskItem[];
@@ -262,6 +341,7 @@ export interface DevelopmentTaskListParams {
   metric?: 'overdue' | 'due_soon';
   startDate?: string;
   endDate?: string;
+  tzOffsetMinutes?: number;
   includeArchived?: boolean;
   sortBy?: 'dueDate' | 'priority' | 'createdAt' | 'updatedAt' | 'title' | 'sequenceNumber';
   sortOrder?: 'asc' | 'desc';
@@ -286,6 +366,7 @@ export interface CreateDevelopmentTaskPayload {
   moduleId: number;
   submoduleId: number;
   assigneeIds?: number[];
+  teamIds?: number[];
   priority?: DevTaskPriority;
   status?: string;
   startDate?: string | null;
@@ -296,6 +377,7 @@ export interface CreateDevelopmentTaskPayload {
   labels?: string[];
   attachmentDocumentIds?: number[];
   externalAttachments?: { fileName: string; fileUrl: string; mimeType?: string; fileSize?: number }[];
+  gitCommit?: DevGitCommitLink | null;
 }
 
 export interface UpdateDevelopmentTaskPayload extends Partial<CreateDevelopmentTaskPayload> {}

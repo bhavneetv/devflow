@@ -19,6 +19,9 @@ async function main() {
   let collabId = 0;
   let outsiderId = 0;
   let projectId = 0;
+  let teamAId = 0;
+  let teamBId = 0;
+  let orgId = 0;
 
   try {
     // 1. Setup isolated test users & project
@@ -229,6 +232,269 @@ async function main() {
     const archiveSub = await req(`/masters/submodules/${sub1Id}`, 'PATCH', { isArchived: true });
     assert(archiveSub.status === 200 && archiveSub.json.data.isArchived === true, 'Archive submodule failed');
 
+    // 10. Date range filter on createdAt (today vs yesterday) with tzOffsetMinutes + dueDate null-last sort
+    const now = new Date();
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const todayStr = fmt(now);
+    const yest = new Date(now);
+    yest.setDate(yest.getDate() - 1);
+    const yestStr = fmt(yest);
+    const tzOffset = now.getTimezoneOffset();
+
+    const todayList = await req(
+      `/tasks?startDate=${todayStr}&endDate=${todayStr}&tzOffsetMinutes=${tzOffset}&limit=500`
+    );
+    assert(
+      todayList.status === 200 && todayList.json.data.items.length === 3,
+      `Expected 3 tasks created today, got ${todayList.json.data?.items?.length}`
+    );
+
+    const yesterdayList = await req(
+      `/tasks?startDate=${yestStr}&endDate=${yestStr}&tzOffsetMinutes=${tzOffset}&limit=500`
+    );
+    assert(
+      yesterdayList.status === 200 && yesterdayList.json.data.items.length === 0,
+      `Expected 0 tasks created yesterday, got ${yesterdayList.json.data?.items?.length}`
+    );
+
+    // 11. AssigneeGroups shape + 14-day dailyTrend real DB series + Project Master Data persistence
+    assert(
+      dashAfter.json.data.assigneeGroups &&
+        Array.isArray(dashAfter.json.data.assigneeGroups.teams) &&
+        Array.isArray(dashAfter.json.data.assigneeGroups.allTeams) &&
+        Array.isArray(dashAfter.json.data.assigneeGroups.projectMembers) &&
+        dashAfter.json.data.assigneeGroups.projectMembers.some((u: any) => u.id === ownerId),
+      'Expected assigneeGroups with teams, allTeams, and projectMembers including owner'
+    );
+    const trend = dashAfter.json.data.analytics?.dailyTrend;
+    assert(
+      Array.isArray(trend) &&
+        trend.length === 14 &&
+        trend.every(
+          (d: any) =>
+            typeof d.date === 'string' &&
+            typeof d.label === 'string' &&
+            typeof d.created === 'number' &&
+            typeof d.completed === 'number' &&
+            d.created >= 0 &&
+            d.completed >= 0
+        ) &&
+        trend.reduce((s: number, d: any) => s + d.created, 0) >= 2 &&
+        trend.reduce((s: number, d: any) => s + d.completed, 0) >= 1,
+      `Expected 14-day analytics.dailyTrend array with real created/completed counts, got ${JSON.stringify(trend)}`
+    );
+
+    const cfgUpdate = await req('/settings', 'PUT', {
+      priorityItems: [
+        { name: 'P0 Blocker', icon: 'Flame', color: '#EF4444' },
+        { name: 'Medium', icon: 'Minus', color: '#F59E0B' },
+      ],
+      statusItems: [
+        { name: 'Not Started', icon: 'Circle', color: '#71717A' },
+        { name: 'QA Testing', icon: 'Eye', color: '#8B5CF6' },
+        { name: 'Completed', icon: 'CheckCircle2', color: '#10B981' },
+      ],
+    });
+    assert(
+      cfgUpdate.status === 200 &&
+        cfgUpdate.json.data.priorityItems.some((p: any) => p.name === 'P0 Blocker') &&
+        cfgUpdate.json.data.statusItems.some((s: any) => s.name === 'QA Testing'),
+      'Expected custom priorityItems and statusItems to persist'
+    );
+
+    await req(`/masters/submodules/${sub1Id}`, 'PATCH', { isArchived: false });
+    const dashMods = await req('/masters/modules');
+    const firstModId = dashMods.json.data[0].id;
+    const customTask = await req('/tasks', 'POST', {
+      title: 'Task with custom master priority & status',
+      moduleId: firstModId,
+      submoduleId: sub1Id,
+      priority: 'P0 Blocker',
+      status: 'QA Testing',
+    });
+    assert(
+      customTask.status === 201 &&
+        customTask.json.data.priority === 'P0 Blocker' &&
+        customTask.json.data.status === 'QA Testing',
+      `Expected task with custom priority/status, got ${customTask.status}: ${JSON.stringify(customTask.json)}`
+    );
+
+    // 12. Attachment upload route validation when module is invalid
+    const badUpload = await req('/attachments/upload', 'POST', {
+      moduleId: 99999999,
+      files: [{ name: 'spec.txt', base64: Buffer.from('hello').toString('base64'), mimeType: 'text/plain' }],
+    });
+    assert(badUpload.status === 404, `Expected 404 for unknown moduleId on upload, got ${badUpload.status}`);
+
+    // 13. Custom End Status ("Skipped"), explicit teamIds isolation, & Planned vs Actual analytics
+    const endCfg = await req('/settings', 'PUT', {
+      statusItems: [
+        { name: 'Not Started', icon: 'Circle', color: '#71717A', isEnd: false },
+        { name: 'QA Testing', icon: 'Eye', color: '#8B5CF6', isEnd: false },
+        { name: 'Skipped', icon: 'FastForward', color: '#94A3B8', isEnd: true },
+        { name: 'Completed', icon: 'CheckCircle2', color: '#10B981', isEnd: true },
+      ],
+    });
+    assert(
+      endCfg.status === 200 &&
+        endCfg.json.data.statusItems.some((s: any) => s.name === 'Skipped' && s.isEnd === true),
+      'Expected Skipped custom End Status to persist'
+    );
+
+    const skippedRes = await req(`/tasks/${customTask.json.data.id}/status`, 'PATCH', {
+      status: 'Skipped',
+    });
+    assert(
+      skippedRes.status === 200 &&
+        skippedRes.json.data.status === 'Skipped' &&
+        skippedRes.json.data.isEndStatus === true &&
+        Boolean(skippedRes.json.data.completedAt) &&
+        Boolean(skippedRes.json.data.startedAt),
+      `Expected custom End status Skipped to set completedAt/startedAt/isEndStatus, got ${JSON.stringify(
+        skippedRes.json.data
+      )}`
+    );
+
+    // Explicit teamIds vs overlapping members: Team A & Team B both contain owner+collab in same org, only Team A linked
+    const org = await prisma.organization.create({
+      data: {
+        name: `Test Org ${ts}`,
+        slug: `test-org-${ts}`,
+        createdById: owner.id,
+      },
+    });
+    orgId = org.id;
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { organizationId: org.id },
+    });
+
+    const teamA = await prisma.team.create({
+      data: {
+        name: `Explicit Team A ${ts}`,
+        createdById: owner.id,
+        organizationId: org.id,
+        projects: { connect: { id: projectId } },
+        members: { create: [{ userId: owner.id }, { userId: collab.id }] },
+      },
+    });
+    const teamB = await prisma.team.create({
+      data: {
+        name: `Unrelated Team B ${ts}`,
+        createdById: owner.id,
+        organizationId: org.id,
+        members: { create: [{ userId: owner.id }, { userId: collab.id }] },
+      },
+    });
+    teamAId = teamA.id;
+    teamBId = teamB.id;
+
+    const teamTaskRes = await req('/tasks', 'POST', {
+      title: 'Explicitly Linked Team Task',
+      moduleId: firstModId,
+      submoduleId: sub1Id,
+      assigneeIds: [owner.id, collab.id],
+      teamIds: [teamA.id],
+      startDate: todayStr,
+      dueDate: todayStr,
+    });
+    assert(
+      teamTaskRes.status === 201 &&
+        Array.isArray(teamTaskRes.json.data.assignedTeams) &&
+        teamTaskRes.json.data.assignedTeams.length === 1 &&
+        teamTaskRes.json.data.assignedTeams[0].id === teamA.id,
+      `Expected ONLY teamA in assignedTeams (no teamB leak), got ${JSON.stringify(
+        teamTaskRes.json.data?.assignedTeams
+      )}`
+    );
+
+    const dashPva = await req('/dashboard');
+    const pva = dashPva.json.data?.analytics?.plannedVsActual;
+    assert(
+      dashPva.status === 200 &&
+        pva &&
+        pva.summary &&
+        Array.isArray(pva.items) &&
+        pva.summary.totalTracked >= 2 &&
+        pva.items.some((it: any) => it.id === customTask.json.data.id && it.isEndStatus === true),
+      `Expected analytics.plannedVsActual summary & ended items from DB, got ${JSON.stringify(pva)}`
+    );
+
+    // 7) Verify Development task type + optional Git commit linking on completion vs Research task
+    const devTaskRes = await req('/tasks', 'POST', {
+      title: 'Implement OAuth Callback Sync',
+      taskType: 'Development',
+      moduleId: firstModId,
+      submoduleId: sub1Id,
+      priority: 'High',
+      status: 'In Progress',
+      startDate: todayStr,
+      dueDate: todayStr,
+    });
+    assert(
+      devTaskRes.status === 201 && devTaskRes.json.data.taskType === 'Development',
+      `Expected Development task creation, got ${JSON.stringify(devTaskRes.json)}`
+    );
+    const devTaskId = devTaskRes.json.data.id;
+
+    const completeWithCommit = await req(`/tasks/${devTaskId}/status`, 'PATCH', {
+      status: 'Completed',
+      gitCommit: {
+        sha: 'a1b2c3d4e5f67890abcdef1234567890abcdef12',
+        message: 'feat: implement OAuth callback sync handler',
+        repoName: 'devflow-core',
+        author: 'Owner Dev',
+        date: new Date().toISOString(),
+      },
+    });
+    assert(
+      completeWithCommit.status === 200 &&
+        completeWithCommit.json.data.status === 'Completed' &&
+        completeWithCommit.json.data.gitCommit?.shortSha === 'a1b2c3d' &&
+        completeWithCommit.json.data.gitCommit?.repoName === 'devflow-core',
+      `Expected Completed Development task with linked gitCommit, got ${JSON.stringify(
+        completeWithCommit.json
+      )}`
+    );
+
+    const unlinkCommitRes = await req(`/tasks/${devTaskId}`, 'PATCH', {
+      gitCommit: null,
+    });
+    assert(
+      unlinkCommitRes.status === 200 && unlinkCommitRes.json.data.gitCommit === null,
+      `Expected gitCommit to unlink cleanly, got ${JSON.stringify(unlinkCommitRes.json)}`
+    );
+
+    const devDetailRes = await req(`/tasks/${devTaskId}`);
+    const activityActions = (devDetailRes.json.data?.activities || []).map((a: any) => a.action);
+    assert(
+      activityActions.includes('git_commit_linked') && activityActions.includes('git_commit_unlinked'),
+      `Expected git_commit_linked & git_commit_unlinked activities, got ${JSON.stringify(activityActions)}`
+    );
+
+    const researchTaskRes = await req('/tasks', 'POST', {
+      title: 'Evaluate WebAuthn SDK Tradeoffs',
+      taskType: 'Research',
+      moduleId: firstModId,
+      submoduleId: sub1Id,
+      priority: 'Medium',
+      status: 'In Progress',
+    });
+    assert(
+      researchTaskRes.status === 201 && researchTaskRes.json.data.taskType === 'Research',
+      `Expected Research task creation, got ${JSON.stringify(researchTaskRes.json)}`
+    );
+    const completeResearch = await req(`/tasks/${researchTaskRes.json.data.id}/status`, 'PATCH', {
+      status: 'Completed',
+    });
+    assert(
+      completeResearch.status === 200 &&
+        completeResearch.json.data.status === 'Completed' &&
+        completeResearch.json.data.gitCommit === null,
+      `Expected Research task to complete without gitCommit, got ${JSON.stringify(completeResearch.json)}`
+    );
+
     console.log('ALL DEVELOPMENT MODULE API & DB ASSERTIONS PASSED!');
   } finally {
     server.close();
@@ -236,6 +502,13 @@ async function main() {
       await prisma.developmentTask.deleteMany({ where: { projectId } });
       await prisma.developmentModule.deleteMany({ where: { projectId } });
       await prisma.project.deleteMany({ where: { id: projectId } });
+    }
+    const teamIds = [teamAId, teamBId].filter(Boolean);
+    if (teamIds.length > 0) {
+      await prisma.team.deleteMany({ where: { id: { in: teamIds } } });
+    }
+    if (orgId) {
+      await prisma.organization.deleteMany({ where: { id: orgId } });
     }
     const ids = [ownerId, collabId, outsiderId].filter(Boolean);
     if (ids.length > 0) {

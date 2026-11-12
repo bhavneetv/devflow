@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
-  Clock,
   Edit3,
   Eye,
   MessageSquare,
@@ -12,12 +11,11 @@ import {
   Paperclip,
   Trash2,
 } from 'lucide-react';
-import type { DevelopmentTaskItem } from '../../types/development';
+import type { DevAssigneeGroups, DevelopmentTaskItem } from '../../types/development';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import {
   DevAvatarStack,
   formatDevDate,
-  formatEffort,
   PriorityBadge,
   StatusBadge,
   TaskTypeBadge,
@@ -25,6 +23,7 @@ import {
 
 interface DevelopmentCardViewProps {
   tasks: DevelopmentTaskItem[];
+  assigneeGroups?: DevAssigneeGroups;
   canEditTasks: boolean;
   onSelectTask: (task: DevelopmentTaskItem) => void;
   onEditTask: (task: DevelopmentTaskItem) => void;
@@ -34,6 +33,7 @@ interface DevelopmentCardViewProps {
 
 export const DevelopmentCardView: React.FC<DevelopmentCardViewProps> = ({
   tasks,
+  assigneeGroups,
   canEditTasks,
   onSelectTask,
   onEditTask,
@@ -139,7 +139,7 @@ export const DevelopmentCardView: React.FC<DevelopmentCardViewProps> = ({
             )}
           </div>
 
-          {/* Footer: Status + Due + Effort + Assignees */}
+          {/* Footer: Status + Due + Assignees */}
           <div className="pt-3 border-t border-[#27272A]/70 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-wrap">
               <StatusBadge status={task.status} compact />
@@ -157,12 +157,6 @@ export const DevelopmentCardView: React.FC<DevelopmentCardViewProps> = ({
                   <span>{formatDevDate(task.dueDate)}</span>
                 </span>
               )}
-              {task.estimatedEffort !== null && task.estimatedEffort !== undefined && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-500">
-                  <Clock size={10} />
-                  {formatEffort(task.estimatedEffort, task.effortUnit)}
-                </span>
-              )}
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -178,7 +172,12 @@ export const DevelopmentCardView: React.FC<DevelopmentCardViewProps> = ({
                   {task.attachmentCount}
                 </span>
               )}
-              <DevAvatarStack users={task.assignees} max={3} size="xs" />
+              <DevAvatarStack
+                users={task.assignees}
+                assignedTeams={task.assignedTeams}
+                max={3}
+                size="xs"
+              />
             </div>
           </div>
         </div>

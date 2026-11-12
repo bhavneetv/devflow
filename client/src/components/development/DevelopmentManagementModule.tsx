@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
   BarChart3,
+  Calendar,
   CheckSquare,
-  FolderCog,
   LayoutDashboard,
   ListTodo,
   Plus,
@@ -18,6 +18,7 @@ import type {
   DevelopmentDashboardData,
   DevelopmentModuleMaster,
   DevelopmentTaskItem,
+  DevGitCommitLink,
 } from '../../types/development';
 import {
   DevelopmentDashboardCards,
@@ -32,18 +33,62 @@ import { DevelopmentListView } from './DevelopmentListView';
 import { DevelopmentCardView } from './DevelopmentCardView';
 import { DevelopmentBoardView } from './DevelopmentBoardView';
 import { DevelopmentGroupedView } from './DevelopmentGroupedView';
+import { DevelopmentCalendarView } from './DevelopmentCalendarView';
 import { DevelopmentOverviewSidebar } from './DevelopmentOverviewSidebar';
 import { DevelopmentAnalyticsView } from './DevelopmentAnalyticsView';
-import { DevelopmentMastersManager } from './DevelopmentMastersManager';
 import { DevelopmentTaskModal } from './DevelopmentTaskModal';
 import { DevelopmentTaskDrawer } from './DevelopmentTaskDrawer';
+import { CommitCompletionModal } from './CommitCompletionModal';
+import { isDevelopmentTaskType, isEndStatusName } from './devBadges';
+import { CustomDatePicker } from '../settings/CustomDatePicker';
+
+function getLocalDateIso(offsetDays = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+const FULL_MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+function formatFullDayMonthYear(isoDate: string): string {
+  const parts = isoDate.split('-');
+  if (parts.length !== 3) return isoDate;
+  const year = parts[0];
+  const monthIdx = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const monthName = FULL_MONTH_NAMES[monthIdx] || parts[1];
+  return `${day} - ${monthName} - ${year}`;
+}
+
+const PRIORITY_SORT_RANK: Record<string, number> = {
+  Critical: 4,
+  High: 3,
+  Medium: 2,
+  Low: 1,
+};
 
 interface DevelopmentManagementModuleProps {
   projectId: number;
   submoduleName?: string;
 }
 
-type DevTabKey = 'overview' | 'tasks' | 'analytics' | 'masters';
+type DevTabKey = 'overview' | 'tasks' | 'analytics';
 
 export const DevelopmentManagementModule: React.FC<DevelopmentManagementModuleProps> = ({
   projectId,
@@ -56,7 +101,6 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
   const [dashboardData, setDashboardData] = useState<DevelopmentDashboardData | null>(null);
   const [modules, setModules] = useState<DevelopmentModuleMaster[]>([]);
   const [tasks, setTasks] = useState<DevelopmentTaskItem[]>([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 1 });
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isTasksLoading, setIsTasksLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -73,23 +117,19 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [taskTypeFilter, setTaskTypeFilter] = useState<string | undefined>(undefined);
   const [metricFilter, setMetricFilter] = useState<'overdue' | 'due_soon' | undefined>(undefined);
-  const [startDateFilter, setStartDateFilter] = useState('');
-  const [endDateFilter, setEndDateFilter] = useState('');
+  const [startDateFilter, setStartDateFilter] = useState(() => getLocalDateIso(0));
+  const [endDateFilter, setEndDateFilter] = useState(() => getLocalDateIso(0));
   const [viewMode, setViewMode] = useState<DevViewMode>('list');
-  const [groupBy, setGroupBy] = useState<DevGroupByMode>('module');
+  const [groupBy, setGroupBy] = useState<DevGroupByMode>('none');
   const [sortBy, setSortBy] = useState<'dueDate' | 'priority' | 'createdAt' | 'updatedAt' | 'title'>(
     'createdAt'
   );
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = useState(1);
 
   // Analytics filter state
   const [analyticsModuleId, setAnalyticsModuleId] = useState<number | undefined>(undefined);
   const [analyticsStartDate, setAnalyticsStartDate] = useState('');
   const [analyticsEndDate, setAnalyticsEndDate] = useState('');
-
-  // Masters archived toggle
-  const [showArchivedMasters, setShowArchivedMasters] = useState(false);
 
   // Modals & Drawers
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -97,6 +137,40 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
   const [selectedTaskForDrawer, setSelectedTaskForDrawer] = useState<DevelopmentTaskItem | null>(
     null
   );
+  const [pendingCommitCompletion, setPendingCommitCompletion] = useState<{
+    task: DevelopmentTaskItem;
+    targetStatus: string;
+  } | null>(null);
+  const [isCompletingCommit, setIsCompletingCommit] = useState(false);
+
+  // Global Shift + T keyboard shortcut to open Create Task modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!dashboardData?.permissions.canEditTasks) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!e.shiftKey || e.key.toLowerCase() !== 't') return;
+
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+
+      e.preventDefault();
+      setTaskToEdit(null);
+      setIsTaskModalOpen(true);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dashboardData?.permissions.canEditTasks]);
 
   // Debounce search
   useEffect(() => {
@@ -111,7 +185,7 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
         startDate: analyticsStartDate || undefined,
         endDate: analyticsEndDate || undefined,
       }),
-      developmentService.listModules(projectId, showArchivedMasters),
+      developmentService.listModules(projectId, false),
     ]);
 
     if (dashRes.success && dashRes.data) {
@@ -124,10 +198,14 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
     if (modRes.success && modRes.data) {
       setModules(modRes.data);
     }
-  }, [projectId, analyticsModuleId, analyticsStartDate, analyticsEndDate, showArchivedMasters]);
+  }, [projectId, analyticsModuleId, analyticsStartDate, analyticsEndDate]);
 
   const loadTasks = useCallback(async () => {
     setIsTasksLoading(true);
+    const todayIso = getLocalDateIso(0);
+    const tzOffsetMinutes = new Date().getTimezoneOffset();
+    const isOverview = activeTab === 'overview';
+
     const res = await developmentService.listTasks(projectId, {
       search: debouncedSearch || undefined,
       moduleId: moduleIdFilter,
@@ -136,24 +214,25 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
       priority: priorityFilter,
       status: statusFilter,
       taskType: taskTypeFilter,
-      metric: metricFilter,
-      startDate: startDateFilter || undefined,
-      endDate: endDateFilter || undefined,
+      metric: isOverview ? undefined : metricFilter,
+      startDate: isOverview ? todayIso : startDateFilter || undefined,
+      endDate: isOverview ? todayIso : endDateFilter || undefined,
+      tzOffsetMinutes,
       sortBy,
       sortOrder,
-      page,
-      limit: 50,
+      page: 1,
+      limit: 500,
     });
     setIsTasksLoading(false);
 
     if (res.success && res.data) {
       setTasks(res.data.items);
-      setPagination(res.data.pagination);
     } else if (!res.success) {
       setErrorMessage(res.error || 'Failed to load work items');
     }
   }, [
     projectId,
+    activeTab,
     debouncedSearch,
     moduleIdFilter,
     submoduleIdFilter,
@@ -166,7 +245,6 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
     endDateFilter,
     sortBy,
     sortOrder,
-    page,
   ]);
 
   const refreshEverything = useCallback(async () => {
@@ -197,6 +275,7 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
   }, [loadDashboardAndMasters]);
 
   const clearAllFilters = () => {
+    const todayIso = getLocalDateIso(0);
     setSearch('');
     setDebouncedSearch('');
     setModuleIdFilter(undefined);
@@ -206,9 +285,8 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
     setStatusFilter(undefined);
     setTaskTypeFilter(undefined);
     setMetricFilter(undefined);
-    setStartDateFilter('');
-    setEndDateFilter('');
-    setPage(1);
+    setStartDateFilter(todayIso);
+    setEndDateFilter(todayIso);
   };
 
   const activeMetricFilterKey: MetricFilterType | null = metricFilter
@@ -222,9 +300,10 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
     : null;
 
   const handleSelectMetricCard = (metric: MetricFilterType) => {
-    setPage(1);
     setStatusFilter(undefined);
     setMetricFilter(undefined);
+    setStartDateFilter('');
+    setEndDateFilter('');
     if (metric === 'completed') setStatusFilter('Completed');
     else if (metric === 'in_progress') setStatusFilter('In Progress');
     else if (metric === 'not_started') setStatusFilter('Not Started');
@@ -234,22 +313,45 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
   };
 
   const handleSelectAssigneeCard = (userId: number) => {
-    setPage(1);
+    setMetricFilter(undefined);
+    setStartDateFilter('');
+    setEndDateFilter('');
     setAssigneeIdFilter((prev) => (prev === userId ? undefined : userId));
     setActiveTab('tasks');
   };
 
-  const handleQuickStatusChange = async (task: DevelopmentTaskItem, newStatus: string) => {
-    // Optimistic update
+  const performStatusUpdate = async (
+    taskId: number,
+    newStatus: string,
+    gitCommit?: DevGitCommitLink | null
+  ) => {
     const prevTasks = tasks;
-    setTasks((cur) => cur.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)));
-    const res = await developmentService.updateTaskStatus(projectId, task.id, newStatus);
+    setTasks((cur) => cur.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
+    const res = await developmentService.updateTaskStatus(
+      projectId,
+      taskId,
+      newStatus,
+      gitCommit
+    );
     if (res.success && res.data) {
       await refreshEverything();
     } else {
       setTasks(prevTasks);
       setErrorMessage(res.error || 'Failed to update status');
     }
+  };
+
+  const handleQuickStatusChange = async (task: DevelopmentTaskItem, newStatus: string) => {
+    const statusItems = dashboardData?.config.statusItems || [];
+    const alreadyEnded = isEndStatusName(task.status, statusItems);
+    const nextIsEnd = isEndStatusName(newStatus, statusItems);
+
+    if (!alreadyEnded && nextIsEnd && isDevelopmentTaskType(task.taskType)) {
+      setPendingCommitCompletion({ task, targetStatus: newStatus });
+      return;
+    }
+
+    await performStatusUpdate(task.id, newStatus);
   };
 
   const handleDeleteTask = async (task: DevelopmentTaskItem) => {
@@ -279,13 +381,42 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
       count: dashboardData?.metrics.totalWorkItems,
     },
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
-    {
-      key: 'masters',
-      label: 'Manage Masters',
-      icon: FolderCog,
-      count: modules.filter((m) => !m.isArchived).length,
-    },
   ];
+
+  const sortedTasks = useMemo(() => {
+    const copy = [...tasks];
+    copy.sort((a, b) => {
+      if (sortBy === 'priority') {
+        const diff = (PRIORITY_SORT_RANK[a.priority] || 0) - (PRIORITY_SORT_RANK[b.priority] || 0);
+        if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
+        return b.id - a.id;
+      }
+      if (sortBy === 'dueDate') {
+        const aTime = a.dueDate ? new Date(a.dueDate).getTime() : null;
+        const bTime = b.dueDate ? new Date(b.dueDate).getTime() : null;
+        if (aTime === null && bTime === null) return b.id - a.id;
+        if (aTime === null) return 1;
+        if (bTime === null) return -1;
+        const diff = aTime - bTime;
+        if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
+        return b.id - a.id;
+      }
+      if (sortBy === 'title') {
+        const diff = a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+        if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
+        return b.id - a.id;
+      }
+      if (sortBy === 'updatedAt') {
+        const diff = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
+        return b.id - a.id;
+      }
+      const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
+      return sortOrder === 'asc' ? a.id - b.id : b.id - a.id;
+    });
+    return copy;
+  }, [tasks, sortBy, sortOrder]);
 
   // Skeleton matching DocumentsKnowledgeBaseModule
   if (isInitialLoading) {
@@ -335,6 +466,177 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
     );
   }
 
+  const todayIso = getLocalDateIso(0);
+  const yesterdayIso = getLocalDateIso(-1);
+  const last7Iso = getLocalDateIso(-6);
+  const last30Iso = getLocalDateIso(-29);
+
+  const isDefaultTodayRange = startDateFilter === todayIso && endDateFilter === todayIso;
+  const activeDatePreset =
+    activeTab === 'tasks' && !metricFilter
+      ? startDateFilter === todayIso && endDateFilter === todayIso
+        ? 'today'
+        : startDateFilter === yesterdayIso && endDateFilter === yesterdayIso
+        ? 'yesterday'
+        : startDateFilter === last7Iso && endDateFilter === todayIso
+        ? '7d'
+        : startDateFilter === last30Iso && endDateFilter === todayIso
+        ? '30d'
+        : !startDateFilter && !endDateFilter
+        ? 'all'
+        : 'custom'
+      : 'custom';
+
+  const hasActiveFilters = Boolean(
+    search ||
+      moduleIdFilter ||
+      submoduleIdFilter ||
+      statusFilter ||
+      priorityFilter ||
+      taskTypeFilter ||
+      metricFilter ||
+      assigneeIdFilter ||
+      (activeTab === 'tasks' && !isDefaultTodayRange) ||
+      groupBy !== 'none'
+  );
+
+  const renderToolbar = () => (
+    <DevelopmentToolbar
+      search={search}
+      onSearchChange={setSearch}
+      modules={modules}
+      config={dashboardData.config}
+      moduleId={moduleIdFilter}
+      onModuleIdChange={(id) => {
+        setModuleIdFilter(id);
+        setSubmoduleIdFilter(undefined);
+      }}
+      viewMode={viewMode}
+      onViewModeChange={(mode) => {
+        setViewMode(mode);
+        if ((mode === 'list' || mode === 'card') && groupBy !== 'none') {
+          setGroupBy('none');
+        }
+      }}
+      groupBy={groupBy}
+      onGroupByChange={(g) => {
+        setGroupBy(g);
+        if (g !== 'none' && (viewMode === 'board' || viewMode === 'calendar')) {
+          setViewMode('list');
+        }
+      }}
+      sortBy={sortBy}
+      sortOrder={sortOrder}
+      onSortChange={(sb, so) => {
+        setSortBy(sb);
+        setSortOrder(so);
+      }}
+      hasActiveFilters={hasActiveFilters}
+      onClearAllFilters={() => {
+        clearAllFilters();
+        setGroupBy('none');
+      }}
+      onRefresh={refreshEverything}
+      canEditTasks={dashboardData.permissions.canEditTasks}
+      onCreateTask={() => {
+        setTaskToEdit(null);
+        setIsTaskModalOpen(true);
+      }}
+    />
+  );
+
+  const renderAllTasksDateBar = () => {
+    const DATE_PRESETS = [
+      { id: 'today', label: 'Today', from: todayIso, to: todayIso },
+      { id: 'yesterday', label: 'Yesterday', from: yesterdayIso, to: yesterdayIso },
+      { id: '7d', label: 'Last 7 Days', from: last7Iso, to: todayIso },
+      { id: '30d', label: 'Last 30 Days', from: last30Iso, to: todayIso },
+      { id: 'all', label: 'All', from: '', to: '' },
+    ] as const;
+
+    return (
+      <div className="rounded-xl bg-[#0E0F14]/95 border border-[#27272A] px-3 py-2 relative z-[70] flex flex-wrap items-center justify-between gap-2.5">
+        {/* Quick Presets at start */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-zinc-500 mr-1">
+            <Calendar size={12} style={{ color: accentColor }} />
+            <span>Range</span>
+          </span>
+          <div className="inline-flex flex-wrap items-center gap-1 p-0.5 rounded-lg bg-[#090A0E] border border-[#27272A]">
+            {DATE_PRESETS.map((preset) => {
+              const isSelected = activeDatePreset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    setMetricFilter(undefined);
+                    setStartDateFilter(preset.from);
+                    setEndDateFilter(preset.to);
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer',
+                    isSelected
+                      ? 'text-[#0A0B10] font-semibold shadow-sm'
+                      : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
+                  )}
+                  style={isSelected ? { backgroundColor: accentColor } : undefined}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2 Date Inputs (From / To) defaulting to Today */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-mono text-zinc-500">From</span>
+            <div className="w-38">
+              <CustomDatePicker
+                value={startDateFilter}
+                onChange={(val) => {
+                  setMetricFilter(undefined);
+                  setStartDateFilter(val);
+                  if (val && endDateFilter && val > endDateFilter) {
+                    setEndDateFilter(val);
+                  }
+                }}
+                placeholder="Start date"
+                presetMode="none"
+                showQuarterTab={false}
+                align="right"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-mono text-zinc-500">To</span>
+            <div className="w-38">
+              <CustomDatePicker
+                value={endDateFilter}
+                onChange={(val) => {
+                  setMetricFilter(undefined);
+                  setEndDateFilter(val);
+                  if (val && startDateFilter && val < startDateFilter) {
+                    setStartDateFilter(val);
+                  }
+                }}
+                placeholder="End date"
+                presetMode="none"
+                showQuarterTab={false}
+                align="right"
+              />
+            </div>
+          </div>
+          <span className="px-2 py-1 rounded-lg bg-[#161820] border border-[#27272A] text-[11px] font-mono text-zinc-300">
+            {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   const renderTaskListContent = () => {
     if (isTasksLoading && tasks.length === 0) {
       return (
@@ -347,25 +649,48 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
     }
 
     if (tasks.length === 0) {
+      const isOverviewEmpty = activeTab === 'overview';
       return (
         <div className="rounded-2xl bg-[#0E0F14]/95 border border-dashed border-[#27272A] p-10 text-center space-y-3">
           <CheckSquare size={26} className="mx-auto text-zinc-600" />
           <div className="space-y-1">
-            <h4 className="text-sm font-semibold text-white">No development work items found</h4>
+            <h4 className="text-sm font-semibold text-white">
+              {isOverviewEmpty && !hasActiveFilters
+                ? 'No tasks given today'
+                : 'No development work items found'}
+            </h4>
             <p className="text-xs text-zinc-500 max-w-md mx-auto">
-              {search || moduleIdFilter || statusFilter || priorityFilter || metricFilter || assigneeIdFilter
+              {hasActiveFilters
                 ? 'No tasks match your active search or filter criteria.'
-                : 'Create your first development task to start tracking modules, deadlines, and team workload.'}
+                : isOverviewEmpty
+                ? `No tasks were created for today (${todayIso}). Create a new task or open All Tasks to view previous work items.`
+                : 'No tasks found for the selected date range. Adjust the date presets or create a new work item.'}
             </p>
           </div>
           <div className="flex items-center justify-center gap-2 pt-1">
-            {(search || moduleIdFilter || statusFilter || priorityFilter || metricFilter || assigneeIdFilter) && (
+            {hasActiveFilters && (
               <button
                 type="button"
-                onClick={clearAllFilters}
+                onClick={() => {
+                  clearAllFilters();
+                  setGroupBy('none');
+                }}
                 className="px-3.5 py-2 rounded-xl text-xs font-medium bg-[#161820] hover:bg-[#1E202B] text-zinc-200 border border-[#27272A] cursor-pointer"
               >
                 Clear All Filters
+              </button>
+            )}
+            {isOverviewEmpty && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStartDateFilter('');
+                  setEndDateFilter('');
+                  setActiveTab('tasks');
+                }}
+                className="px-3.5 py-2 rounded-xl text-xs font-medium bg-[#161820] hover:bg-[#1E202B] text-zinc-200 border border-[#27272A] cursor-pointer"
+              >
+                View All Tasks
               </button>
             )}
             {dashboardData.permissions.canEditTasks && (
@@ -380,6 +705,9 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
               >
                 <Plus size={14} />
                 <span>Create Task</span>
+                <kbd className="px-1.5 py-0.5 rounded bg-black/15 text-[10px] font-mono font-bold">
+                  Shift+T
+                </kbd>
               </button>
             )}
           </div>
@@ -389,74 +717,57 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
 
     return (
       <div className="space-y-3">
-        {viewMode === 'list' && (
-          <DevelopmentListView
-            tasks={tasks}
-            canEditTasks={dashboardData.permissions.canEditTasks}
+        {viewMode === 'calendar' && (
+          <DevelopmentCalendarView
+            tasks={sortedTasks}
             onSelectTask={(t) => setSelectedTaskForDrawer(t)}
-            onEditTask={(t) => {
-              setTaskToEdit(t);
-              setIsTaskModalOpen(true);
-            }}
-            onQuickStatusChange={handleQuickStatusChange}
-            onDeleteTask={handleDeleteTask}
-          />
-        )}
-        {viewMode === 'card' && (
-          <DevelopmentCardView
-            tasks={tasks}
-            canEditTasks={dashboardData.permissions.canEditTasks}
-            onSelectTask={(t) => setSelectedTaskForDrawer(t)}
-            onEditTask={(t) => {
-              setTaskToEdit(t);
-              setIsTaskModalOpen(true);
-            }}
-            onQuickStatusChange={handleQuickStatusChange}
-            onDeleteTask={handleDeleteTask}
           />
         )}
         {viewMode === 'board' && (
           <DevelopmentBoardView
-            tasks={tasks}
+            tasks={sortedTasks}
             statuses={dashboardData.config.statuses}
+            assigneeGroups={dashboardData.assigneeGroups}
             canEditTasks={dashboardData.permissions.canEditTasks}
             onSelectTask={(t) => setSelectedTaskForDrawer(t)}
             onQuickStatusChange={handleQuickStatusChange}
           />
         )}
-        {viewMode === 'grouped' && (
+        {(viewMode === 'list' || viewMode === 'card') && groupBy !== 'none' && (
           <DevelopmentGroupedView
-            tasks={tasks}
+            tasks={sortedTasks}
+            assigneeGroups={dashboardData.assigneeGroups}
             groupBy={groupBy}
             onSelectTask={(t) => setSelectedTaskForDrawer(t)}
           />
         )}
-
-        {/* Pagination */}
-        {pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between pt-2 text-xs text-zinc-400">
-            <span className="font-mono">
-              Showing page {pagination.page} of {pagination.totalPages} ({pagination.total} items)
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1.5 rounded-lg bg-[#0E0F14] border border-[#27272A] disabled:opacity-40 cursor-pointer"
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                disabled={page >= pagination.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="px-3 py-1.5 rounded-lg bg-[#0E0F14] border border-[#27272A] disabled:opacity-40 cursor-pointer"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+        {viewMode === 'list' && groupBy === 'none' && (
+          <DevelopmentListView
+            tasks={sortedTasks}
+            assigneeGroups={dashboardData.assigneeGroups}
+            canEditTasks={dashboardData.permissions.canEditTasks}
+            onSelectTask={(t) => setSelectedTaskForDrawer(t)}
+            onEditTask={(t) => {
+              setTaskToEdit(t);
+              setIsTaskModalOpen(true);
+            }}
+            onQuickStatusChange={handleQuickStatusChange}
+            onDeleteTask={handleDeleteTask}
+          />
+        )}
+        {viewMode === 'card' && groupBy === 'none' && (
+          <DevelopmentCardView
+            tasks={sortedTasks}
+            assigneeGroups={dashboardData.assigneeGroups}
+            canEditTasks={dashboardData.permissions.canEditTasks}
+            onSelectTask={(t) => setSelectedTaskForDrawer(t)}
+            onEditTask={(t) => {
+              setTaskToEdit(t);
+              setIsTaskModalOpen(true);
+            }}
+            onQuickStatusChange={handleQuickStatusChange}
+            onDeleteTask={handleDeleteTask}
+          />
         )}
       </div>
     );
@@ -487,6 +798,7 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
           {dashboardData.permissions.canEditTasks && (
             <button
               type="button"
+              title="Create Task (Shift+T)"
               onClick={() => {
                 setTaskToEdit(null);
                 setIsTaskModalOpen(true);
@@ -498,17 +810,12 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
               }}
             >
               <Plus size={14} />
-              <span>+ Create Task</span>
+              <span>Create Task</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-black/15 text-[10px] font-mono font-bold">
+                Shift+T
+              </kbd>
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setActiveTab('masters')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-300 bg-[#0E0F14] hover:bg-[#1C1E26] hover:text-white border border-[#27272A] transition-colors cursor-pointer"
-          >
-            <FolderCog size={14} />
-            <span>Manage Masters</span>
-          </button>
         </div>
       </div>
 
@@ -578,84 +885,53 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
           <DevelopmentDashboardCards
             data={dashboardData}
             activeMetricFilter={activeMetricFilterKey}
+            activeStatusFilter={statusFilter}
+            activeTaskTypeFilter={taskTypeFilter}
             activeAssigneeFilter={
               typeof assigneeIdFilter === 'number' ? assigneeIdFilter : undefined
             }
             onSelectMetricFilter={handleSelectMetricCard}
+            onSelectStatusFilter={(statusName) => {
+              setMetricFilter(undefined);
+              setStartDateFilter('');
+              setEndDateFilter('');
+              setStatusFilter(statusName);
+              setActiveTab('tasks');
+            }}
+            onSelectTaskTypeFilter={(tt) => {
+              setTaskTypeFilter(tt);
+              if (tt) {
+                setMetricFilter(undefined);
+                setStartDateFilter('');
+                setEndDateFilter('');
+                setActiveTab('tasks');
+              }
+            }}
             onSelectAssigneeFilter={handleSelectAssigneeCard}
           />
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-            <div className="xl:col-span-9 space-y-4">
-              <DevelopmentToolbar
-                search={search}
-                onSearchChange={(v) => {
-                  setSearch(v);
-                  setPage(1);
-                }}
-                modules={modules}
-                eligibleMembers={dashboardData.eligibleMembers}
-                config={dashboardData.config}
-                moduleId={moduleIdFilter}
-                onModuleIdChange={(id) => {
-                  setModuleIdFilter(id);
-                  setPage(1);
-                }}
-                submoduleId={submoduleIdFilter}
-                onSubmoduleIdChange={(id) => {
-                  setSubmoduleIdFilter(id);
-                  setPage(1);
-                }}
-                assigneeId={assigneeIdFilter}
-                onAssigneeIdChange={(val) => {
-                  setAssigneeIdFilter(val);
-                  setPage(1);
-                }}
-                priority={priorityFilter}
-                onPriorityChange={(val) => {
-                  setPriorityFilter(val);
-                  setPage(1);
-                }}
-                status={statusFilter}
-                onStatusChange={(val) => {
-                  setStatusFilter(val);
-                  setPage(1);
-                }}
-                taskType={taskTypeFilter}
-                onTaskTypeChange={(val) => {
-                  setTaskTypeFilter(val);
-                  setPage(1);
-                }}
-                metricFilter={metricFilter}
-                onMetricFilterChange={(val) => {
-                  setMetricFilter(val);
-                  setPage(1);
-                }}
-                startDate={startDateFilter}
-                endDate={endDateFilter}
-                onDateRangeChange={(s, e) => {
-                  setStartDateFilter(s);
-                  setEndDateFilter(e);
-                  setPage(1);
-                }}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                groupBy={groupBy}
-                onGroupByChange={setGroupBy}
-                sortBy={sortBy}
-                sortOrder={sortOrder}
-                onSortChange={(sb, so) => {
-                  setSortBy(sb);
-                  setSortOrder(so);
-                }}
-                onClearAllFilters={clearAllFilters}
-                onRefresh={refreshEverything}
-                canEditTasks={dashboardData.permissions.canEditTasks}
-                onCreateTask={() => {
-                  setTaskToEdit(null);
-                  setIsTaskModalOpen(true);
-                }}
-              />
+            <div className="xl:col-span-9 space-y-3">
+              <div className="flex items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-white">Today&apos;s Tasks</span>
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[10px] font-mono border border-[#27272A] bg-[#12141B]"
+                    style={{ color: accentColor }}
+                  >
+                    {formatFullDayMonthYear(todayIso)} · {tasks.length}{' '}
+                    {tasks.length === 1 ? 'task' : 'tasks'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('tasks')}
+                  className="text-[11px] font-medium text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Open All Tasks →
+                </button>
+              </div>
+              {renderToolbar()}
               {renderTaskListContent()}
             </div>
 
@@ -668,7 +944,6 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
                 }}
                 onAllTasksClick={() => setActiveTab('tasks')}
                 onAnalyticsClick={() => setActiveTab('analytics')}
-                onMastersClick={() => setActiveTab('masters')}
               />
             </div>
           </div>
@@ -676,76 +951,9 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
       )}
 
       {activeTab === 'tasks' && (
-        <div className="space-y-4">
-          <DevelopmentToolbar
-            search={search}
-            onSearchChange={(v) => {
-              setSearch(v);
-              setPage(1);
-            }}
-            modules={modules}
-            eligibleMembers={dashboardData.eligibleMembers}
-            config={dashboardData.config}
-            moduleId={moduleIdFilter}
-            onModuleIdChange={(id) => {
-              setModuleIdFilter(id);
-              setPage(1);
-            }}
-            submoduleId={submoduleIdFilter}
-            onSubmoduleIdChange={(id) => {
-              setSubmoduleIdFilter(id);
-              setPage(1);
-            }}
-            assigneeId={assigneeIdFilter}
-            onAssigneeIdChange={(val) => {
-              setAssigneeIdFilter(val);
-              setPage(1);
-            }}
-            priority={priorityFilter}
-            onPriorityChange={(val) => {
-              setPriorityFilter(val);
-              setPage(1);
-            }}
-            status={statusFilter}
-            onStatusChange={(val) => {
-              setStatusFilter(val);
-              setPage(1);
-            }}
-            taskType={taskTypeFilter}
-            onTaskTypeChange={(val) => {
-              setTaskTypeFilter(val);
-              setPage(1);
-            }}
-            metricFilter={metricFilter}
-            onMetricFilterChange={(val) => {
-              setMetricFilter(val);
-              setPage(1);
-            }}
-            startDate={startDateFilter}
-            endDate={endDateFilter}
-            onDateRangeChange={(s, e) => {
-              setStartDateFilter(s);
-              setEndDateFilter(e);
-              setPage(1);
-            }}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            groupBy={groupBy}
-            onGroupByChange={setGroupBy}
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSortChange={(sb, so) => {
-              setSortBy(sb);
-              setSortOrder(so);
-            }}
-            onClearAllFilters={clearAllFilters}
-            onRefresh={refreshEverything}
-            canEditTasks={dashboardData.permissions.canEditTasks}
-            onCreateTask={() => {
-              setTaskToEdit(null);
-              setIsTaskModalOpen(true);
-            }}
-          />
+        <div className="space-y-3">
+          {renderAllTasksDateBar()}
+          {renderToolbar()}
           {renderTaskListContent()}
         </div>
       )}
@@ -766,18 +974,6 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
         />
       )}
 
-      {activeTab === 'masters' && (
-        <DevelopmentMastersManager
-          projectId={projectId}
-          modules={modules}
-          config={dashboardData.config}
-          canManageMasters={dashboardData.permissions.canManageMasters}
-          showArchived={showArchivedMasters}
-          onToggleShowArchived={setShowArchivedMasters}
-          onRefreshAll={refreshEverything}
-        />
-      )}
-
       {/* Create / Edit Task Modal */}
       <DevelopmentTaskModal
         isOpen={isTaskModalOpen}
@@ -785,6 +981,7 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
         taskToEdit={taskToEdit}
         modules={modules}
         eligibleMembers={dashboardData.eligibleMembers}
+        assigneeGroups={dashboardData.assigneeGroups}
         config={dashboardData.config}
         canManageMasters={dashboardData.permissions.canManageMasters}
         onClose={() => {
@@ -792,10 +989,12 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
           setTaskToEdit(null);
         }}
         onSaved={async () => {
+          setIsTaskModalOpen(false);
+          setTaskToEdit(null);
           await refreshEverything();
         }}
         onModulesUpdated={async () => {
-          const modRes = await developmentService.listModules(projectId, showArchivedMasters);
+          const modRes = await developmentService.listModules(projectId, false);
           if (modRes.success && modRes.data) setModules(modRes.data);
         }}
       />
@@ -805,6 +1004,7 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
         projectId={projectId}
         task={selectedTaskForDrawer}
         config={dashboardData.config}
+        assigneeGroups={dashboardData.assigneeGroups}
         canEditTasks={dashboardData.permissions.canEditTasks}
         onClose={() => setSelectedTaskForDrawer(null)}
         onEditFull={(t) => {
@@ -817,6 +1017,34 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
         }}
         onTaskDeleted={async () => {
           await refreshEverything();
+        }}
+      />
+
+      <CommitCompletionModal
+        isOpen={Boolean(pendingCommitCompletion)}
+        projectId={projectId}
+        taskKey={pendingCommitCompletion?.task.taskKey}
+        taskTitle={pendingCommitCompletion?.task.title || ''}
+        targetStatus={pendingCommitCompletion?.targetStatus || 'Completed'}
+        mode="complete"
+        existingCommit={pendingCommitCompletion?.task.gitCommit || null}
+        isSubmitting={isCompletingCommit}
+        onCancel={() => {
+          if (!isCompletingCommit) setPendingCommitCompletion(null);
+        }}
+        onConfirm={async (commit) => {
+          if (!pendingCommitCompletion) return;
+          setIsCompletingCommit(true);
+          try {
+            await performStatusUpdate(
+              pendingCommitCompletion.task.id,
+              pendingCommitCompletion.targetStatus,
+              commit ?? undefined
+            );
+            setPendingCommitCompletion(null);
+          } finally {
+            setIsCompletingCommit(false);
+          }
         }}
       />
     </div>

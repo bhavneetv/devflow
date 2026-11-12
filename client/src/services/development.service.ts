@@ -67,6 +67,10 @@ export const developmentService = {
     return requestJson<DevelopmentDashboardData>(`/projects/${projectId}/development/dashboard${qs}`);
   },
 
+  async getSettings(projectId: number) {
+    return requestJson<DevelopmentProjectConfig>(`/projects/${projectId}/development/settings`);
+  },
+
   async updateSettings(projectId: number, payload: Partial<DevelopmentProjectConfig>) {
     return requestJson<DevelopmentProjectConfig>(`/projects/${projectId}/development/settings`, {
       method: 'PUT',
@@ -209,6 +213,9 @@ export const developmentService = {
     if (params.metric) query.set('metric', params.metric);
     if (params.startDate) query.set('startDate', params.startDate);
     if (params.endDate) query.set('endDate', params.endDate);
+    if (params.tzOffsetMinutes !== undefined) {
+      query.set('tzOffsetMinutes', String(params.tzOffsetMinutes));
+    }
     if (params.sortBy) query.set('sortBy', params.sortBy);
     if (params.sortOrder) query.set('sortOrder', params.sortOrder);
     if (params.page) query.set('page', String(params.page));
@@ -242,12 +249,26 @@ export const developmentService = {
     });
   },
 
-  async updateTaskStatus(projectId: number, taskId: number, status: string) {
+  async updateTaskStatus(
+    projectId: number,
+    taskId: number,
+    status: string,
+    gitCommit?: {
+      sha: string;
+      message?: string | null;
+      url?: string | null;
+      repoName?: string | null;
+      author?: string | null;
+      committedAt?: string | null;
+    } | null
+  ) {
     return requestJson<DevelopmentTaskItem>(
       `/projects/${projectId}/development/tasks/${taskId}/status`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(
+          gitCommit !== undefined ? { status, gitCommit } : { status }
+        ),
       }
     );
   },
@@ -291,6 +312,29 @@ export const developmentService = {
         method: 'DELETE',
       }
     );
+  },
+
+  async uploadTaskAttachments(
+    projectId: number,
+    moduleId: number,
+    files: Array<{ name: string; base64: string; mimeType: string }>
+  ) {
+    return requestJson<{
+      documents: Array<{
+        id: number;
+        displayName: string;
+        originalName: string;
+        mimeType: string;
+        extension: string;
+        sizeBytes: number;
+        branch: string;
+        repositoryPath: string;
+      }>;
+      errors: Array<{ fileName: string; error: string }>;
+    }>(`/projects/${projectId}/development/attachments/upload`, {
+      method: 'POST',
+      body: JSON.stringify({ moduleId, files }),
+    });
   },
 };
 

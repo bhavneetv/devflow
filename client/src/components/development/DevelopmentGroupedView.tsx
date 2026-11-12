@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Layers } from 'lucide-react';
-import type { DevelopmentTaskItem } from '../../types/development';
+import type { DevAssigneeGroups, DevelopmentTaskItem } from '../../types/development';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import type { DevGroupByMode } from './DevelopmentToolbar';
 import {
@@ -13,12 +13,14 @@ import {
 
 interface DevelopmentGroupedViewProps {
   tasks: DevelopmentTaskItem[];
-  groupBy: DevGroupByMode;
+  assigneeGroups?: DevAssigneeGroups;
+  groupBy: Exclude<DevGroupByMode, 'none'> | DevGroupByMode;
   onSelectTask: (task: DevelopmentTaskItem) => void;
 }
 
 export const DevelopmentGroupedView: React.FC<DevelopmentGroupedViewProps> = ({
   tasks,
+  assigneeGroups,
   groupBy,
   onSelectTask,
 }) => {
@@ -137,7 +139,12 @@ export const DevelopmentGroupedView: React.FC<DevelopmentGroupedViewProps> = ({
                       <span className="text-[11px] text-zinc-400 hidden sm:inline">
                         {formatDevDate(task.dueDate)}
                       </span>
-                      <DevAvatarStack users={task.assignees} max={2} size="xs" />
+                      <DevAvatarStack
+                        users={task.assignees}
+                        assignedTeams={task.assignedTeams}
+                        max={2}
+                        size="xs"
+                      />
                     </div>
                   </div>
                 ))}

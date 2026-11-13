@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Boxes,
@@ -86,6 +86,26 @@ export const SubmodulePlaceholderView: React.FC = () => {
   const SubIcon = resolveModuleIcon(submodule?.icon || module?.icon, isIndependent ? FolderKanban : CircleDot);
   const ModIcon = resolveModuleIcon(module?.icon, FolderKanban);
 
+  const effectiveSubmoduleId = useMemo(() => {
+    if (!submodule?.config) return submodule?.id ?? 0;
+    try {
+      const cfg = JSON.parse(submodule.config);
+      if (cfg.copyMode === 'clone' && cfg.targetSubmoduleId) {
+        return cfg.targetSubmoduleId;
+      }
+    } catch {}
+    return submodule?.id ?? 0;
+  }, [submodule]);
+
+  // Synchronize browser page title dynamically with submodule name
+  useEffect(() => {
+    if (submodule?.name && activeProject?.title) {
+      document.title = `${submodule.name} · ${activeProject.title} · DevFlow`;
+    } else if (module?.name && activeProject?.title) {
+      document.title = `${module.name} · ${activeProject.title} · DevFlow`;
+    }
+  }, [submodule?.name, module?.name, activeProject?.title]);
+
   if (loading) {
     return (
       <div className="p-12 text-center text-zinc-500 text-xs flex flex-col items-center justify-center gap-2">
@@ -117,7 +137,7 @@ export const SubmodulePlaceholderView: React.FC = () => {
     } else if (key === 'whiteboard') {
       return (
         <WhiteboardView
-          submoduleId={submodule.id}
+          submoduleId={effectiveSubmoduleId}
           submoduleName={submodule.name}
         />
       );
@@ -133,27 +153,27 @@ export const SubmodulePlaceholderView: React.FC = () => {
           </div>
           <DocumentsKnowledgeBaseModule
             projectId={projectId}
-            submoduleId={submodule.id}
+            submoduleId={effectiveSubmoduleId}
             submoduleName={submodule.name}
           />
         </div>
       );
     } else if (key === 'testing-overview') {
-      return <TestingOverviewView projectId={projectId} />;
+      return <TestingOverviewView projectId={projectId} submoduleId={effectiveSubmoduleId} title={submodule.name} />;
     } else if (key === 'test-cases') {
-      return <TestCasesView projectId={projectId} />;
+      return <TestCasesView projectId={projectId} submoduleId={effectiveSubmoduleId} title={submodule.name} />;
     } else if (key === 'test-suites') {
-      return <TestSuitesView projectId={projectId} />;
+      return <TestSuitesView projectId={projectId} submoduleId={effectiveSubmoduleId} title={submodule.name} />;
     } else if (key === 'test-plans') {
-      return <TestPlansView projectId={projectId} />;
+      return <TestPlansView projectId={projectId} submoduleId={effectiveSubmoduleId} title={submodule.name} />;
     } else if (key === 'test-runs') {
-      return <TestRunsView projectId={projectId} />;
+      return <TestRunsView projectId={projectId} submoduleId={effectiveSubmoduleId} title={submodule.name} />;
     } else if (key === 'defects') {
-      return <DefectsView projectId={projectId} />;
+      return <DefectsView projectId={projectId} submoduleId={effectiveSubmoduleId} title={submodule.name} />;
     } else if (key === 'test-reports') {
-      return <TestReportsView projectId={projectId} />;
+      return <TestReportsView projectId={projectId} submoduleId={effectiveSubmoduleId} title={submodule.name} />;
     } else if (key === 'testing-settings') {
-      return <TestingSettingsView projectId={projectId} />;
+      return <TestingSettingsView projectId={projectId} submoduleId={effectiveSubmoduleId} title={submodule.name} />;
     } else if (key === 'development' || key === 'development.management') {
       return (
         <div className="p-4 sm:p-6 max-w-[1600px] mx-auto space-y-6">

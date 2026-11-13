@@ -275,11 +275,13 @@ export interface GitRecordLinkItem {
 }
 
 export interface CompositeSubmoduleConfig {
-  features: GitFeatureKey[];
+  features: string[];
   summaryCards?: string[];
   layout: CompositeLayout;
-  defaultTab?: GitFeatureKey;
+  defaultTab?: string;
   defaultRepoFilter?: string;
+  copyMode?: 'clone' | 'separate';
+  targetSubmoduleId?: number;
 }
 
 export const GIT_SUMMARY_CARD_DEFINITIONS = [

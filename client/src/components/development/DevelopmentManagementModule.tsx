@@ -511,6 +511,17 @@ export const DevelopmentManagementModule: React.FC<DevelopmentManagementModulePr
         setModuleIdFilter(id);
         setSubmoduleIdFilter(undefined);
       }}
+      submoduleId={submoduleIdFilter}
+      onSubmoduleIdChange={setSubmoduleIdFilter}
+      status={statusFilter}
+      onStatusChange={setStatusFilter}
+      priority={priorityFilter}
+      onPriorityChange={setPriorityFilter}
+      taskType={taskTypeFilter}
+      onTaskTypeChange={setTaskTypeFilter}
+      assigneeId={assigneeIdFilter}
+      onAssigneeIdChange={setAssigneeIdFilter}
+      eligibleMembers={dashboardData.eligibleMembers}
       viewMode={viewMode}
       onViewModeChange={(mode) => {
         setViewMode(mode);

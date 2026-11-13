@@ -51,6 +51,7 @@ export const documentService = {
       if (params.tab) query.set('tab', params.tab);
       if (params.submoduleId !== undefined) query.set('submoduleId', String(params.submoduleId));
       if (params.categoryId !== undefined) query.set('categoryId', String(params.categoryId));
+      if (params.authorId !== undefined) query.set('authorId', String(params.authorId));
       if (params.type) query.set('type', params.type);
       else if (params.fileType) query.set('fileType', params.fileType);
       if (params.search) query.set('search', params.search);

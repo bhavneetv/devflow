@@ -24,11 +24,18 @@ import type { TestingPermissions, TestingReportsData } from '../../../types/test
 
 interface TestReportsViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
-export const TestReportsView: React.FC<TestReportsViewProps> = ({ projectId: propProjectId }) => {
-  const { id } = useParams<{ id: string }>();
+export const TestReportsView: React.FC<TestReportsViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
+  const { id, submoduleId: routeSubId } = useParams<{ id: string; submoduleId?: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId || (routeSubId ? Number(routeSubId) : undefined);
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
   const { goToSubmodule } = useTestingNavigation(projectId);
@@ -111,7 +118,7 @@ export const TestReportsView: React.FC<TestReportsViewProps> = ({ projectId: pro
           projectId={projectId}
           activeKey="test-reports"
           icon={PieChart}
-          title="Test Reports & Analytics"
+          title={propTitle || 'Test Reports & Analytics'}
           description="Quality metrics, release pass rates, defect trends, and traceability coverage."
         />
         <div className="bg-[#12151B] border border-white/10 rounded-2xl p-10 text-center text-xs text-gray-400">
@@ -127,7 +134,7 @@ export const TestReportsView: React.FC<TestReportsViewProps> = ({ projectId: pro
         projectId={projectId}
         activeKey="test-reports"
         icon={PieChart}
-        title="Test Reports & Analytics"
+        title={propTitle || 'Test Reports & Analytics'}
         description="Real database-backed quality telemetry across test runs, requirements, builds, testers, and defect severity."
         actions={
           <div className="flex items-center gap-2">

@@ -860,6 +860,11 @@ model ProjectSubmodule {
 
   documents          ProjectDocument[]
   documentCategories DocumentCategory[]
+  defects            QaDefect[]
+  testCases          TestCase[]
+  testSuites         TestSuite[]
+  testPlans          TestPlan[]
+  testRuns           TestRun[]
 
   @@unique([moduleId, name])
   @@index([projectId])
@@ -1151,6 +1156,7 @@ model DevelopmentModule {
   submodules  DevelopmentSubmodule[]
   tasks       DevelopmentTask[]
   testCases   TestCase[]
+  defects     QaDefect[]
   createdAt   DateTime               @default(now()) @map("created_at")
   updatedAt   DateTime               @updatedAt @map("updated_at")
 
@@ -1176,6 +1182,7 @@ model DevelopmentSubmodule {
   createdBy   User?             @relation("DevSubmoduleCreator", fields: [createdById], references: [id], onDelete: SetNull)
   tasks       DevelopmentTask[]
   testCases   TestCase[]
+  defects     QaDefect[]
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
 
@@ -1368,6 +1375,8 @@ model TestCase {
   module              DevelopmentModule?    @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   submoduleId         Int?                  @map("submodule_id")
   submodule           DevelopmentSubmodule? @relation(fields: [submoduleId], references: [id], onDelete: SetNull)
+  projectSubmoduleId  Int?                  @map("project_submodule_id")
+  projectSubmodule    ProjectSubmodule?     @relation(fields: [projectSubmoduleId], references: [id], onDelete: SetNull)
   testType            String                @default("Functional") @map("test_type")
   priority            String                @default("Medium")
   status              String                @default("Draft")
@@ -1402,6 +1411,7 @@ model TestCase {
   @@index([assignedTesterId])
   @@index([linkedRequirementId])
   @@index([linkedDevTaskId])
+  @@index([projectSubmoduleId])
   @@map("test_cases")
 }
 
@@ -1445,13 +1455,15 @@ model TestSuite {
   ownerId     Int?            @map("owner_id")
   owner       User?           @relation("TestSuiteOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   status      String          @default("Active")
-  labelsJson  String?         @map("labels_json") @db.Text
-  isArchived  Boolean         @default(false) @map("is_archived")
-  archivedAt  DateTime?       @map("archived_at")
-  createdById Int?            @map("created_by")
-  createdBy   User?           @relation("TestSuiteCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  labelsJson          String?           @map("labels_json") @db.Text
+  projectSubmoduleId  Int?              @map("project_submodule_id")
+  projectSubmodule    ProjectSubmodule? @relation(fields: [projectSubmoduleId], references: [id], onDelete: SetNull)
+  isArchived          Boolean           @default(false) @map("is_archived")
+  archivedAt          DateTime?         @map("archived_at")
+  createdById         Int?              @map("created_by")
+  createdBy           User?             @relation("TestSuiteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
 
   cases      TestSuiteCase[]
   planSuites TestPlanSuite[]
@@ -1460,6 +1472,7 @@ model TestSuite {
   @@unique([projectId, suiteKey])
   @@index([projectId, isArchived])
   @@index([ownerId])
+  @@index([projectSubmoduleId])
   @@map("test_suites")
 }
 
@@ -1498,14 +1511,16 @@ model TestPlan {
   linkedRequirement   Requirement?     @relation(fields: [linkedRequirementId], references: [id], onDelete: SetNull)
   linkedDevTaskId     Int?             @map("linked_dev_task_id")
   linkedDevTask       DevelopmentTask? @relation(fields: [linkedDevTaskId], references: [id], onDelete: SetNull)
-  milestoneLabel      String?          @map("milestone_label")
-  status              String           @default("Draft")
-  isArchived          Boolean          @default(false) @map("is_archived")
-  archivedAt          DateTime?        @map("archived_at")
-  createdById         Int?             @map("created_by")
-  createdBy           User?            @relation("TestPlanCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt           DateTime         @default(now()) @map("created_at")
-  updatedAt           DateTime         @updatedAt @map("updated_at")
+  milestoneLabel      String?           @map("milestone_label")
+  projectSubmoduleId  Int?              @map("project_submodule_id")
+  projectSubmodule    ProjectSubmodule? @relation(fields: [projectSubmoduleId], references: [id], onDelete: SetNull)
+  status              String            @default("Draft")
+  isArchived          Boolean           @default(false) @map("is_archived")
+  archivedAt          DateTime?         @map("archived_at")
+  createdById         Int?              @map("created_by")
+  createdBy           User?             @relation("TestPlanCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
 
   suites TestPlanSuite[]
   cases  TestPlanCase[]
@@ -1516,6 +1531,7 @@ model TestPlan {
   @@index([projectId, status])
   @@index([dueDate])
   @@index([responsibleTesterId])
+  @@index([projectSubmoduleId])
   @@map("test_plans")
 }
 
@@ -1560,14 +1576,16 @@ model TestRun {
   executedById Int?       @map("executed_by")
   executedBy   User?      @relation("TestRunExecutor", fields: [executedById], references: [id], onDelete: SetNull)
   startedAt    DateTime?  @map("started_at")
-  completedAt  DateTime?  @map("completed_at")
-  status       String     @default("In Progress")
-  isArchived   Boolean    @default(false) @map("is_archived")
-  archivedAt   DateTime?  @map("archived_at")
-  createdById  Int?       @map("created_by")
-  createdBy    User?      @relation("TestRunCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  completedAt         DateTime?         @map("completed_at")
+  projectSubmoduleId  Int?              @map("project_submodule_id")
+  projectSubmodule    ProjectSubmodule? @relation(fields: [projectSubmoduleId], references: [id], onDelete: SetNull)
+  status              String            @default("In Progress")
+  isArchived          Boolean           @default(false) @map("is_archived")
+  archivedAt          DateTime?         @map("archived_at")
+  createdById         Int?              @map("created_by")
+  createdBy           User?             @relation("TestRunCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
 
   executions TestExecution[]
   defects    QaDefect[]
@@ -1577,6 +1595,7 @@ model TestRun {
   @@index([testPlanId])
   @@index([testSuiteId])
   @@index([executedById])
+  @@index([projectSubmoduleId])
   @@map("test_runs")
 }
 
@@ -1662,6 +1681,12 @@ model QaDefect {
   severity            String           @default("Major")
   priority            String           @default("High")
   status              String           @default("Open")
+  moduleId            Int?             @map("module_id")
+  module              DevelopmentModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  submoduleId         Int?             @map("submodule_id")
+  submodule           DevelopmentSubmodule? @relation(fields: [submoduleId], references: [id], onDelete: SetNull)
+  projectSubmoduleId  Int?             @map("project_submodule_id")
+  projectSubmodule    ProjectSubmodule? @relation(fields: [projectSubmoduleId], references: [id], onDelete: SetNull)
   assigneeId          Int?             @map("assignee_id")
   assignee            User?            @relation("QaDefectAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   reporterId          Int?             @map("reporter_id")
@@ -1698,6 +1723,9 @@ model QaDefect {
   @@index([reporterId])
   @@index([linkedTestCaseId])
   @@index([linkedDevTaskId])
+  @@index([moduleId])
+  @@index([submoduleId])
+  @@index([projectSubmoduleId])
   @@map("qa_defects")
 }
 

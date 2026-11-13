@@ -1,40 +1,61 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
+  AlertCircle,
+  AlertTriangle,
   Archive,
+  ArrowDownAZ,
+  ArrowUpDown,
   Bug,
+  Calendar,
   Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
   Edit3,
   ExternalLink,
+  Flame,
   GitBranch,
+  Layers,
+  LayoutGrid,
   Link2,
+  List,
+  ListFilter,
   Plus,
+  RefreshCw,
   RotateCcw,
   Search,
-  Unlink,
+  Server,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+  Trash2,
+  User,
   X,
 } from 'lucide-react';
+import { testingService } from '../../../services/testing.service';
 import { useAccentTheme } from '../../../services/accentTheme.service';
+import { useAuth } from '../../../context/AuthContext';
+import { useNavigation } from '../../../context/NavigationContext';
 import { useToast } from '../../../context/ToastContext';
 import { confirmDeleteSwal } from '../../../lib/confirmAlert';
-import { AnimatedSelect } from '../../../components/settings/AnimatedSelect';
+import { AnimatedSelect, type SelectOption } from '../../../components/settings/AnimatedSelect';
 import { UserAvatar } from '../../../components/common/UserAvatar';
-import {
-  TestingPageHeader,
-  useTestingNavigation,
-} from '../../../components/testing/TestingPageHeader';
-import { TestingAttachmentsPanel } from '../../../components/testing/TestingAttachmentsPanel';
+import { CustomCheckbox } from '../../../components/common/CustomCheckbox';
+import { TestingPageHeader } from '../../../components/testing/TestingPageHeader';
 import {
   DefectStatusBadge,
   ExecutionStatusBadge,
-  MasterOptionSelect,
   TestingPriorityBadge,
   TestingSeverityBadge,
   formatTestingDate,
   formatTestingDateTime,
 } from '../../../components/testing/testingBadges';
-import { testingService } from '../../../services/testing.service';
-import { gitService } from '../../../services/git.service';
+import { DefectModal } from './DefectModal';
+import { DefectDrawer } from './DefectDrawer';
 import type {
   QaDefectDetail,
   QaDefectItem,
@@ -45,9 +66,53 @@ import type {
 
 interface DefectsViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
-const DEFECT_STATUS_OPTIONS = [
+export type DefectGroupBy =
+  | 'none'
+  | 'module'
+  | 'severity'
+  | 'priority'
+  | 'status'
+  | 'assignee'
+  | 'environment';
+
+const GROUP_OPTIONS: Array<{
+  key: DefectGroupBy;
+  label: string;
+  sublabel: string;
+  shortLabel: string;
+  icon: React.ReactNode;
+}> = [
+  { key: 'none', label: 'No Grouping', sublabel: 'Flat list or card view', shortLabel: 'None', icon: <List size={13} className="text-zinc-400" /> },
+  { key: 'module', label: 'Application Module', sublabel: 'Group by project module', shortLabel: 'Module', icon: <Layers size={13} className="text-emerald-400" /> },
+  { key: 'severity', label: 'Defect Severity', sublabel: 'Critical, Major, Moderate, Minor', shortLabel: 'Severity', icon: <Flame size={13} className="text-rose-400" /> },
+  { key: 'priority', label: 'Priority', sublabel: 'Critical, High, Medium, Low', shortLabel: 'Priority', icon: <AlertTriangle size={13} className="text-amber-400" /> },
+  { key: 'status', label: 'Lifecycle Status', sublabel: 'Open, In Progress, Fixed, Verified, Closed', shortLabel: 'Status', icon: <Clock size={13} className="text-purple-400" /> },
+  { key: 'assignee', label: 'Assigned Developer', sublabel: 'Group by defect owner', shortLabel: 'Assignee', icon: <User size={13} className="text-teal-400" /> },
+  { key: 'environment', label: 'Environment', sublabel: 'Staging, Production, QA, Local', shortLabel: 'Env', icon: <Server size={13} className="text-cyan-400" /> },
+];
+
+const SORT_OPTIONS: Array<{
+  key: string;
+  label: string;
+  sublabel: string;
+  icon: React.ReactNode;
+}> = [
+  { key: 'severity:desc', label: 'Severity (Critical First)', sublabel: 'Blockers → Minor', icon: <Flame size={13} className="text-rose-400" /> },
+  { key: 'severity:asc', label: 'Severity (Lowest First)', sublabel: 'Minor → Blockers', icon: <Flame size={13} className="text-amber-400" /> },
+  { key: 'priority:desc', label: 'Priority (Urgent First)', sublabel: 'Critical → Low', icon: <AlertTriangle size={13} className="text-orange-400" /> },
+  { key: 'priority:asc', label: 'Priority (Lowest First)', sublabel: 'Low → Critical', icon: <AlertTriangle size={13} className="text-yellow-400" /> },
+  { key: 'updatedAt:desc', label: 'Recently Updated', sublabel: 'Most recent first', icon: <Clock size={13} className="text-emerald-400" /> },
+  { key: 'createdAt:desc', label: 'Newest Created', sublabel: 'Latest reported', icon: <Calendar size={13} className="text-cyan-400" /> },
+  { key: 'createdAt:asc', label: 'Oldest Created', sublabel: 'Earliest reported', icon: <Calendar size={13} className="text-zinc-400" /> },
+  { key: 'key:asc', label: 'Defect Key (DEF-001 → )', sublabel: 'Sequential order', icon: <ArrowDownAZ size={13} className="text-sky-400" /> },
+];
+
+const DEFECT_STATUS_FILTER_OPTIONS: SelectOption[] = [
+  { value: 'ALL', label: 'All Statuses' },
   { value: 'Open', label: 'Open' },
   { value: 'In Progress', label: 'In Progress' },
   { value: 'Fixed', label: 'Fixed (Pending Retest)' },
@@ -57,73 +122,150 @@ const DEFECT_STATUS_OPTIONS = [
   { value: 'Reopened', label: 'Reopened' },
 ];
 
-export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProjectId }) => {
-  const { id } = useParams<{ id: string }>();
+const DEFAULT_META: TestingMetaData = {
+  members: [],
+  teams: [],
+  modules: [],
+  devTasks: [],
+  requirements: [],
+  projectDocuments: [],
+  gitRepositories: [],
+};
+
+const DEFAULT_PERMS: TestingPermissions = {
+  role: 'viewer',
+  canViewTesting: true,
+  canEditTestCases: false,
+  canExecuteTests: false,
+  canManageDefects: false,
+  canManagePlansSuites: false,
+  canManageSettings: false,
+  canViewReports: true,
+  canArchiveRecords: false,
+};
+
+const SEVERITY_WEIGHTS: Record<string, number> = {
+  critical: 4,
+  blocker: 4,
+  major: 3,
+  moderate: 2,
+  medium: 2,
+  minor: 1,
+  low: 1,
+  trivial: 0.5,
+};
+
+const PRIORITY_WEIGHTS: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+export const DefectsView: React.FC<DefectsViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
+  const { id, submoduleId: routeSubId } = useParams<{ id: string; submoduleId?: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId || (routeSubId ? Number(routeSubId) : undefined);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
-  const { goToSubmodule } = useTestingNavigation(projectId);
-  const [searchParams] = useSearchParams();
+  const { projectModules } = useNavigation();
 
-  const [meta, setMeta] = useState<TestingMetaData | null>(null);
-  const [config, setConfig] = useState<TestingConfigurationItem | null>(null);
-  const [permissions, setPermissions] = useState<TestingPermissions | null>(null);
+  // Dynamic module / submodule name saved by user in settings
+  const dynamicSubmoduleName = useMemo(() => {
+    if (propTitle) return propTitle;
+    if (submoduleId) {
+      for (const mod of projectModules || []) {
+        const sub = mod.submodules?.find((s) => s.id === submoduleId);
+        if (sub?.name) return sub.name;
+      }
+    }
+    for (const mod of projectModules || []) {
+      const sub = mod.submodules?.find((s) => s.builtInKey === 'defects');
+      if (sub?.name) return sub.name;
+      if (mod.name && (mod.name.toLowerCase().includes('defect') || mod.name.toLowerCase().includes('bug'))) {
+        return mod.name;
+      }
+    }
+    return 'Defects';
+  }, [propTitle, submoduleId, projectModules]);
+
   const [defects, setDefects] = useState<QaDefectItem[]>([]);
+  const [meta, setMeta] = useState<TestingMetaData>(DEFAULT_META);
+  const [config, setConfig] = useState<TestingConfigurationItem | null>(null);
+  const [permissions, setPermissions] = useState<TestingPermissions>(DEFAULT_PERMS);
+
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'list' | 'cards'>('list');
+  const [groupBy, setGroupBy] = useState<DefectGroupBy>('none');
+  const [sortValue, setSortValue] = useState('severity:desc');
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'ALL');
-  const [severityFilter, setSeverityFilter] = useState(searchParams.get('severity') || 'ALL');
-  const [assigneeFilter, setAssigneeFilter] = useState('ALL');
-  const [includeArchived, setIncludeArchived] = useState(false);
+  // Filters State
+  const [search, setSearch] = useState(searchParams.get('q') || searchParams.get('search') || '');
+  const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || 'ALL');
+  const [filterSeverity, setFilterSeverity] = useState(searchParams.get('severity') || 'ALL');
+  const [filterPriority, setFilterPriority] = useState(searchParams.get('priority') || 'ALL');
+  const [filterAssigneeId, setFilterAssigneeId] = useState(searchParams.get('assigneeId') || 'ALL');
+  const [filterEnvironment, setFilterEnvironment] = useState(searchParams.get('environment') || 'ALL');
+  const [filterDevTaskId, setFilterDevTaskId] = useState(searchParams.get('linkedDevTaskId') || '');
+  const [filterReqId, setFilterReqId] = useState(searchParams.get('linkedRequirementId') || '');
+  const [includeArchived, setIncludeArchived] = useState(searchParams.get('archived') === '1');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-  const [selectedDefectId, setSelectedDefectId] = useState<number | null>(
+  // Popover State: Icon-only Filter & Inbuilt Sort/Group Popovers
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isSortGroupOpen, setIsSortGroupOpen] = useState(false);
+  const [isGroupByHovered, setIsGroupByHovered] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+  const sortGroupRef = useRef<HTMLDivElement>(null);
+
+  // Modal & Drawer State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingDefect, setEditingDefect] = useState<QaDefectDetail | QaDefectItem | null>(null);
+  const [drawerDefectId, setDrawerDefectId] = useState<number | null>(
     searchParams.get('defectId') ? Number(searchParams.get('defectId')) : null
   );
-  const [defectDetail, setDefectDetail] = useState<QaDefectDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
 
-  // Create / Edit Modal
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingDefect, setEditingDefect] = useState<QaDefectDetail | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    severity: 'Major',
-    priority: 'High',
-    status: 'Open',
-    assigneeId: '',
-    environment: 'Staging',
-    buildVersion: '',
-    stepsToReproduce: '',
-    expectedResult: '',
-    actualResult: '',
-    linkedTestCaseId: '',
-    linkedDevTaskId: '',
-    linkedRequirementId: '',
-  });
-
-  // Git Issue / MR Linking Modal
-  const [gitLinkOpen, setGitLinkOpen] = useState(false);
-  const [gitOptionsLoading, setGitOptionsLoading] = useState(false);
-  const [gitIssues, setGitIssues] = useState<any[]>([]);
-  const [gitMrs, setGitMrs] = useState<any[]>([]);
-  const [gitLinkType, setGitLinkType] = useState<'issue' | 'merge_request'>('issue');
-  const [gitRecordId, setGitRecordId] = useState('');
-
-  const canManage = Boolean(permissions?.canManageDefects);
-  const canArchive = Boolean(permissions?.canArchiveRecords);
-
+  // Close Popovers on Click Outside
   useEffect(() => {
-    const qId = searchParams.get('defectId');
-    const qStatus = searchParams.get('status');
-    const qSeverity = searchParams.get('severity');
-    if (qId && Number(qId) > 0) setSelectedDefectId(Number(qId));
-    if (qStatus) setStatusFilter(qStatus);
-    if (qSeverity) setSeverityFilter(qSeverity);
-  }, [searchParams]);
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (filterRef.current && !filterRef.current.contains(target)) {
+        setIsFilterOpen(false);
+      }
+      if (sortGroupRef.current && !sortGroupRef.current.contains(target)) {
+        setIsSortGroupOpen(false);
+        setIsGroupByHovered(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
+  // Global Keyboard Shortcuts: Shift+D to log defect, Escape to close drawer/modal
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+        if (activeTag !== 'input' && activeTag !== 'textarea') {
+          e.preventDefault();
+          if (permissions.canManageDefects) {
+            setEditingDefect(null);
+            setModalOpen(true);
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [permissions.canManageDefects]);
+
+  // Load Data
   const loadData = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
@@ -131,997 +273,1763 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
       const [metaRes, defectsRes] = await Promise.all([
         testingService.getMeta(projectId),
         testingService.listDefects(projectId, {
-          search: searchQuery || undefined,
-          status: statusFilter !== 'ALL' ? statusFilter : undefined,
-          severity: severityFilter !== 'ALL' ? severityFilter : undefined,
-          assigneeId: assigneeFilter !== 'ALL' ? Number(assigneeFilter) : undefined,
+          search: search || undefined,
+          status: filterStatus !== 'ALL' ? filterStatus : undefined,
+          severity: filterSeverity !== 'ALL' ? filterSeverity : undefined,
+          priority: filterPriority !== 'ALL' ? filterPriority : undefined,
+          assigneeId: filterAssigneeId !== 'ALL' ? Number(filterAssigneeId) : undefined,
           includeArchived,
+          submoduleId,
         }),
       ]);
+
       if (metaRes.success && metaRes.data) {
         setMeta(metaRes.data.meta);
         setConfig(metaRes.data.config);
         setPermissions(metaRes.data.permissions);
       }
-      if (defectsRes.success && defectsRes.data) setDefects(defectsRes.data.items);
+
+      if (defectsRes.success && defectsRes.data) {
+        setDefects(defectsRes.data.items);
+      }
     } catch {
       toast.error('Failed to load defects');
     } finally {
       setLoading(false);
     }
-  }, [projectId, searchQuery, statusFilter, severityFilter, assigneeFilter, includeArchived, toast]);
+  }, [
+    projectId,
+    search,
+    filterStatus,
+    filterSeverity,
+    filterPriority,
+    filterAssigneeId,
+    includeArchived,
+    submoduleId,
+    toast,
+  ]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  const loadDefectDetail = useCallback(
-    async (defectId: number) => {
-      setDetailLoading(true);
-      try {
-        const res = await testingService.getDefectDetail(projectId, defectId);
-        if (res.success && res.data) setDefectDetail(res.data);
-      } catch {
-        toast.error('Failed to load defect details');
-      } finally {
-        setDetailLoading(false);
-      }
-    },
-    [projectId, toast]
-  );
-
+  // Sync query params when filters change
   useEffect(() => {
-    if (selectedDefectId) {
-      void loadDefectDetail(selectedDefectId);
-    } else {
-      setDefectDetail(null);
+    const params = new URLSearchParams();
+    if (search) params.set('q', search);
+    if (filterStatus !== 'ALL') params.set('status', filterStatus);
+    if (filterSeverity !== 'ALL') params.set('severity', filterSeverity);
+    if (filterPriority !== 'ALL') params.set('priority', filterPriority);
+    if (filterAssigneeId !== 'ALL') params.set('assigneeId', filterAssigneeId);
+    if (filterEnvironment !== 'ALL') params.set('environment', filterEnvironment);
+    if (filterDevTaskId) params.set('linkedDevTaskId', filterDevTaskId);
+    if (filterReqId) params.set('linkedRequirementId', filterReqId);
+    if (includeArchived) params.set('archived', '1');
+    if (drawerDefectId) params.set('defectId', String(drawerDefectId));
+    setSearchParams(params, { replace: true });
+  }, [
+    search,
+    filterStatus,
+    filterSeverity,
+    filterPriority,
+    filterAssigneeId,
+    filterEnvironment,
+    filterDevTaskId,
+    filterReqId,
+    includeArchived,
+    drawerDefectId,
+    setSearchParams,
+  ]);
+
+  // Filtered & Sorted Defects
+  const processedDefects = useMemo(() => {
+    let list = [...defects];
+
+    // Client-side additional filtering
+    if (filterEnvironment !== 'ALL') {
+      list = list.filter((d) => d.environment === filterEnvironment);
     }
-  }, [selectedDefectId, loadDefectDetail]);
-
-  const openCreateModal = () => {
-    setEditingDefect(null);
-    setForm({
-      title: '',
-      description: '',
-      severity: 'Major',
-      priority: 'High',
-      status: 'Open',
-      assigneeId: '',
-      environment: config?.defaultEnvironment || 'Staging',
-      buildVersion: '',
-      stepsToReproduce: '',
-      expectedResult: '',
-      actualResult: '',
-      linkedTestCaseId: '',
-      linkedDevTaskId: '',
-      linkedRequirementId: '',
-    });
-    setModalOpen(true);
-  };
-
-  const openEditModal = (d: QaDefectDetail) => {
-    setEditingDefect(d);
-    setForm({
-      title: d.title,
-      description: d.description || '',
-      severity: d.severity,
-      priority: d.priority,
-      status: d.status,
-      assigneeId: d.assigneeId ? String(d.assigneeId) : '',
-      environment: d.environment || config?.defaultEnvironment || 'Staging',
-      buildVersion: d.buildVersion || '',
-      stepsToReproduce: d.stepsToReproduce || '',
-      expectedResult: d.expectedResult || '',
-      actualResult: d.actualResult || '',
-      linkedTestCaseId: d.linkedTestCaseId ? String(d.linkedTestCaseId) : '',
-      linkedDevTaskId: d.linkedDevTaskId ? String(d.linkedDevTaskId) : '',
-      linkedRequirementId: d.linkedRequirementId ? String(d.linkedRequirementId) : '',
-    });
-    setModalOpen(true);
-  };
-
-  const handleSaveDefect = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.title.trim()) {
-      toast.error('Defect title is required');
-      return;
+    if (filterDevTaskId) {
+      list = list.filter((d) => String(d.linkedDevTaskId) === filterDevTaskId);
     }
-    setSaving(true);
-    try {
-      const payload = {
-        title: form.title.trim(),
-        description: form.description.trim() || undefined,
-        severity: form.severity,
-        priority: form.priority,
-        status: form.status,
-        assigneeId: form.assigneeId ? Number(form.assigneeId) : null,
-        environment: form.environment || undefined,
-        buildVersion: form.buildVersion.trim() || undefined,
-        stepsToReproduce: form.stepsToReproduce.trim() || undefined,
-        expectedResult: form.expectedResult.trim() || undefined,
-        actualResult: form.actualResult.trim() || undefined,
-        linkedTestCaseId: form.linkedTestCaseId ? Number(form.linkedTestCaseId) : null,
-        linkedDevTaskId: form.linkedDevTaskId ? Number(form.linkedDevTaskId) : null,
-        linkedRequirementId: form.linkedRequirementId ? Number(form.linkedRequirementId) : null,
-      };
-      if (editingDefect) {
-        const res = await testingService.updateDefect(projectId, editingDefect.id, payload);
-        if (res.success) {
-          toast.success(`Defect ${editingDefect.defectKey} updated`);
-          setModalOpen(false);
-          await loadData();
-          await loadDefectDetail(editingDefect.id);
-        } else {
-          toast.error(res.error || 'Could not update defect');
+    if (filterReqId) {
+      list = list.filter((d) => String(d.linkedRequirementId) === filterReqId);
+    }
+
+    // Sorting
+    list.sort((a, b) => {
+      switch (sortValue) {
+        case 'severity:desc': {
+          const wa = SEVERITY_WEIGHTS[a.severity.toLowerCase()] || 0;
+          const wb = SEVERITY_WEIGHTS[b.severity.toLowerCase()] || 0;
+          return wb - wa;
         }
-      } else {
-        const res = await testingService.createDefect(projectId, payload);
-        if (res.success && res.data) {
-          toast.success(`Defect ${res.data.defectKey} created`);
-          setModalOpen(false);
-          await loadData();
-          setSelectedDefectId(res.data.id);
-        } else {
-          toast.error(res.error || 'Could not create defect');
+        case 'severity:asc': {
+          const wa = SEVERITY_WEIGHTS[a.severity.toLowerCase()] || 0;
+          const wb = SEVERITY_WEIGHTS[b.severity.toLowerCase()] || 0;
+          return wa - wb;
         }
+        case 'priority:desc': {
+          const wa = PRIORITY_WEIGHTS[a.priority.toLowerCase()] || 0;
+          const wb = PRIORITY_WEIGHTS[b.priority.toLowerCase()] || 0;
+          return wb - wa;
+        }
+        case 'priority:asc': {
+          const wa = PRIORITY_WEIGHTS[a.priority.toLowerCase()] || 0;
+          const wb = PRIORITY_WEIGHTS[b.priority.toLowerCase()] || 0;
+          return wa - wb;
+        }
+        case 'createdAt:desc':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case 'createdAt:asc':
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        case 'key:asc':
+          return a.defectKey.localeCompare(b.defectKey);
+        case 'updatedAt:desc':
+        default:
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Could not save defect');
-    } finally {
-      setSaving(false);
-    }
+    });
+
+    return list;
+  }, [defects, filterEnvironment, filterDevTaskId, filterReqId, sortValue]);
+
+  // Active filter badge count and reset handler
+  const handleResetFilters = () => {
+    setSearch('');
+    setFilterStatus('ALL');
+    setFilterSeverity('ALL');
+    setFilterPriority('ALL');
+    setFilterAssigneeId('ALL');
+    setFilterEnvironment('ALL');
+    setFilterDevTaskId('');
+    setFilterReqId('');
+    setIncludeArchived(false);
   };
 
-  const handleStatusTransition = async (defectId: number, nextStatus: string) => {
+  const activeFilters = useMemo(() => {
+    const list: Array<{ label: string; onClear: () => void }> = [];
+    if (search) list.push({ label: `Search: "${search}"`, onClear: () => setSearch('') });
+    if (filterStatus !== 'ALL') {
+      list.push({ label: `Status: ${filterStatus}`, onClear: () => setFilterStatus('ALL') });
+    }
+    if (filterSeverity !== 'ALL') {
+      list.push({ label: `Severity: ${filterSeverity}`, onClear: () => setFilterSeverity('ALL') });
+    }
+    if (filterPriority !== 'ALL') {
+      list.push({ label: `Priority: ${filterPriority}`, onClear: () => setFilterPriority('ALL') });
+    }
+    if (filterAssigneeId !== 'ALL') {
+      const m = meta.members.find((u) => String(u.id) === filterAssigneeId);
+      list.push({ label: `Assignee: ${m?.name || filterAssigneeId}`, onClear: () => setFilterAssigneeId('ALL') });
+    }
+    if (filterEnvironment !== 'ALL') {
+      list.push({ label: `Env: ${filterEnvironment}`, onClear: () => setFilterEnvironment('ALL') });
+    }
+    if (filterDevTaskId) {
+      const dt = meta.devTasks.find((t) => String(t.id) === filterDevTaskId);
+      list.push({ label: `Task: ${dt?.taskKey || filterDevTaskId}`, onClear: () => setFilterDevTaskId('') });
+    }
+    if (filterReqId) {
+      const r = meta.requirements.find((req) => String(req.id) === filterReqId);
+      list.push({ label: `Req: ${r?.code || r?.title || filterReqId}`, onClear: () => setFilterReqId('') });
+    }
+    if (includeArchived) {
+      list.push({ label: 'Archived Included', onClear: () => setIncludeArchived(false) });
+    }
+    return list;
+  }, [
+    search,
+    filterStatus,
+    filterSeverity,
+    filterPriority,
+    filterAssigneeId,
+    filterEnvironment,
+    filterDevTaskId,
+    filterReqId,
+    includeArchived,
+    meta.members,
+    meta.devTasks,
+    meta.requirements,
+  ]);
+
+  const activeFilterCount = activeFilters.length;
+  const isSortGroupModified = groupBy !== 'none' || sortValue !== 'severity:desc';
+
+  // Bulk Actions
+  const handleBulkStatus = async (status: string) => {
+    if (selectedIds.length === 0) return;
     try {
-      const res = await testingService.updateDefect(projectId, defectId, { status: nextStatus });
-      if (res.success) {
-        toast.success(
-          nextStatus === 'Fixed'
-            ? 'Marked Fixed — awaiting QA retest verification'
-            : nextStatus === 'Reopened'
-              ? 'Defect reopened'
-              : `Status changed to ${nextStatus}`
-        );
-        await loadData();
-        await loadDefectDetail(defectId);
-      } else {
-        toast.error(res.error || 'Could not change status');
-      }
+      await Promise.all(
+        selectedIds.map((defectId) => testingService.updateDefect(projectId, defectId, { status }))
+      );
+      toast.success(`Updated ${selectedIds.length} defects to ${status}`);
+      setSelectedIds([]);
+      void loadData();
     } catch {
-      toast.error('Failed to transition defect status');
+      toast.error('Bulk update failed');
     }
   };
 
-  const handleArchiveDefect = async (defect: QaDefectItem) => {
+  const handleBulkArchive = async () => {
+    if (selectedIds.length === 0) return;
     const confirmed = await confirmDeleteSwal({
-      title: defect.isArchived ? `Restore ${defect.defectKey}?` : `Archive ${defect.defectKey}?`,
-      text: defect.isArchived
-        ? 'Restoring returns this defect to active triage.'
-        : 'Archiving hides the defect without erasing run or commit links.',
-      confirmText: defect.isArchived ? 'Restore Defect' : 'Archive Defect',
+      title: `Archive ${selectedIds.length} defect(s)?`,
+      text: 'Archived defects are hidden from active triage while preserving commit and execution links.',
+      confirmText: 'Archive Selected',
     });
     if (!confirmed) return;
+
     try {
-      const res = await testingService.updateDefect(projectId, defect.id, {
-        isArchived: !defect.isArchived,
-      });
-      if (res.success) {
-        toast.success(defect.isArchived ? 'Defect restored' : 'Defect archived');
-        await loadData();
-        if (selectedDefectId === defect.id) await loadDefectDetail(defect.id);
-      }
+      await Promise.all(
+        selectedIds.map((defectId) => testingService.updateDefect(projectId, defectId, { isArchived: true }))
+      );
+      toast.success(`Archived ${selectedIds.length} defect(s)`);
+      setSelectedIds([]);
+      void loadData();
     } catch {
-      toast.error('Failed to archive defect');
+      toast.error('Bulk archive failed');
     }
   };
 
-  const openGitLinkModal = async () => {
-    setGitLinkOpen(true);
-    setGitRecordId('');
-    setGitOptionsLoading(true);
-    try {
-      const [issuesRes, mrsRes] = await Promise.all([
-        gitService.getIssues(projectId, { state: 'all' }).catch(() => null),
-        gitService.getMergeRequests(projectId, { state: 'all' }).catch(() => null),
-      ]);
-      setGitIssues(Array.isArray(issuesRes) ? issuesRes : (issuesRes as any)?.data || []);
-      setGitMrs(Array.isArray(mrsRes) ? mrsRes : (mrsRes as any)?.data || []);
-    } finally {
-      setGitOptionsLoading(false);
+  const toggleAll = () => {
+    if (selectedIds.length === processedDefects.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(processedDefects.map((d) => d.id));
     }
   };
 
-  const handleLinkGitRecord = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!defectDetail || !gitRecordId) return;
-    const pool = gitLinkType === 'issue' ? gitIssues : gitMrs;
-    const picked = pool.find((item) => String(item.iid || item.id) === gitRecordId);
-    const defaultRepo = meta?.gitRepositories?.[0];
-    if (!defaultRepo) {
-      toast.error('No Git repository connected to this project');
-      return;
+  const toggleOne = (defectId: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(defectId) ? prev.filter((x) => x !== defectId) : [...prev, defectId]
+    );
+  };
+
+  // Telemetry Metric Calculations
+  const totalCount = defects.length;
+  const openCount = defects.filter((d) => d.status === 'Open').length;
+  const inProgressCount = defects.filter((d) => d.status === 'In Progress').length;
+  const fixedCount = defects.filter((d) => d.status === 'Fixed' || d.status === 'Ready for Retest').length;
+  const verifiedCount = defects.filter((d) => d.status === 'Verified').length;
+  const closedCount = defects.filter((d) => d.status === 'Closed').length;
+  const reopenedCount = defects.filter((d) => d.status === 'Reopened').length;
+
+  const criticalCount = defects.filter(
+    (d) => d.severity.toLowerCase() === 'critical' || d.severity.toLowerCase() === 'blocker'
+  ).length;
+
+  const activeTriageCount = openCount + inProgressCount + reopenedCount;
+  const resolvedCount = verifiedCount + closedCount;
+
+  const resolutionRate =
+    totalCount > 0 ? Math.round((resolvedCount / totalCount) * 100) : totalCount === 0 ? 100 : 0;
+
+  const activeTriageRate =
+    totalCount > 0 ? Math.round((activeTriageCount / totalCount) * 100) : 0;
+
+  const linkedCount = defects.filter(
+    (d) => d.linkedTestCaseId || d.linkedDevTaskId || d.linkedRequirementId
+  ).length;
+
+  const traceabilityRate =
+    totalCount > 0 ? Math.round((linkedCount / totalCount) * 100) : 0;
+
+  const totalReopens = defects.reduce((acc, d) => acc + (d.reopenCount || 0), 0);
+
+  // Composite Quality Index (0 - 100)
+  const healthScore = useMemo(() => {
+    if (totalCount === 0) return 100;
+    const resWeight = (resolvedCount / totalCount) * 55;
+    const criticalPenalty = Math.min(25, criticalCount * 8);
+    const reopenPenalty = Math.min(20, totalReopens * 5);
+    const raw = Math.round(resWeight + (45 - criticalPenalty - reopenPenalty));
+    return Math.max(0, Math.min(100, raw));
+  }, [totalCount, resolvedCount, criticalCount, totalReopens]);
+
+  // Priority Stats
+  const priorityStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const d of defects) {
+      counts[d.priority] = (counts[d.priority] || 0) + 1;
     }
-    try {
-      const res = await testingService.linkDefectGitRecord(projectId, defectDetail.id, {
-        repositoryId: picked?.repositoryId || defaultRepo.id,
-        provider: defaultRepo.provider || 'github',
-        recordType: gitLinkType,
-        recordId: gitRecordId,
-        recordNumber: picked?.iid || picked?.number || undefined,
-        recordTitle: picked?.title || undefined,
-        recordUrl: picked?.webUrl || picked?.htmlUrl || picked?.url || undefined,
-      });
-      if (res.success) {
-        toast.success('Git record linked to defect');
-        setGitLinkOpen(false);
-        await loadDefectDetail(defectDetail.id);
+    return (config?.priorities || [])
+      .filter((p) => !p.isArchived)
+      .map((p) => ({
+        name: p.name,
+        color: p.color || '#F59E0B',
+        count: counts[p.name] || 0,
+      }));
+  }, [defects, config?.priorities]);
+
+  // Severity Stats
+  const severityStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const d of defects) {
+      counts[d.severity] = (counts[d.severity] || 0) + 1;
+    }
+    const definedSeverities = config?.defectSeverities?.filter((s) => !s.isArchived) || [];
+    if (definedSeverities.length > 0) {
+      return definedSeverities.map((s) => ({
+        name: s.name,
+        color: s.color || '#F87171',
+        count: counts[s.name] || 0,
+      }));
+    }
+    return [
+      { name: 'Critical', color: '#F87171', count: counts['Critical'] || 0 },
+      { name: 'Major', color: '#FB923C', count: counts['Major'] || 0 },
+      { name: 'Moderate', color: '#FBBF24', count: counts['Moderate'] || 0 },
+      { name: 'Minor', color: '#60A5FA', count: counts['Minor'] || 0 },
+    ];
+  }, [defects, config?.defectSeverities]);
+
+  // Grouping Logic
+  const activeGroupMeta = useMemo(
+    () => GROUP_OPTIONS.find((g) => g.key === groupBy) || GROUP_OPTIONS[0],
+    [groupBy]
+  );
+
+  const groupedDefects = useMemo(() => {
+    if (groupBy === 'none') return null;
+
+    const map = new Map<
+      string,
+      {
+        id: string;
+        title: string;
+        sublabel?: string;
+        color?: string;
+        count: number;
+        items: QaDefectItem[];
+      }
+    >();
+
+    for (const d of processedDefects) {
+      let gId = 'unassigned';
+      let gTitle = 'Unassigned';
+      let gSub: string | undefined;
+      let gColor: string | undefined;
+
+      switch (groupBy) {
+        case 'module':
+          if (d.module) {
+            gId = `mod-${d.module.id}`;
+            gTitle = d.module.name;
+            gColor = '#10B981';
+          } else {
+            gId = 'unassigned';
+            gTitle = 'General / No Module';
+            gColor = '#71717A';
+          }
+          break;
+        case 'severity':
+          gId = d.severity.toLowerCase();
+          gTitle = d.severity;
+          gColor = severityStats.find((s) => s.name.toLowerCase() === gId)?.color || '#F87171';
+          break;
+        case 'priority':
+          gId = d.priority.toLowerCase();
+          gTitle = d.priority;
+          gColor = priorityStats.find((p) => p.name.toLowerCase() === gId)?.color || '#F59E0B';
+          break;
+        case 'status':
+          gId = d.status.toLowerCase();
+          gTitle = d.status;
+          gColor = '#A78BFA';
+          break;
+        case 'assignee':
+          if (d.assignee) {
+            gId = String(d.assignee.id);
+            gTitle = d.assignee.name || `User #${d.assignee.id}`;
+            gSub = d.assignee.email || undefined;
+            gColor = '#14B8A6';
+          } else {
+            gId = 'unassigned';
+            gTitle = 'Unassigned';
+            gColor = '#71717A';
+          }
+          break;
+        case 'environment':
+          gId = d.environment ? d.environment.toLowerCase() : 'none';
+          gTitle = d.environment || 'No Environment';
+          gColor = '#38BDF8';
+          break;
+      }
+
+      const existing = map.get(gId);
+      if (existing) {
+        existing.items.push(d);
+        existing.count += 1;
       } else {
-        toast.error(res.error || 'Could not link Git record');
+        map.set(gId, {
+          id: gId,
+          title: gTitle,
+          sublabel: gSub,
+          color: gColor,
+          count: 1,
+          items: [d],
+        });
       }
-    } catch {
-      toast.error('Could not link Git record');
     }
+
+    return Array.from(map.values());
+  }, [processedDefects, groupBy, severityStats, priorityStats]);
+
+  const toggleGroupCollapse = (groupId: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  const handleUnlinkGitRecord = async (linkId: number) => {
-    if (!defectDetail) return;
-    try {
-      const res = await testingService.unlinkDefectGitRecord(projectId, defectDetail.id, linkId);
-      if (res.success) {
-        toast.success('Git link removed');
-        await loadDefectDetail(defectDetail.id);
-      }
-    } catch {
-      toast.error('Could not unlink Git record');
-    }
+  const collapseAllGroups = () => {
+    if (!groupedDefects) return;
+    const next: Record<string, boolean> = {};
+    for (const g of groupedDefects) next[g.id] = true;
+    setCollapsedGroups(next);
   };
 
-  const memberOptions = useMemo(
-    () => [
-      { value: '', label: 'Unassigned' },
-      ...(meta?.members || []).map((m) => ({
-        value: String(m.id),
-        label: m.name,
-      })),
-    ],
-    [meta?.members]
-  );
+  const expandAllGroups = () => {
+    setCollapsedGroups({});
+  };
 
-  const devTaskOptions = useMemo(
-    () => [
-      { value: '', label: 'None' },
-      ...(meta?.devTasks || []).map((d) => ({ value: String(d.id), label: `${d.taskKey} — ${d.title}` })),
-    ],
-    [meta?.devTasks]
-  );
-
-  const requirementOptions = useMemo(
-    () => [
-      { value: '', label: 'None' },
-      ...(meta?.requirements || []).map((r) => ({ value: String(r.id), label: `${r.code} — ${r.title}` })),
-    ],
-    [meta?.requirements]
-  );
-
-  const severityFilterOptions = useMemo(
+  // Select Options for Filter Popover
+  const severityFilterOptions: SelectOption[] = useMemo(
     () => [
       { value: 'ALL', label: 'All Severities' },
-      ...(config?.defectSeverities || []).map((s) => ({ value: s.name, label: s.name })),
+      ...(config?.defectSeverities || [])
+        .filter((s) => !s.isArchived)
+        .map((s) => ({ value: s.name, label: s.name })),
     ],
     [config?.defectSeverities]
   );
 
+  const priorityFilterOptions: SelectOption[] = useMemo(
+    () => [
+      { value: 'ALL', label: 'All Priorities' },
+      ...(config?.priorities || [])
+        .filter((p) => !p.isArchived)
+        .map((p) => ({ value: p.name, label: p.name })),
+    ],
+    [config?.priorities]
+  );
+
+  const assigneeFilterOptions: SelectOption[] = useMemo(
+    () => [
+      { value: 'ALL', label: 'All Assignees' },
+      ...meta.members.map((m) => ({
+        value: String(m.id),
+        label: m.name || m.email || `User #${m.id}`,
+        icon: <UserAvatar user={m} size="xs" />,
+      })),
+    ],
+    [meta.members]
+  );
+
+  const environmentFilterOptions: SelectOption[] = useMemo(
+    () => [
+      { value: 'ALL', label: 'All Environments' },
+      ...(config?.environments || [])
+        .filter((e) => !e.isArchived)
+        .map((e) => ({ value: e.name, label: e.name })),
+    ],
+    [config?.environments]
+  );
+
+  const devTaskFilterOptions: SelectOption[] = useMemo(
+    () => [
+      { value: '', label: 'All Development Tasks' },
+      ...meta.devTasks.map((t) => ({
+        value: String(t.id),
+        label: `${t.taskKey} — ${t.title}`,
+      })),
+    ],
+    [meta.devTasks]
+  );
+
+  const reqFilterOptions: SelectOption[] = useMemo(
+    () => [
+      { value: '', label: 'All Requirements' },
+      ...meta.requirements.map((r) => ({
+        value: String(r.id),
+        label: r.code ? `${r.code} — ${r.title}` : r.title,
+      })),
+    ],
+    [meta.requirements]
+  );
+
+  // Helper to render table rows for any defect array
+  const renderTableRows = (items: QaDefectItem[]) => {
+    const allInGrpSelected = items.length > 0 && items.every((d) => selectedIds.includes(d.id));
+    const someInGrpSelected = items.some((d) => selectedIds.includes(d.id));
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-[#0B0D12]/80 text-zinc-400 border-b border-[#27272A]">
+            <tr>
+              <th className="px-4 py-3 w-10">
+                <CustomCheckbox
+                  checked={allInGrpSelected}
+                  indeterminate={!allInGrpSelected && someInGrpSelected}
+                  accentColor={accentColor}
+                  size="sm"
+                  onChange={(checked) => {
+                    if (checked) {
+                      const toAdd = items.map((d) => d.id).filter((id) => !selectedIds.includes(id));
+                      setSelectedIds((prev) => [...prev, ...toAdd]);
+                    } else {
+                      setSelectedIds((prev) => prev.filter((id) => !items.some((d) => d.id === id)));
+                    }
+                  }}
+                  aria-label="Select all defects in view"
+                />
+              </th>
+              <th className="px-4 py-3">Key &amp; Defect Title</th>
+              <th className="px-4 py-3">Severity</th>
+              <th className="px-4 py-3">Priority</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Reported By</th>
+              <th className="px-4 py-3">Assignee</th>
+              <th className="px-4 py-3">Traceability</th>
+              <th className="px-4 py-3 text-right">Updated</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#27272A]/70">
+            {items.map((d) => (
+              <tr
+                key={d.id}
+                className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${
+                  d.isArchived ? 'opacity-55' : ''
+                }`}
+                onClick={() => setDrawerDefectId(d.id)}
+              >
+                <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                  <CustomCheckbox
+                    checked={selectedIds.includes(d.id)}
+                    onChange={() => toggleOne(d.id)}
+                    accentColor={accentColor}
+                    size="sm"
+                    stopPropagation
+                    aria-label={`Select defect ${d.defectKey}`}
+                  />
+                </td>
+              <td className="px-4 py-3 max-w-md">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] font-bold text-rose-400 shrink-0">
+                    {d.defectKey}
+                  </span>
+                  <span className="font-medium text-white truncate">{d.title}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5 flex-wrap">
+                  {d.module && <span className="text-emerald-400">• {d.module.name}</span>}
+                  {d.environment && <span>Env: {d.environment}</span>}
+                  {d.buildVersion && <span>• {d.buildVersion}</span>}
+                  {d.reopenCount > 0 && (
+                    <span className="text-rose-400 font-semibold font-mono text-[10px]">
+                      • Reopened {d.reopenCount}x
+                    </span>
+                  )}
+                </div>
+              </td>
+              <td className="px-4 py-3">
+                <TestingSeverityBadge severity={d.severity} />
+              </td>
+              <td className="px-4 py-3">
+                <TestingPriorityBadge priority={d.priority} />
+              </td>
+              <td className="px-4 py-3">
+                <DefectStatusBadge status={d.status} />
+              </td>
+              <td className="px-4 py-3">
+                {d.reporter ? (
+                  <div className="flex items-center gap-1.5">
+                    <UserAvatar user={d.reporter} size="xs" />
+                    <span className="text-zinc-300 truncate max-w-[110px]">{d.reporter.name}</span>
+                  </div>
+                ) : (
+                  <span className="text-zinc-500 italic">Unknown</span>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                {d.assignee ? (
+                  <div className="flex items-center gap-1.5">
+                    <UserAvatar user={d.assignee} size="xs" />
+                    <span className="text-zinc-300 truncate max-w-[110px]">{d.assignee.name}</span>
+                  </div>
+                ) : (
+                  <span className="text-zinc-500 italic">Unassigned</span>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 flex-wrap">
+                  {d.linkedTestCase && (
+                    <span className="font-mono text-emerald-400 font-medium">
+                      {d.linkedTestCase.caseKey}
+                    </span>
+                  )}
+                  {d.linkedDevTask && (
+                    <span className="font-mono text-cyan-400">{d.linkedDevTask.taskKey}</span>
+                  )}
+                  {!d.linkedTestCase && !d.linkedDevTask && <span className="text-zinc-600">—</span>}
+                </div>
+              </td>
+              <td className="px-4 py-3 text-right text-zinc-400 whitespace-nowrap font-mono text-[11px]">
+                {formatTestingDate(d.updatedAt)}
+              </td>
+              <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                <div className="inline-flex items-center gap-1">
+                  {permissions.canManageDefects && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const detailRes = await testingService.getDefectDetail(projectId, d.id);
+                        if (detailRes.success && detailRes.data) {
+                          setEditingDefect(detailRes.data);
+                          setModalOpen(true);
+                        }
+                      }}
+                      title="Edit Defect"
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {permissions.canArchiveRecords && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const confirmed = await confirmDeleteSwal({
+                          title: d.isArchived ? `Restore ${d.defectKey}?` : `Archive ${d.defectKey}?`,
+                          text: d.isArchived
+                            ? 'Restores defect to active triage.'
+                            : 'Hides defect from default triage without erasing execution links.',
+                          confirmText: d.isArchived ? 'Restore' : 'Archive',
+                        });
+                        if (!confirmed) return;
+                        const res = await testingService.updateDefect(projectId, d.id, {
+                          isArchived: !d.isArchived,
+                        });
+                        if (res.success) {
+                          toast.success(d.isArchived ? 'Defect restored' : 'Defect archived');
+                          void loadData();
+                        }
+                      }}
+                      title={d.isArchived ? 'Restore' : 'Archive'}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-300 hover:bg-white/10 transition-colors"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+  // Helper to render card grid for any defect array
+  const renderCardGrid = (items: QaDefectItem[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+      {items.map((d) => (
+        <div
+          key={d.id}
+          onClick={() => setDrawerDefectId(d.id)}
+          className={`rounded-2xl bg-[#111216] border border-[#27272A] hover:border-zinc-500 p-4 space-y-3 cursor-pointer transition-all shadow-sm ${
+            drawerDefectId === d.id ? 'border-rose-500/50 bg-[#16141a]' : ''
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-mono font-bold text-rose-400">{d.defectKey}</span>
+            <div className="flex items-center gap-1.5">
+              <TestingSeverityBadge severity={d.severity} />
+              <DefectStatusBadge status={d.status} />
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-xs sm:text-sm font-semibold text-white line-clamp-2">{d.title}</h3>
+            {d.description && (
+              <p className="text-xs text-zinc-400 line-clamp-2 mt-1">{d.description}</p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap text-[11px] text-zinc-400">
+            <TestingPriorityBadge priority={d.priority} />
+            {d.module && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">
+                <Layers className="w-2.5 h-2.5" />
+                {d.module.name}
+              </span>
+            )}
+            {d.environment && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-white/[0.05] text-zinc-300 border border-white/10">
+                <Server className="w-2.5 h-2.5 text-cyan-400" />
+                {d.environment}
+              </span>
+            )}
+            {d.buildVersion && (
+              <span className="font-mono text-[10px] text-zinc-500">{d.buildVersion}</span>
+            )}
+            {d.reopenCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                Reopened {d.reopenCount}x
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-[#27272A]/70 text-[11px] text-zinc-400 flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5" title={`Assignee: ${d.assignee?.name || 'Unassigned'}`}>
+                {d.assignee ? (
+                  <>
+                    <UserAvatar user={d.assignee} size="xs" />
+                    <span className="text-zinc-300 truncate max-w-[90px]">{d.assignee.name}</span>
+                  </>
+                ) : (
+                  <span className="text-zinc-500 italic">Unassigned</span>
+                )}
+              </div>
+              {d.reporter && (
+                <div className="flex items-center gap-1 text-[10.5px] text-zinc-400" title={`Reported by ${d.reporter.name}`}>
+                  <span className="text-zinc-500">by</span>
+                  <UserAvatar user={d.reporter} size="xs" />
+                  <span className="truncate max-w-[80px]">{d.reporter.name}</span>
+                </div>
+              )}
+            </div>
+            <span className="font-mono text-[10.5px] text-zinc-500 shrink-0">
+              {formatTestingDate(d.updatedAt)}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="p-6 max-w-[1680px] mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-[1680px] mx-auto space-y-5">
+      {/* Module Page Header */}
       <TestingPageHeader
         projectId={projectId}
         activeKey="defects"
-        icon={Bug}
-        title="Defects"
+        title={dynamicSubmoduleName}
         description="Track software bugs with strict QA verification: developer fixes await retest before closure, and reopens increment traceability counters."
-        badge={defects.length}
+        hideIcon
+        hideCategory
+        hideBadge
         actions={
-          canManage ? (
+          permissions.canManageDefects ? (
             <button
               type="button"
-              onClick={openCreateModal}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-lg"
+              onClick={() => {
+                setEditingDefect(null);
+                setModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-md hover:brightness-110 transition-all cursor-pointer"
               style={{ backgroundColor: accentColor }}
             >
               <Plus className="w-4 h-4" />
-              Log Defect
+              <span>Log Defect</span>
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono bg-black/30 border border-white/20">
+                ⇧D
+              </kbd>
             </button>
           ) : null
         }
       />
 
-      {/* Filter Toolbar */}
-      <div className="bg-[#12151B] border border-white/10 rounded-2xl p-4 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[240px]">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search defect key, title, build version..."
-            className="w-full bg-[#0B0D10] border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-gray-500"
-          />
+      {/* Top Database-Backed Metric Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+        {/* Card 1: Total Defects */}
+        <div className="p-4 rounded-2xl bg-[#111216] border border-[#27272A] shadow-sm flex items-center gap-3.5">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+          >
+            <Bug className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">Total Defects</div>
+            <div className="text-xl font-bold text-white mt-0.5">{totalCount}</div>
+            <div className="text-[10px] text-zinc-500 truncate">{meta.modules.length} app modules linked</div>
+          </div>
         </div>
-        <div className="w-44">
-          <AnimatedSelect
-            options={[{ value: 'ALL', label: 'All Statuses' }, ...DEFECT_STATUS_OPTIONS]}
-            value={statusFilter}
-            onChange={setStatusFilter}
-          />
+
+        {/* Card 2: Resolved / Closed */}
+        <div className="p-4 rounded-2xl bg-[#111216] border border-[#27272A] shadow-sm flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">Resolved / Closed</div>
+            <div className="text-xl font-bold text-emerald-400 mt-0.5">{resolvedCount}</div>
+            <div className="text-[10px] text-zinc-500 truncate">{resolutionRate}% resolution rate</div>
+          </div>
         </div>
-        <div className="w-44">
-          <AnimatedSelect
-            options={severityFilterOptions}
-            value={severityFilter}
-            onChange={setSeverityFilter}
-          />
+
+        {/* Card 3: Pending Retest */}
+        <div className="p-4 rounded-2xl bg-[#111216] border border-[#27272A] shadow-sm flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">Pending Retest</div>
+            <div className="text-xl font-bold text-amber-400 mt-0.5">{fixedCount}</div>
+            <div className="text-[10px] text-zinc-500 truncate">{openCount + inProgressCount} in progress</div>
+          </div>
         </div>
-        <div className="w-44">
-          <AnimatedSelect
-            options={[{ value: 'ALL', label: 'All Assignees' }, ...memberOptions.slice(1)]}
-            value={assigneeFilter}
-            onChange={setAssigneeFilter}
-          />
+
+        {/* Card 4: Critical / Blocker */}
+        <div className="p-4 rounded-2xl bg-[#111216] border border-[#27272A] shadow-sm flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0">
+            <Flame className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">Critical / Blocker</div>
+            <div className="text-xl font-bold text-rose-400 mt-0.5">{criticalCount}</div>
+            <div className="text-[10px] text-zinc-500 truncate">{reopenedCount} reopened bugs</div>
+          </div>
         </div>
-        <label className="inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer px-2">
-          <input
-            type="checkbox"
-            checked={includeArchived}
-            onChange={(e) => setIncludeArchived(e.target.checked)}
-            className="rounded border-white/20"
-          />
-          Show Archived
-        </label>
+
+        {/* Card 5: Traceability */}
+        <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-[#111216] border border-[#27272A] shadow-sm flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
+            <Link2 className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">Traceability</div>
+            <div className="text-xl font-bold text-cyan-400 mt-0.5">{traceabilityRate}%</div>
+            <div className="text-[10px] text-zinc-500 truncate">{linkedCount} tasks/reqs linked</div>
+          </div>
+        </div>
       </div>
 
-      {/* Defects Table */}
-      {loading ? (
-        <div className="space-y-2.5">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-16 rounded-2xl bg-[#12151B] border border-white/10 animate-pulse" />
-          ))}
-        </div>
-      ) : defects.length === 0 ? (
-        <div className="bg-[#12151B] border border-white/10 rounded-2xl p-12 text-center space-y-4">
-          <Bug className="w-10 h-10 text-gray-500 mx-auto" />
-          <div>
-            <h3 className="text-sm font-semibold text-white">No defects match current filters</h3>
-            <p className="text-xs text-gray-400 mt-1">
-              Log defects directly or trigger them from failed steps inside Test Runs.
-            </p>
-          </div>
-          {canManage && (
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white"
-              style={{ backgroundColor: accentColor }}
-            >
-              <Plus className="w-4 h-4" />
-              Log First Defect
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="bg-[#12151B] border border-white/10 rounded-2xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-white/10 bg-[#0B0D10] text-[11px] uppercase tracking-wider text-gray-400">
-                  <th className="py-3 px-4">ID</th>
-                  <th className="py-3 px-4">Defect Title</th>
-                  <th className="py-3 px-4">Severity</th>
-                  <th className="py-3 px-4">Priority</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Assignee</th>
-                  <th className="py-3 px-4">Links</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5 text-xs">
-                {defects.map((d) => (
-                  <tr
-                    key={d.id}
-                    onClick={() => setSelectedDefectId(d.id)}
-                    className={`cursor-pointer transition-colors hover:bg-white/[0.03] ${
-                      selectedDefectId === d.id ? 'bg-emerald-500/10' : ''
-                    }`}
-                  >
-                    <td className="py-3 px-4 font-mono text-rose-300 whitespace-nowrap">
-                      {d.defectKey}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-white line-clamp-1">{d.title}</div>
-                      <div className="flex items-center gap-2 text-[10px] text-gray-500 mt-0.5">
-                        {d.environment && <span>{d.environment}</span>}
-                        {d.buildVersion && <span>· {d.buildVersion}</span>}
-                        {d.reopenCount > 0 && (
-                          <span className="text-rose-400 font-semibold">
-                            · Reopened {d.reopenCount}x
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <TestingSeverityBadge severity={d.severity} />
-                    </td>
-                    <td className="py-3 px-4">
-                      <TestingPriorityBadge priority={d.priority} />
-                    </td>
-                    <td className="py-3 px-4">
-                      <DefectStatusBadge status={d.status} />
-                    </td>
-                    <td className="py-3 px-4">
-                      {d.assignee ? (
-                        <div className="flex items-center gap-2">
-                          <UserAvatar user={d.assignee} size="xs" />
-                          <span className="text-gray-200 truncate max-w-[120px]">{d.assignee.name}</span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-500">Unassigned</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-[11px] text-gray-400 whitespace-nowrap">
-                      {d.linkedTestCase && (
-                        <span className="mr-2 font-mono text-emerald-300">{d.linkedTestCase.caseKey}</span>
-                      )}
-                      {d.linkedDevTask && (
-                        <span className="font-mono text-sky-300">{d.linkedDevTask.taskKey}</span>
-                      )}
-                      {!d.linkedTestCase && !d.linkedDevTask && '—'}
-                    </td>
-                    <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      {canArchive && (
-                        <button
-                          type="button"
-                          onClick={() => void handleArchiveDefect(d)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-amber-300 hover:bg-white/5"
-                          title={d.isArchived ? 'Restore' : 'Archive'}
-                        >
-                          <Archive className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Defect Detail Drawer */}
-      {selectedDefectId && (
-        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm flex justify-end">
-          <div className="w-full max-w-3xl bg-[#101319] border-l border-white/10 h-full flex flex-col">
-            <div className="p-5 border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/35 text-rose-300">
-                  {defectDetail?.defectKey || '...'}
-                </span>
-                <div className="min-w-0">
-                  <h2 className="text-base font-semibold text-white truncate">
-                    {defectDetail?.title || 'Loading defect...'}
-                  </h2>
-                  {defectDetail && defectDetail.reopenCount > 0 && (
-                    <p className="text-[11px] text-rose-400 font-medium">
-                      Reopened {defectDetail.reopenCount} time(s)
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {canManage && defectDetail && (
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(defectDetail)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    Edit
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setSelectedDefectId(null)}
-                  className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/5"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              {detailLoading || !defectDetail ? (
-                <div className="h-64 rounded-xl bg-white/5 animate-pulse" />
-              ) : (
-                <>
-                  {/* Lifecycle Status Controls */}
-                  <div className="bg-[#161B24] border border-white/10 rounded-2xl p-4 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <TestingSeverityBadge severity={defectDetail.severity} size="sm" />
-                        <TestingPriorityBadge priority={defectDetail.priority} size="sm" />
-                        <DefectStatusBadge status={defectDetail.status} size="sm" />
-                      </div>
-                      {canManage && (
-                        <div className="w-52">
-                          <AnimatedSelect
-                            options={DEFECT_STATUS_OPTIONS}
-                            value={defectDetail.status}
-                            onChange={(val) => void handleStatusTransition(defectDetail.id, val)}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {defectDetail.status === 'Fixed' && (
-                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-200">
-                        <span>
-                          Developer marked this defect <strong>Fixed</strong>. QA verification is required before Verified/Closed.
-                        </span>
-                        {canManage && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void handleStatusTransition(defectDetail.id, 'Verified')}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold"
-                            >
-                              Verify Fix
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleStatusTransition(defectDetail.id, 'Reopened')}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              Reopen
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {defectDetail.verifiedBy && (
-                      <p className="text-[11px] text-emerald-300">
-                        Verified by {defectDetail.verifiedBy.name} on{' '}
-                        {formatTestingDateTime(defectDetail.verifiedAt)}
-                      </p>
-                    )}
-
-                    {defectDetail.description && (
-                      <p className="text-xs text-gray-300 whitespace-pre-wrap">{defectDetail.description}</p>
-                    )}
-                  </div>
-
-                  {/* Repro Details */}
-                  {(defectDetail.stepsToReproduce ||
-                    defectDetail.expectedResult ||
-                    defectDetail.actualResult) && (
-                    <div className="bg-[#161B24] border border-white/10 rounded-2xl p-4 space-y-3 text-xs">
-                      {defectDetail.stepsToReproduce && (
-                        <div>
-                          <span className="text-[11px] font-semibold text-gray-400 uppercase block mb-1">
-                            Steps to Reproduce
-                          </span>
-                          <pre className="whitespace-pre-wrap font-mono text-[11px] text-gray-200 bg-[#0B0D10] p-3 rounded-xl border border-white/10">
-                            {defectDetail.stepsToReproduce}
-                          </pre>
-                        </div>
-                      )}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {defectDetail.expectedResult && (
-                          <div className="bg-[#0B0D10] p-3 rounded-xl border border-white/10">
-                            <span className="text-[11px] font-semibold text-emerald-400 block mb-1">
-                              Expected
-                            </span>
-                            <p className="text-gray-300">{defectDetail.expectedResult}</p>
-                          </div>
-                        )}
-                        {defectDetail.actualResult && (
-                          <div className="bg-[#0B0D10] p-3 rounded-xl border border-white/10">
-                            <span className="text-[11px] font-semibold text-rose-400 block mb-1">
-                              Actual
-                            </span>
-                            <p className="text-gray-300">{defectDetail.actualResult}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Linked Artifacts */}
-                  <div className="bg-[#161B24] border border-white/10 rounded-2xl p-4 space-y-3 text-xs">
-                    <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Traceability Links
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {defectDetail.linkedTestCase && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            goToSubmodule('test-cases', { caseId: defectDetail.linkedTestCase!.id })
-                          }
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300"
-                        >
-                          <span>
-                            {defectDetail.linkedTestCase.caseKey}: {defectDetail.linkedTestCase.title}
-                          </span>
-                          <ExternalLink className="w-3 h-3" />
-                        </button>
-                      )}
-                      {defectDetail.linkedDevTask && (
-                        <span className="px-3 py-1.5 rounded-xl bg-sky-500/10 border border-sky-500/25 text-sky-300">
-                          Dev Task: {defectDetail.linkedDevTask.taskKey} — {defectDetail.linkedDevTask.title}
-                        </span>
-                      )}
-                      {defectDetail.linkedRequirement && (
-                        <span className="px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-300">
-                          Req: {defectDetail.linkedRequirement.code} — {defectDetail.linkedRequirement.title}
-                        </span>
-                      )}
-                    </div>
-
-                    {defectDetail.linkedExecutions.length > 0 && (
-                      <div className="space-y-1.5 pt-2">
-                        <span className="text-[11px] text-gray-400">Linked Test Executions</span>
-                        {defectDetail.linkedExecutions.map((ex) => (
-                          <div
-                            key={ex.id}
-                            onClick={() => goToSubmodule('test-runs', { runId: ex.testRunId })}
-                            className="bg-[#0B0D10] border border-white/10 rounded-xl px-3 py-2 flex items-center justify-between cursor-pointer hover:border-white/25"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="font-mono text-emerald-300">{ex.runKey}</span>
-                              <span className="text-white truncate">{ex.caseTitleSnapshot}</span>
-                              <span className="text-[10px] text-gray-500">#{ex.attemptNumber}</span>
-                            </div>
-                            <ExecutionStatusBadge status={ex.status} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Git Issues & MRs */}
-                  <div className="bg-[#161B24] border border-white/10 rounded-2xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
-                        Linked Git Issues & MRs ({defectDetail.gitLinks.length})
-                      </h3>
-                      {canManage && (
-                        <button
-                          type="button"
-                          onClick={() => void openGitLinkModal()}
-                          className="inline-flex items-center gap-1 text-xs text-indigo-300 hover:text-indigo-200"
-                        >
-                          <Link2 className="w-3.5 h-3.5" />
-                          Link Issue / MR
-                        </button>
-                      )}
-                    </div>
-                    {defectDetail.gitLinks.length === 0 ? (
-                      <p className="text-xs text-gray-500">No Git issues or merge requests linked.</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {defectDetail.gitLinks.map((gl) => (
-                          <div
-                            key={gl.id}
-                            className="bg-[#0B0D10] border border-white/10 rounded-xl px-3 py-2 flex items-center justify-between text-xs"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="uppercase text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 font-mono">
-                                {gl.recordType}
-                              </span>
-                              <span className="text-white truncate">
-                                #{gl.recordId} {gl.recordTitle || ''}
-                              </span>
-                            </div>
-                            {canManage && (
-                              <button
-                                type="button"
-                                onClick={() => void handleUnlinkGitRecord(gl.id)}
-                                className="p-1 text-gray-400 hover:text-red-400"
-                                title="Unlink"
-                              >
-                                <Unlink className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Attachments */}
-                  <TestingAttachmentsPanel
-                    projectId={projectId}
-                    entityType="defect"
-                    entityId={defectDetail.id}
-                    attachments={defectDetail.attachments}
-                    availableDocuments={meta?.projectDocuments || []}
-                    canEdit={canManage}
-                    title="Screenshots & Crash Logs"
-                    onUpdated={() => void loadDefectDetail(defectDetail.id)}
-                  />
-
-                  {/* Activity Log */}
-                  <div className="bg-[#161B24] border border-white/10 rounded-2xl p-4 space-y-2.5">
-                    <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                      Activity Timeline
-                    </h3>
-                    {defectDetail.activities.length === 0 ? (
-                      <p className="text-xs text-gray-500">No activity recorded yet.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {defectDetail.activities.map((act) => (
-                          <div
-                            key={act.id}
-                            className="flex items-center justify-between text-[11px] bg-[#0B0D10] border border-white/10 rounded-xl px-3 py-2"
-                          >
-                            <div className="flex items-center gap-2">
-                              <UserAvatar user={act.actor} size="xs" />
-                              <span className="text-gray-200 font-medium">{act.actor?.name || 'System'}</span>
-                              <span className="text-gray-400">
-                                {act.action.replace(/_/g, ' ')}
-                                {act.field ? ` (${act.field}: ${act.previousValue || '—'} → ${act.newValue || '—'})` : ''}
-                              </span>
-                            </div>
-                            <span className="text-gray-500">{formatTestingDate(act.createdAt)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Create / Edit Defect Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-[#12151B] border border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white">
-                {editingDefect ? `Edit ${editingDefect.defectKey}` : 'Log Defect'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setModalOpen(false)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleSaveDefect} className="p-5 overflow-y-auto space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">Title *</label>
+      {/* Main Content Grid: Left Content (9 cols) + Right Summary Box (3 cols) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+        {/* Left Column: Clean Toolbar + Defects Table / Cards (9 cols) */}
+        <div className="xl:col-span-9 space-y-3.5">
+          {/* Streamlined Toolbar: Search + Icon-Only Filter Button + Icon-Only Sort & Group Button + View Switcher + Refresh */}
+          <div className="rounded-2xl bg-[#111216] border border-[#27272A] p-2.5 sm:p-3 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              {/* Search Bar */}
+              <div className="flex-1 min-w-[200px] sm:min-w-[280px] relative">
+                <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
-                  required
-                  value={form.title}
-                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                  className="w-full bg-[#0B0D10] border border-white/15 rounded-xl px-3 py-2 text-xs text-white"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search DEF-001, title, steps, build..."
+                  className="w-full h-9 bg-[#0B0D12] border border-[#27272A] rounded-xl pl-9 pr-8 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-rose-500/60 transition-colors"
                 />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MasterOptionSelect
-                  projectId={projectId}
-                  category="defectSeverities"
-                  label="Severity"
-                  options={config?.defectSeverities || []}
-                  value={form.severity}
-                  onChange={(val) => setForm((p) => ({ ...p, severity: val }))}
-                />
-                <MasterOptionSelect
-                  projectId={projectId}
-                  category="priorities"
-                  label="Priority"
-                  options={config?.priorities || []}
-                  value={form.priority}
-                  onChange={(val) => setForm((p) => ({ ...p, priority: val }))}
-                />
-                <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1.5">Status</label>
-                  <AnimatedSelect
-                    options={DEFECT_STATUS_OPTIONS}
-                    value={form.status}
-                    onChange={(val) => setForm((p) => ({ ...p, status: val }))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1.5">Assignee</label>
-                  <AnimatedSelect
-                    options={memberOptions}
-                    value={form.assigneeId}
-                    onChange={(val) => setForm((p) => ({ ...p, assigneeId: val }))}
-                  />
-                </div>
-                <MasterOptionSelect
-                  projectId={projectId}
-                  category="environments"
-                  label="Environment"
-                  options={config?.environments || []}
-                  value={form.environment}
-                  onChange={(val) => setForm((p) => ({ ...p, environment: val }))}
-                />
-                <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1.5">Build Version</label>
-                  <input
-                    type="text"
-                    value={form.buildVersion}
-                    onChange={(e) => setForm((p) => ({ ...p, buildVersion: e.target.value }))}
-                    className="w-full bg-[#0B0D10] border border-white/15 rounded-xl px-3 py-2 text-xs text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1.5">Linked Dev Task</label>
-                  <AnimatedSelect
-                    options={devTaskOptions}
-                    value={form.linkedDevTaskId}
-                    onChange={(val) => setForm((p) => ({ ...p, linkedDevTaskId: val }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1.5">Linked Requirement</label>
-                  <AnimatedSelect
-                    options={requirementOptions}
-                    value={form.linkedRequirementId}
-                    onChange={(val) => setForm((p) => ({ ...p, linkedRequirementId: val }))}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">Description</label>
-                <textarea
-                  rows={2}
-                  value={form.description}
-                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                  className="w-full bg-[#0B0D10] border border-white/15 rounded-xl px-3 py-2 text-xs text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">Steps to Reproduce</label>
-                <textarea
-                  rows={2}
-                  value={form.stepsToReproduce}
-                  onChange={(e) => setForm((p) => ({ ...p, stepsToReproduce: e.target.value }))}
-                  className="w-full bg-[#0B0D10] border border-white/15 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1.5">Expected Result</label>
-                  <textarea
-                    rows={2}
-                    value={form.expectedResult}
-                    onChange={(e) => setForm((p) => ({ ...p, expectedResult: e.target.value }))}
-                    className="w-full bg-[#0B0D10] border border-white/15 rounded-xl px-3 py-2 text-xs text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1.5">Actual Result</label>
-                  <textarea
-                    rows={2}
-                    value={form.actualResult}
-                    onChange={(e) => setForm((p) => ({ ...p, actualResult: e.target.value }))}
-                    className="w-full bg-[#0B0D10] border border-white/15 rounded-xl px-3 py-2 text-xs text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs bg-white/5 text-gray-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  {saving ? 'Saving...' : editingDefect ? 'Save Changes' : 'Create Defect'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Git Link Modal */}
-      {gitLinkOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#12151B] border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white">Link Git Issue or Merge Request</h3>
-              <button
-                type="button"
-                onClick={() => setGitLinkOpen(false)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleLinkGitRecord} className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">Record Type</label>
-                <AnimatedSelect
-                  options={[
-                    { value: 'issue', label: 'Git Issue' },
-                    { value: 'merge_request', label: 'Merge Request' },
-                  ]}
-                  value={gitLinkType}
-                  onChange={(val) => {
-                    setGitLinkType(val as 'issue' | 'merge_request');
-                    setGitRecordId('');
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">
-                  {gitLinkType === 'issue' ? 'Select Issue' : 'Select Merge Request'}
-                </label>
-                {gitOptionsLoading ? (
-                  <div className="h-9 rounded-xl bg-white/5 animate-pulse" />
-                ) : (
-                  <AnimatedSelect
-                    options={(gitLinkType === 'issue' ? gitIssues : gitMrs).map((item) => ({
-                      value: String(item.iid || item.id),
-                      label: `#${item.iid || item.id} — ${item.title || 'Untitled'}`,
-                      sublabel: item.state,
-                    }))}
-                    value={gitRecordId}
-                    onChange={setGitRecordId}
-                    placeholder="Choose record..."
-                  />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
-              <div className="flex justify-end gap-2">
+
+              {/* Action Buttons: Icon-Only Filter + Icon-Only Sort & Group + View Switcher + Refresh */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* ── 1. ICON-ONLY FILTER BUTTON ────────────────────────────── */}
+                <div ref={filterRef} className="relative">
+                  <button
+                    type="button"
+                    title={activeFilterCount > 0 ? `Filter options (${activeFilterCount} active)` : 'Filter options'}
+                    aria-label="Filter options"
+                    onClick={() => {
+                      setIsFilterOpen((prev) => !prev);
+                      setIsSortGroupOpen(false);
+                      setIsGroupByHovered(false);
+                    }}
+                    className={`relative w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+                      activeFilterCount > 0
+                        ? 'bg-rose-500/15 border-rose-500/40 text-rose-300 shadow-sm'
+                        : isFilterOpen
+                        ? 'bg-[#181A22] border-zinc-500 text-white'
+                        : 'bg-[#111216] border-[#27272A] text-zinc-400 hover:text-white hover:border-zinc-600'
+                    }`}
+                  >
+                    <ListFilter size={15} style={activeFilterCount > 0 ? { color: accentColor } : undefined} />
+                    {activeFilterCount > 0 && (
+                      <span
+                        className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full text-[9.5px] font-mono font-bold text-white flex items-center justify-center shadow-md border border-[#111216]"
+                        style={{ backgroundColor: accentColor }}
+                      >
+                        {activeFilterCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Clean, Zero-Horizontal-Scrollbar Filter Popover with AnimatedSelect */}
+                  <AnimatePresence>
+                    {isFilterOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                        transition={{ duration: 0.16 }}
+                        className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-[340px] sm:w-[380px] rounded-2xl bg-[#12141C] border border-[#27272A] shadow-2xl z-50 overflow-visible text-xs"
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-[#27272A] bg-[#161824] rounded-t-2xl">
+                          <div className="flex items-center gap-2">
+                            <ListFilter className="w-4 h-4" style={{ color: accentColor }} />
+                            <span className="font-semibold text-white">Filter Defects</span>
+                            {activeFilterCount > 0 && (
+                              <span
+                                className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold text-white"
+                                style={{ backgroundColor: accentColor }}
+                              >
+                                {activeFilterCount} active
+                              </span>
+                            )}
+                          </div>
+                          {activeFilterCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleResetFilters}
+                              className="text-[11px] font-mono text-zinc-400 hover:text-white underline cursor-pointer"
+                            >
+                              Reset all
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Body with AnimatedSelect (overflow-visible + dropdownPosition="top" for bottom selects prevents any scrollbar/cutting) */}
+                        <div className="p-4 space-y-3 relative overflow-visible">
+                          <div>
+                            <label className="block text-[11px] font-medium text-zinc-400 mb-1">Status</label>
+                            <AnimatedSelect
+                              options={DEFECT_STATUS_FILTER_OPTIONS}
+                              value={filterStatus}
+                              onChange={setFilterStatus}
+                              placeholder="All Statuses"
+                              dropdownMinWidth="w-full"
+                              accentColor={accentColor}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div className="min-w-0">
+                              <label className="block text-[11px] font-medium text-zinc-400 mb-1">Severity</label>
+                              <AnimatedSelect
+                                options={severityFilterOptions}
+                                value={filterSeverity}
+                                onChange={setFilterSeverity}
+                                placeholder="All Severities"
+                                dropdownMinWidth="w-full"
+                                accentColor={accentColor}
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <label className="block text-[11px] font-medium text-zinc-400 mb-1">Priority</label>
+                              <AnimatedSelect
+                                options={priorityFilterOptions}
+                                value={filterPriority}
+                                onChange={setFilterPriority}
+                                placeholder="All Priorities"
+                                dropdownMinWidth="w-full"
+                                dropdownAlign="right"
+                                accentColor={accentColor}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div className="min-w-0">
+                              <label className="block text-[11px] font-medium text-zinc-400 mb-1">Assigned Developer</label>
+                              <AnimatedSelect
+                                options={assigneeFilterOptions}
+                                value={filterAssigneeId}
+                                onChange={setFilterAssigneeId}
+                                placeholder="All Developers"
+                                dropdownMinWidth="w-full"
+                                accentColor={accentColor}
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <label className="block text-[11px] font-medium text-zinc-400 mb-1">Environment</label>
+                              <AnimatedSelect
+                                options={environmentFilterOptions}
+                                value={filterEnvironment}
+                                onChange={setFilterEnvironment}
+                                placeholder="All Environments"
+                                dropdownMinWidth="w-full"
+                                dropdownAlign="right"
+                                accentColor={accentColor}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-medium text-zinc-400 mb-1">Linked Dev Task</label>
+                            <AnimatedSelect
+                              options={devTaskFilterOptions}
+                              value={filterDevTaskId}
+                              onChange={setFilterDevTaskId}
+                              placeholder="All Development Tasks"
+                              dropdownMinWidth="w-full"
+                              dropdownPosition="top"
+                              accentColor={accentColor}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-medium text-zinc-400 mb-1">Linked Requirement</label>
+                            <AnimatedSelect
+                              options={reqFilterOptions}
+                              value={filterReqId}
+                              onChange={setFilterReqId}
+                              placeholder="All Requirements"
+                              dropdownMinWidth="w-full"
+                              dropdownPosition="top"
+                              accentColor={accentColor}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Footer Strip */}
+                        <div className="px-4 py-2.5 border-t border-[#27272A] bg-[#161824] rounded-b-2xl flex items-center justify-between">
+                          <CustomCheckbox
+                            checked={includeArchived}
+                            onChange={setIncludeArchived}
+                            label="Include Archived"
+                            accentColor={accentColor}
+                            size="sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setIsFilterOpen(false)}
+                            className="px-4 py-1.5 rounded-xl text-xs font-semibold text-white shadow-md hover:brightness-110 transition-all cursor-pointer"
+                            style={{ backgroundColor: accentColor }}
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* ── 2. ICON-ONLY SORT & GROUP BUTTON (WITH SUBMENU FLYOUT) ── */}
+                <div ref={sortGroupRef} className="relative">
+                  <button
+                    type="button"
+                    title={isSortGroupModified ? 'Sort & Group options (modified)' : 'Sort & Group options'}
+                    aria-label="Sort & Group options"
+                    onClick={() => {
+                      setIsSortGroupOpen((prev) => !prev);
+                      setIsFilterOpen(false);
+                      setIsGroupByHovered(false);
+                    }}
+                    className={`relative w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+                      isSortGroupModified
+                        ? 'bg-purple-500/15 border-purple-500/40 text-purple-300 shadow-sm'
+                        : isSortGroupOpen
+                        ? 'bg-[#181A22] border-zinc-500 text-white'
+                        : 'bg-[#111216] border-[#27272A] text-zinc-400 hover:text-white hover:border-zinc-600'
+                    }`}
+                  >
+                    <ArrowUpDown size={15} style={isSortGroupModified ? { color: accentColor } : undefined} />
+                    {isSortGroupModified && (
+                      <span
+                        className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-[#111216]"
+                        style={{ backgroundColor: accentColor }}
+                      />
+                    )}
+                  </button>
+
+                  {/* Combined Sort & Group Popover Panel */}
+                  <AnimatePresence>
+                    {isSortGroupOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                        transition={{ duration: 0.16 }}
+                        className="absolute right-0 top-full mt-2 w-64 max-h-[calc(100vh-120px)] overflow-visible rounded-2xl bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] p-2 shadow-2xl z-50 space-y-1.5 text-left"
+                      >
+                        {/* Section 1: Sort by */}
+                        <div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 flex items-center justify-between">
+                          <span>Sort by</span>
+                          <Calendar size={11} className="text-zinc-500" />
+                        </div>
+                        <div className="space-y-0.5">
+                          {SORT_OPTIONS.map((opt) => {
+                            const isSelected = sortValue === opt.key;
+                            return (
+                              <motion.button
+                                key={opt.key}
+                                type="button"
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => {
+                                  setSortValue(opt.key);
+                                }}
+                                className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer border ${
+                                  isSelected
+                                    ? 'font-medium shadow-sm'
+                                    : 'text-[#D4D4D8] border-transparent hover:bg-white/[0.06] hover:text-white'
+                                }`}
+                                style={
+                                  isSelected
+                                    ? {
+                                        backgroundColor: `${accentColor}20`,
+                                        borderColor: `${accentColor}40`,
+                                        color: '#FFFFFF',
+                                      }
+                                    : undefined
+                                }
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {opt.icon}
+                                  <div className="text-left truncate">
+                                    <div className="truncate font-medium text-white">{opt.label}</div>
+                                    <div className="text-[10px] text-zinc-500">{opt.sublabel}</div>
+                                  </div>
+                                </div>
+                                {isSelected && <Check size={12} style={{ color: accentColor }} />}
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Divider */}
+                        <div className="my-1 border-t border-[#27272A]/80" />
+
+                        {/* Section 2: Group by with Submenu Flyout */}
+                        <div
+                          className="relative"
+                          onMouseEnter={() => setIsGroupByHovered(true)}
+                          onMouseLeave={() => setIsGroupByHovered(false)}
+                        >
+                          <motion.button
+                            type="button"
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setIsGroupByHovered((p) => !p)}
+                            className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer group border ${
+                              groupBy !== 'none'
+                                ? 'font-medium shadow-sm'
+                                : 'text-[#D4D4D8] border-transparent hover:bg-white/[0.06] hover:text-white'
+                            }`}
+                            style={
+                              groupBy !== 'none'
+                                ? {
+                                    backgroundColor: `${accentColor}18`,
+                                    borderColor: `${accentColor}35`,
+                                    color: '#FFFFFF',
+                                  }
+                                : undefined
+                            }
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="shrink-0 flex items-center justify-center">
+                                <Layers size={14} className="text-purple-400" />
+                              </span>
+                              <span className="font-semibold text-white">Group by</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium border ${
+                                  groupBy !== 'none'
+                                    ? 'bg-white/10 text-white'
+                                    : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60'
+                                }`}
+                                style={
+                                  groupBy !== 'none'
+                                    ? { borderColor: `${accentColor}50`, color: accentColor }
+                                    : undefined
+                                }
+                              >
+                                {activeGroupMeta.shortLabel}
+                              </span>
+                              <ChevronRight
+                                size={13}
+                                className="text-zinc-500 group-hover:translate-x-0.5 transition-transform"
+                              />
+                            </div>
+                          </motion.button>
+
+                          {/* Submenu Flyout */}
+                          <AnimatePresence>
+                            {isGroupByHovered && (
+                              <motion.div
+                                initial={{ opacity: 0, x: -8, scale: 0.96 }}
+                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                exit={{ opacity: 0, x: -8, scale: 0.96 }}
+                                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                                className="absolute right-full bottom-0 pr-2 z-[9990]"
+                              >
+                                <div className="w-60 max-h-[75vh] overflow-y-auto rounded-2xl bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] p-2 shadow-2xl space-y-1 text-left">
+                                  <div className="px-2.5 py-1 text-[9.5px] font-mono uppercase tracking-wider text-zinc-500 flex items-center justify-between">
+                                    <span>Group By</span>
+                                    <Layers size={11} className="text-zinc-500" />
+                                  </div>
+                                  {GROUP_OPTIONS.map((grp) => {
+                                    const isSelected = groupBy === grp.key;
+                                    return (
+                                      <motion.button
+                                        key={grp.key}
+                                        type="button"
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => {
+                                          setGroupBy(grp.key);
+                                          setIsGroupByHovered(false);
+                                          setIsSortGroupOpen(false);
+                                        }}
+                                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer border ${
+                                          isSelected
+                                            ? 'font-medium shadow-sm'
+                                            : 'text-[#D4D4D8] border-transparent hover:bg-white/[0.06] hover:text-white'
+                                        }`}
+                                        style={
+                                          isSelected
+                                            ? {
+                                                backgroundColor: `${accentColor}20`,
+                                                borderColor: `${accentColor}40`,
+                                                color: '#FFFFFF',
+                                              }
+                                            : undefined
+                                        }
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          {grp.icon}
+                                          <div className="text-left truncate">
+                                            <div className="truncate font-medium text-white">{grp.label}</div>
+                                            <div className="text-[10px] text-zinc-500">{grp.sublabel}</div>
+                                          </div>
+                                        </div>
+                                        {isSelected && <Check size={12} style={{ color: accentColor }} />}
+                                      </motion.button>
+                                    );
+                                  })}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+
+                        {/* Reset to Default Button */}
+                        <div className="pt-2 border-t border-[#27272A]/70">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGroupBy('none');
+                              setSortValue('severity:desc');
+                              setIsSortGroupOpen(false);
+                              setIsGroupByHovered(false);
+                            }}
+                            className="w-full py-1.5 px-2 rounded-lg text-center text-[11px] font-mono text-zinc-400 hover:text-white hover:bg-white/[0.04] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <RotateCcw size={12} />
+                            <span>Reset to Default</span>
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* ── 3. VIEW MODE SWITCHER (LIST / CARDS WITH SPRING PILL) ─── */}
+                <div className="flex items-center bg-[#111216] border border-[#27272A] rounded-xl p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    className={`relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+                      viewMode === 'list' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                    title="List View"
+                  >
+                    {viewMode === 'list' && (
+                      <motion.span
+                        layoutId="defectViewModePill"
+                        className="absolute inset-0 rounded-lg bg-[#1C1E26] border border-[#2E313D]"
+                        transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                      />
+                    )}
+                    <List className="w-3.5 h-3.5 relative z-10" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('cards')}
+                    className={`relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+                      viewMode === 'cards' ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                    title="Card View"
+                  >
+                    {viewMode === 'cards' && (
+                      <motion.span
+                        layoutId="defectViewModePill"
+                        className="absolute inset-0 rounded-lg bg-[#1C1E26] border border-[#2E313D]"
+                        transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                      />
+                    )}
+                    <LayoutGrid className="w-3.5 h-3.5 relative z-10" />
+                  </button>
+                </div>
+
+                {/* ── 4. REFRESH BUTTON ─────────────────────────────────────── */}
                 <button
                   type="button"
-                  onClick={() => setGitLinkOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs bg-white/5 text-gray-300"
+                  onClick={() => void loadData()}
+                  title="Refresh defects"
+                  className="w-8 h-8 rounded-xl bg-[#161820] border border-[#27272A] flex items-center justify-center text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors cursor-pointer"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!gitRecordId}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  Link Record
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
-            </form>
+            </div>
+
+            {/* Active Filter Chips Strip */}
+            {activeFilters.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[#27272A]/50">
+                <span className="text-[10px] font-mono uppercase text-zinc-500 mr-0.5">Filters:</span>
+                {activeFilters.map((flt, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-white/[0.06] text-zinc-200 border border-white/10"
+                  >
+                    <span>{flt.label}</span>
+                    <button
+                      type="button"
+                      onClick={flt.onClear}
+                      className="text-zinc-400 hover:text-white cursor-pointer ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="text-[11px] text-zinc-400 hover:text-white underline cursor-pointer ml-1"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+
+            {/* Bulk Selection Actions Strip */}
+            {selectedIds.length > 0 && (
+              <div className="flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl bg-rose-500/10 border border-rose-500/30">
+                <span className="text-xs font-medium text-rose-300">
+                  {selectedIds.length} defect(s) selected
+                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {permissions.canManageDefects && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleBulkStatus('Open')}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 transition-colors cursor-pointer"
+                      >
+                        Mark Open
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleBulkStatus('Fixed')}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 transition-colors cursor-pointer"
+                      >
+                        Mark Fixed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleBulkStatus('Verified')}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30 transition-colors cursor-pointer"
+                      >
+                        Verify (QA)
+                      </button>
+                    </>
+                  )}
+                  {permissions.canArchiveRecords && (
+                    <button
+                      type="button"
+                      onClick={() => void handleBulkArchive()}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/15 text-red-300 hover:bg-red-500/25 transition-colors cursor-pointer"
+                    >
+                      <Archive className="w-3 h-3" />
+                      Archive
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Main Defect List / Cards Content */}
+          {loading ? (
+            <div className="space-y-2.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-16 rounded-2xl bg-[#111216] border border-[#27272A] animate-pulse" />
+              ))}
+            </div>
+          ) : processedDefects.length === 0 ? (
+            <div className="rounded-2xl bg-[#111216] border border-[#27272A] p-12 text-center space-y-3">
+              <Bug className="w-10 h-10 text-zinc-600 mx-auto" />
+              <h3 className="text-sm font-semibold text-white">No defects match these criteria</h3>
+              <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                Log your first defect with steps to reproduce, or clear active filters to view all issues.
+              </p>
+              {permissions.canManageDefects && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingDefect(null);
+                    setModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-md hover:brightness-110 cursor-pointer"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Log Defect</span>
+                  <kbd className="px-1 py-0.5 rounded text-[10px] font-mono bg-black/30 border border-white/20">
+                    ⇧D
+                  </kbd>
+                </button>
+              )}
+            </div>
+          ) : groupBy !== 'none' && groupedDefects ? (
+            /* ── GROUPED ACCORDION VIEW ────────────────────────────────────── */
+            <div className="space-y-4">
+              {groupedDefects.map((grp) => {
+                const isCollapsed = Boolean(collapsedGroups[grp.id]);
+                const grpResolvedCount = grp.items.filter(
+                  (d) => d.status === 'Verified' || d.status === 'Closed'
+                ).length;
+                const grpCriticalCount = grp.items.filter(
+                  (d) => d.severity.toLowerCase() === 'critical' || d.severity.toLowerCase() === 'blocker'
+                ).length;
+
+                return (
+                  <div
+                    key={grp.id}
+                    className="rounded-2xl bg-[#111216] border border-[#27272A] overflow-hidden shadow-sm"
+                  >
+                    {/* Collapsible Accordion Header */}
+                    <button
+                      type="button"
+                      onClick={() => toggleGroupCollapse(grp.id)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-[#13151D]/90 hover:bg-[#181A24] border-b border-[#27272A]/70 transition-colors cursor-pointer select-none text-left"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {isCollapsed ? (
+                          <ChevronRight className="w-4 h-4 text-zinc-400 shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+                        )}
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: grp.color || accentColor }}
+                        />
+                        <span className="text-xs sm:text-sm font-semibold text-white truncate">
+                          {grp.title}
+                        </span>
+                        {grp.sublabel && (
+                          <span className="hidden md:inline text-[11px] text-zinc-500 font-mono truncate">
+                            ({grp.sublabel})
+                          </span>
+                        )}
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#1A1C26] border border-[#27272A] text-zinc-300 shrink-0">
+                          {grp.items.length} {grp.items.length === 1 ? 'defect' : 'defects'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0 text-[11px] font-mono text-zinc-400">
+                        <span>{grpResolvedCount} Resolved</span>
+                        {grpCriticalCount > 0 && (
+                          <span className="hidden sm:inline text-rose-400">
+                            • {grpCriticalCount} Critical
+                          </span>
+                        )}
+                      </div>
+                    </button>
+
+                    {/* Group Items Body */}
+                    {!isCollapsed && (
+                      <div className="p-3">
+                        {viewMode === 'list'
+                          ? renderTableRows(grp.items)
+                          : renderCardGrid(grp.items)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : viewMode === 'list' ? (
+            /* ── FLAT TABLE VIEW ──────────────────────────────────────────── */
+            <div className="rounded-2xl bg-[#111216] border border-[#27272A] overflow-hidden shadow-sm">
+              {renderTableRows(processedDefects)}
+            </div>
+          ) : (
+            /* ── FLAT CARDS VIEW ─────────────────────────────────────────── */
+            renderCardGrid(processedDefects)
+          )}
         </div>
+
+        {/* Right Column: QA Summary & Quality Health Box (3 cols) */}
+        <aside className="xl:col-span-3 space-y-4">
+          {/* Quality Health Score Card */}
+          <div className="rounded-2xl bg-[#111216] border border-[#27272A] p-4 sm:p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" style={{ color: accentColor }} />
+                <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Quality Health</h3>
+              </div>
+              <span
+                className="text-xs font-mono font-bold px-2 py-0.5 rounded-md"
+                style={{
+                  backgroundColor: `${accentColor}20`,
+                  color: accentColor,
+                }}
+              >
+                {healthScore}/100
+              </span>
+            </div>
+
+            {/* Progress Bars for Health Telemetry */}
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-300">Resolution Rate</span>
+                  <span className="font-mono text-zinc-200 font-semibold">{resolutionRate}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[#1C1E26] overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${resolutionRate}%` }}
+                    transition={{ duration: 0.5 }}
+                    className="h-full rounded-full bg-emerald-400"
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-500 font-mono">
+                  {resolvedCount} of {totalCount} verified/closed
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-300">Active Triage</span>
+                  <span className="font-mono text-zinc-200 font-semibold">{activeTriageRate}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[#1C1E26] overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${activeTriageRate}%` }}
+                    transition={{ duration: 0.5, delay: 0.08 }}
+                    className="h-full rounded-full bg-blue-400"
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-500 font-mono">
+                  {openCount + inProgressCount} open · {reopenedCount} reopened
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-300">Traceability</span>
+                  <span className="font-mono text-zinc-200 font-semibold">{traceabilityRate}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[#1C1E26] overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${traceabilityRate}%` }}
+                    transition={{ duration: 0.5, delay: 0.16 }}
+                    className="h-full rounded-full bg-cyan-400"
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-500 font-mono">
+                  {linkedCount} linked to tasks &amp; tests
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Action Tiles */}
+          <div className="rounded-2xl bg-[#111216] border border-[#27272A] p-4 sm:p-5 shadow-sm space-y-3">
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Quick Actions</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {permissions.canManageDefects && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingDefect(null);
+                    setModalOpen(true);
+                  }}
+                  className="flex flex-col items-center justify-center gap-1 py-2.5 px-1.5 rounded-xl bg-[#161820] border border-[#27272A] hover:border-zinc-500 text-zinc-300 hover:text-white transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  <span className="text-[10px] font-medium">New Defect</span>
+                  <span className="text-[9px] font-mono text-zinc-500">⇧D</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="flex flex-col items-center justify-center gap-1 py-2.5 px-1.5 rounded-xl bg-[#161820] border border-[#27272A] hover:border-zinc-500 text-zinc-300 hover:text-white transition-all cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" />
+                <span className="text-[10px] font-medium">
+                  {selectedIds.length === processedDefects.length ? 'Clear All' : 'Select All'}
+                </span>
+                <span className="text-[9px] font-mono text-zinc-500">{processedDefects.length} total</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Priority Breakdown Box */}
+          <div className="rounded-2xl bg-[#111216] border border-[#27272A] p-4 sm:p-5 shadow-sm space-y-3">
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Priority Distribution</h3>
+            <div className="space-y-2">
+              {priorityStats.map((item) => {
+                const pct = totalCount > 0 ? Math.round((item.count / totalCount) * 100) : 0;
+                return (
+                  <div key={item.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5 text-zinc-300">
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        {item.name}
+                      </span>
+                      <span className="font-mono text-zinc-400 text-[11px]">
+                        {item.count} <span className="text-zinc-600">({pct}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-1 rounded-full bg-[#1C1E26] overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: item.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Severity Breakdown Box */}
+          <div className="rounded-2xl bg-[#111216] border border-[#27272A] p-4 sm:p-5 shadow-sm space-y-3">
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Severity Distribution</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {severityStats.map((item) => (
+                <div
+                  key={item.name}
+                  onClick={() => setFilterSeverity(item.name)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#161820] border border-[#27272A] text-[11px] cursor-pointer hover:border-zinc-500 transition-colors"
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="text-zinc-300">{item.name}</span>
+                  <span className="font-mono text-zinc-400 font-semibold">{item.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Git Traceability Box */}
+          <div className="rounded-2xl bg-[#111216] border border-[#27272A] p-4 sm:p-5 shadow-sm space-y-3 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-indigo-400">
+                <GitBranch size={15} />
+                <h3 className="text-xs font-semibold text-white uppercase tracking-wider">
+                  Git Traceability
+                </h3>
+              </div>
+              <span className="text-[10px] font-mono text-zinc-500">
+                {meta.gitRepositories.length} repo(s)
+              </span>
+            </div>
+
+            {meta.gitRepositories.length > 0 ? (
+              <div className="space-y-1.5">
+                {meta.gitRepositories.map((repo) => (
+                  <div
+                    key={repo.id}
+                    className="p-2.5 rounded-xl bg-[#0B0D12] border border-[#27272A] flex items-center justify-between text-xs"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-mono font-semibold text-zinc-200 truncate">
+                        {repo.name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-mono">
+                        {repo.provider} • branch {repo.defaultBranch || 'main'}
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                      Active
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-zinc-500 italic">
+                No Git repositories linked to this project yet.
+              </p>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {/* Slide-over Create / Edit Defect Drawer Modal */}
+      {config && (
+        <DefectModal
+          projectId={projectId}
+          isOpen={modalOpen}
+          editingDefect={editingDefect}
+          meta={meta}
+          config={config}
+          permissions={permissions}
+          projectSubmoduleId={submoduleId}
+          onConfigUpdated={(cfg) => setConfig(cfg)}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingDefect(null);
+          }}
+          onSaved={(saved) => {
+            setModalOpen(false);
+            setEditingDefect(null);
+            void loadData();
+            setDrawerDefectId(saved.id);
+          }}
+        />
       )}
+
+      {/* Slide-over Defect Details Drawer */}
+      <DefectDrawer
+        projectId={projectId}
+        defectId={drawerDefectId}
+        meta={meta}
+        config={config}
+        permissions={permissions}
+        onClose={() => setDrawerDefectId(null)}
+        onEdit={(detail) => {
+          setDrawerDefectId(null);
+          setEditingDefect(detail);
+          setModalOpen(true);
+        }}
+        onArchived={() => {
+          setDrawerDefectId(null);
+          void loadData();
+        }}
+        onStatusChanged={() => {
+          void loadData();
+        }}
+      />
     </div>
   );
 };

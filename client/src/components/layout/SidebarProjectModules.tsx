@@ -23,8 +23,6 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
 
   const projectModules = propModules !== undefined ? propModules : contextModules;
 
-  const seenBuiltInKeys = new Set<string>();
-
   // Filter visible modules
   const visibleModules = projectModules.filter((mod) => mod.isVisible);
 
@@ -57,24 +55,8 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
   const projectBase = orgSlug ? `/organizations/${orgSlug}/projects/${projectId}` : `/projects/${projectId}`;
 
   const getSubmodulePath = (sub: ProjectSubmodule) => {
-    if (sub.type === 'built_in' && sub.builtInKey) {
-      if (sub.builtInKey === 'overview') {
-        return projectBase;
-      }
-      if (sub.builtInKey === 'whiteboard') {
-        return `${projectBase}/whiteboard/${sub.id}`;
-      }
-      if (
-        sub.builtInKey === 'documents.knowledge_base' ||
-        sub.builtInKey === 'docs' ||
-        sub.builtInKey === 'documents'
-      ) {
-        return `${projectBase}/documents/${sub.id}`;
-      }
-      if (sub.builtInKey === 'development' || sub.builtInKey === 'development.management') {
-        return `${projectBase}/development`;
-      }
-      return `${projectBase}/${sub.builtInKey}`;
+    if (sub.type === 'built_in' && sub.builtInKey === 'overview' && !sub.moduleId) {
+      return projectBase;
     }
     return `${projectBase}/submodules/${sub.id}`;
   };
@@ -155,21 +137,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
         const allSubmodules = [...(mod.submodules || [])].sort(
           (a, b) => (a.position ?? 0) - (b.position ?? 0)
         );
-        const visibleSubmodules = allSubmodules.filter((sub) => {
-          if (!sub.isVisible) return false;
-          if (sub.type === 'built_in' && sub.builtInKey) {
-            const isMultiInstance =
-              sub.builtInKey === 'whiteboard' ||
-              sub.builtInKey === 'docs' ||
-              sub.builtInKey === 'documents' ||
-              sub.builtInKey === 'documents.knowledge_base';
-            if (!isMultiInstance) {
-              if (seenBuiltInKeys.has(sub.builtInKey)) return false;
-              seenBuiltInKeys.add(sub.builtInKey);
-            }
-          }
-          return true;
-        });
+        const visibleSubmodules = allSubmodules.filter((sub) => sub.isVisible);
 
         const childFolders = getChildModulesFor(mod.id);
         // If module has no submodules and no child folders, treat it as an Independent / Standalone Module
@@ -330,21 +298,7 @@ export const SidebarProjectModules: React.FC<SidebarProjectModulesProps> = ({ pr
                   const childAllSubs = [...(child.submodules || [])].sort(
                     (a, b) => (a.position ?? 0) - (b.position ?? 0)
                   );
-                  const childVisibleSubs = childAllSubs.filter((sub) => {
-                    if (!sub.isVisible) return false;
-                    if (sub.type === 'built_in' && sub.builtInKey) {
-                      const isMultiInstance =
-                        sub.builtInKey === 'whiteboard' ||
-                        sub.builtInKey === 'docs' ||
-                        sub.builtInKey === 'documents' ||
-                        sub.builtInKey === 'documents.knowledge_base';
-                      if (!isMultiInstance) {
-                        if (seenBuiltInKeys.has(sub.builtInKey)) return false;
-                        seenBuiltInKeys.add(sub.builtInKey);
-                      }
-                    }
-                    return true;
-                  });
+                  const childVisibleSubs = childAllSubs.filter((sub) => sub.isVisible);
 
                   const ChildFolderIcon = resolveModuleIcon(child.icon, Folder);
 

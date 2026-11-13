@@ -46,6 +46,8 @@ import type {
 
 interface TestPlansViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
 interface PlanFormState {
@@ -74,9 +76,14 @@ const PLAN_STATUS_OPTIONS = [
   { value: 'Cancelled', label: 'Cancelled' },
 ];
 
-export const TestPlansView: React.FC<TestPlansViewProps> = ({ projectId: propProjectId }) => {
-  const { id } = useParams<{ id: string }>();
+export const TestPlansView: React.FC<TestPlansViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
+  const { id, submoduleId: routeSubId } = useParams<{ id: string; submoduleId?: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId || (routeSubId ? Number(routeSubId) : undefined);
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
   const { goToSubmodule } = useTestingNavigation(projectId);
@@ -139,12 +146,13 @@ export const TestPlansView: React.FC<TestPlansViewProps> = ({ projectId: propPro
       const [metaRes, plansRes, suitesRes, casesRes] = await Promise.all([
         testingService.getMeta(projectId),
         testingService.listTestPlans(projectId, {
+          submoduleId,
           search: searchQuery || undefined,
           status: statusFilter !== 'ALL' ? statusFilter : undefined,
           includeArchived,
         }),
-        testingService.listTestSuites(projectId, {}),
-        testingService.listTestCases(projectId, {}),
+        testingService.listTestSuites(projectId, { submoduleId }),
+        testingService.listTestCases(projectId, { submoduleId }),
       ]);
       if (metaRes.success && metaRes.data) {
         setMeta(metaRes.data.meta);
@@ -159,7 +167,7 @@ export const TestPlansView: React.FC<TestPlansViewProps> = ({ projectId: propPro
     } finally {
       setLoading(false);
     }
-  }, [projectId, searchQuery, statusFilter, includeArchived, toast]);
+  }, [projectId, submoduleId, searchQuery, statusFilter, includeArchived, toast]);
 
   useEffect(() => {
     void loadData();
@@ -279,7 +287,10 @@ export const TestPlansView: React.FC<TestPlansViewProps> = ({ projectId: propPro
           toast.error(res.error || 'Could not update test plan');
         }
       } else {
-        const res = await testingService.createTestPlan(projectId, payload);
+        const res = await testingService.createTestPlan(projectId, {
+          ...payload,
+          projectSubmoduleId: submoduleId,
+        });
         if (res.success && res.data) {
           toast.success(`Test Plan ${res.data.planKey} created`);
           setModalOpen(false);
@@ -403,7 +414,7 @@ export const TestPlansView: React.FC<TestPlansViewProps> = ({ projectId: propPro
         projectId={projectId}
         activeKey="test-plans"
         icon={ClipboardList}
-        title="Test Plans"
+        title={propTitle || 'Test Plans'}
         description="Coordinate release testing schedules, environments, suites, and one-click execution runs."
         badge={plans.length}
         actions={

@@ -198,6 +198,9 @@ interface DocumentExplorerViewProps {
   onSearchChange: (search: string) => void;
   selectedFileType?: string;
   onSelectFileType: (type?: string) => void;
+  selectedAuthorId?: number;
+  onSelectAuthorId?: (id?: number) => void;
+  authorOptions?: Array<{ id: number; name: string; email?: string; avatarUrl?: string; avatarColor?: string }>;
   sortBy: string;
   sortOrder: 'asc' | 'desc';
   onSortChange: (sortBy: string, sortOrder: 'asc' | 'desc') => void;
@@ -242,6 +245,9 @@ export const DocumentExplorerView: React.FC<DocumentExplorerViewProps> = ({
   onSearchChange,
   selectedFileType,
   onSelectFileType,
+  selectedAuthorId,
+  onSelectAuthorId,
+  authorOptions = [],
   sortBy,
   sortOrder,
   onSortChange,
@@ -704,8 +710,13 @@ export const DocumentExplorerView: React.FC<DocumentExplorerViewProps> = ({
           search={search}
           onSearchChange={onSearchChange}
           categories={categories}
+          selectedCategoryId={selectedCategoryId}
+          onSelectCategory={onSelectCategory}
           selectedFileType={selectedFileType}
           onSelectFileType={onSelectFileType}
+          selectedAuthorId={selectedAuthorId}
+          onSelectAuthorId={onSelectAuthorId}
+          authorOptions={authorOptions}
           sortBy={sortBy}
           sortOrder={sortOrder}
           onSortChange={onSortChange}

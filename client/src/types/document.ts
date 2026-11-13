@@ -339,6 +339,7 @@ export interface DocumentListParams {
   tab?: 'all' | 'my_uploads' | 'shared' | 'recent' | 'category' | 'approvals';
   submoduleId?: number;
   categoryId?: number;
+  authorId?: number;
   fileType?: string;
   type?: string;
   search?: string;

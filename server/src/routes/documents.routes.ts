@@ -614,6 +614,8 @@ documentsRouter.get('/', async (req: Request, res: Response) => {
       categorySlug,
       submoduleId,
       type,
+      authorId,
+      uploadedById,
       search,
       sortBy = 'createdAt',
       sortOrder = 'desc',
@@ -666,6 +668,15 @@ documentsRouter.get('/', async (req: Request, res: Response) => {
     } else if (tab === 'recent') {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       andClauses.push({ createdAt: { gte: sevenDaysAgo } });
+    }
+
+    // Author / Uploader filtering
+    const rawAuthor = authorId || uploadedById;
+    if (rawAuthor) {
+      const parsedAuthor = parseInt(rawAuthor as string, 10);
+      if (!Number.isNaN(parsedAuthor)) {
+        andClauses.push({ uploadedById: parsedAuthor });
+      }
     }
 
     // Category filtering

@@ -375,6 +375,10 @@ export interface QaDefectItem {
   severity: 'Critical' | 'Major' | 'Moderate' | 'Minor' | string;
   priority: 'Critical' | 'High' | 'Medium' | 'Low' | string;
   status: DefectStatusValue | string;
+  moduleId?: number | null;
+  module?: { id: number; name: string; color?: string | null; icon?: string | null; slug?: string } | null;
+  submoduleId?: number | null;
+  submodule?: { id: number; name: string; icon?: string | null; slug?: string } | null;
   assigneeId?: number | null;
   assignee?: TestingUserLite | null;
   reporterId?: number | null;

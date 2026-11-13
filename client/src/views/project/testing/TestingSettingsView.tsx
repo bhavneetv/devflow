@@ -30,6 +30,8 @@ import type { ProjectSubmodule } from '../../../types/module';
 
 interface TestingSettingsViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
 const MASTER_SECTIONS: Array<{ key: TestingMasterCategory; title: string; subtitle: string }> = [
@@ -39,9 +41,14 @@ const MASTER_SECTIONS: Array<{ key: TestingMasterCategory; title: string; subtit
   { key: 'environments', title: 'Environments', subtitle: 'Local, Dev, QA, Staging, UAT, Production...' },
 ];
 
-export const TestingSettingsView: React.FC<TestingSettingsViewProps> = ({ projectId: propProjectId }) => {
+export const TestingSettingsView: React.FC<TestingSettingsViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
   const { id } = useParams<{ id: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId;
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
 
@@ -224,7 +231,7 @@ export const TestingSettingsView: React.FC<TestingSettingsViewProps> = ({ projec
         projectId={projectId}
         activeKey="testing-settings"
         icon={Sliders}
-        title="Testing & QA Settings"
+        title={propTitle || 'Testing & QA Settings'}
         description="Configure prefixes, environment defaults, evidence rules, notifications, master dropdown lists, role permissions, and sidebar submodule visibility."
       />
 

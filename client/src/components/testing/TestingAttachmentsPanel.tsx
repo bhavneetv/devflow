@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Download, ExternalLink, FileText, Link2, Paperclip, Trash2, Upload } from 'lucide-react';
+import { Download, ExternalLink, Eye, FileText, Link2, Paperclip, Trash2, Upload, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { testingService } from '../../services/testing.service';
 import { documentService } from '../../services/document.service';
 import { AnimatedSelect, type SelectOption } from '../settings/AnimatedSelect';
@@ -55,6 +56,7 @@ export const TestingAttachmentsPanel: React.FC<TestingAttachmentsPanelProps> = (
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [linkingDocId, setLinkingDocId] = useState('');
+  const [previewModalAtt, setPreviewModalAtt] = useState<TestingAttachmentDocument | null>(null);
 
   const handleFilesSelected = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
@@ -178,8 +180,8 @@ export const TestingAttachmentsPanel: React.FC<TestingAttachmentsPanelProps> = (
         <div className="divide-y divide-white/[0.06] rounded-lg border border-white/[0.07] bg-[#0B0D10]/70 overflow-hidden">
           {attachments.map((att) => {
             const downloadUrl = documentService.getContentUrl(projectId, att.documentId, true);
-            const isInlinePreview =
-              att.mimeType?.startsWith('image/') || att.mimeType === 'application/pdf';
+            const isImage = att.mimeType?.startsWith('image/');
+            const isInlinePreview = isImage || att.mimeType === 'application/pdf';
             const contentUrl = isInlinePreview
               ? documentService.getContentUrl(projectId, att.documentId, false)
               : downloadUrl;
@@ -189,9 +191,24 @@ export const TestingAttachmentsPanel: React.FC<TestingAttachmentsPanelProps> = (
                 className="flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-white/[0.03] transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center shrink-0">
-                    <FileText className="w-4 h-4 text-emerald-400" />
-                  </div>
+                  {isImage ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewModalAtt(att)}
+                      title="Click to view full image"
+                      className="w-9 h-9 rounded-lg overflow-hidden border border-white/10 shrink-0 bg-black/40 hover:border-emerald-500/50 transition-all cursor-pointer group"
+                    >
+                      <img
+                        src={contentUrl}
+                        alt={att.displayName || att.originalName}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    </button>
+                  ) : (
+                    <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4 text-emerald-400" />
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-white truncate">
                       {att.displayName || att.originalName || `Document #${att.documentId}`}
@@ -214,11 +231,19 @@ export const TestingAttachmentsPanel: React.FC<TestingAttachmentsPanelProps> = (
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModalAtt(att)}
+                    title="Directly Preview Attachment"
+                    className="p-1.5 rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
                   <a
                     href={contentUrl}
                     target="_blank"
                     rel="noreferrer"
-                    title="Open / Download file"
+                    title="Open in new tab / download"
                     className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.08] transition-colors"
                   >
                     {isInlinePreview ? (
@@ -243,6 +268,92 @@ export const TestingAttachmentsPanel: React.FC<TestingAttachmentsPanelProps> = (
           })}
         </div>
       )}
+
+      {/* Lightbox Modal for Direct Attachment Preview */}
+      <AnimatePresence>
+        {previewModalAtt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setPreviewModalAtt(null)}
+            className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-4xl max-h-[90vh] bg-[#12141C] border border-[#27272A] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#27272A] bg-[#161824]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Eye className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="font-semibold text-white text-sm truncate">
+                    {previewModalAtt.displayName || previewModalAtt.originalName}
+                  </span>
+                  <span className="text-[11px] font-mono text-zinc-400 shrink-0">
+                    ({formatBytes(previewModalAtt.sizeBytes)})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={documentService.getContentUrl(projectId, previewModalAtt.documentId, true)}
+                    download
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                    title="Download original file"
+                  >
+                    <Download className="w-4 h-4" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModalAtt(null)}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body Preview */}
+              <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-[#090A0F] min-h-[300px]">
+                {previewModalAtt.mimeType?.startsWith('image/') ? (
+                  <img
+                    src={documentService.getContentUrl(projectId, previewModalAtt.documentId, false)}
+                    alt={previewModalAtt.displayName || previewModalAtt.originalName}
+                    className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
+                  />
+                ) : previewModalAtt.mimeType === 'application/pdf' ? (
+                  <iframe
+                    src={documentService.getContentUrl(projectId, previewModalAtt.documentId, false)}
+                    title={previewModalAtt.displayName || previewModalAtt.originalName}
+                    className="w-full h-[70vh] rounded-lg border border-[#27272A]"
+                  />
+                ) : (
+                  <div className="text-center py-12 space-y-3">
+                    <FileText className="w-12 h-12 text-zinc-500 mx-auto" />
+                    <div className="text-sm text-zinc-300 font-medium">
+                      {previewModalAtt.displayName || previewModalAtt.originalName}
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      Direct browser preview is not supported for this file type ({previewModalAtt.mimeType || 'unknown'}).
+                    </p>
+                    <a
+                      href={documentService.getContentUrl(projectId, previewModalAtt.documentId, true)}
+                      download
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition-colors shadow-md"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download File
+                    </a>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

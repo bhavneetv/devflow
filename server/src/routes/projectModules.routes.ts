@@ -937,3 +937,239 @@ projectModulesRouter.delete('/:projectId/submodules/:submoduleId', async (req: R
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// POST /api/projects/:projectId/submodules/:submoduleId/duplicate — Duplicate a submodule
+projectModulesRouter.post('/:projectId/submodules/:submoduleId/duplicate', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    const submoduleId = parseId(req.params.submoduleId);
+    if (isNaN(projectId) || isNaN(submoduleId)) {
+      return res.status(400).json({ success: false, error: 'Invalid ID parameters' });
+    }
+
+    const userId = getUserIdFromToken(req);
+    const { allowed, notFound } = await checkProjectPermission(projectId, userId);
+    if (notFound) return res.status(404).json({ success: false, error: 'Project not found' });
+    if (!allowed) return res.status(403).json({ success: false, error: 'Unauthorized to manage project modules' });
+
+    const source = await prisma.projectSubmodule.findFirst({
+      where: { id: submoduleId, projectId },
+    });
+    if (!source) return res.status(404).json({ success: false, error: 'Source submodule not found' });
+
+    const { name, targetModuleId, copyMode, includeData } = req.body || {};
+    const destModuleId = targetModuleId ? parseId(targetModuleId) : source.moduleId;
+
+    let newName = typeof name === 'string' && name.trim() ? name.trim() : `${source.name} (Copy)`;
+    let counter = 1;
+    while (
+      await prisma.projectSubmodule.findFirst({
+        where: { moduleId: destModuleId, name: { equals: newName } },
+      })
+    ) {
+      counter++;
+      newName = `${source.name} (Copy ${counter})`;
+    }
+
+    const maxPos = await prisma.projectSubmodule.aggregate({
+      where: { moduleId: destModuleId },
+      _max: { position: true },
+    });
+    const nextPosition = (maxPos._max.position ?? -1) + 1;
+
+    let finalConfig = source.config;
+    if (copyMode === 'clone') {
+      finalConfig = JSON.stringify({
+        copyMode: 'clone',
+        targetSubmoduleId: source.id,
+      });
+    }
+
+    const created = await prisma.projectSubmodule.create({
+      data: {
+        projectId,
+        moduleId: destModuleId,
+        name: newName,
+        icon: source.icon,
+        type: source.type,
+        builtInKey: source.builtInKey,
+        config: finalConfig,
+        position: nextPosition,
+        isVisible: true,
+        isPinned: false,
+        createdById: userId,
+      },
+    });
+
+    if (copyMode !== 'clone' && includeData) {
+      const defects = await prisma.qaDefect.findMany({
+        where: { projectSubmoduleId: source.id, projectId },
+      });
+      for (const d of defects) {
+        const cfg = await prisma.testingConfiguration.findUnique({ where: { projectId } });
+        const prefix = (cfg?.defectPrefix || 'BUG').toUpperCase();
+        const maxExisting = await prisma.qaDefect.findFirst({
+          where: { projectId },
+          orderBy: { sequenceNumber: 'desc' },
+          select: { sequenceNumber: true },
+        });
+        const seq = Math.max(cfg?.defectNextSeq || 1, (maxExisting?.sequenceNumber || 0) + 1);
+        const defectKey = `${prefix}-${String(seq).padStart(3, '0')}`;
+        await prisma.testingConfiguration.updateMany({ where: { projectId }, data: { defectNextSeq: seq + 1 } });
+        await prisma.qaDefect.create({
+          data: {
+            projectId,
+            defectKey,
+            sequenceNumber: seq,
+            title: d.title,
+            description: d.description,
+            stepsToReproduce: d.stepsToReproduce,
+            expectedResult: d.expectedResult,
+            actualResult: d.actualResult,
+            severity: d.severity,
+            priority: d.priority,
+            status: d.status,
+            moduleId: d.moduleId,
+            submoduleId: d.submoduleId,
+            projectSubmoduleId: created.id,
+            assigneeId: d.assigneeId,
+            reporterId: userId,
+            environment: d.environment,
+            buildVersion: d.buildVersion,
+          },
+        });
+      }
+
+      const testCases = await prisma.testCase.findMany({
+        where: { projectSubmoduleId: source.id, projectId },
+        include: { steps: true },
+      });
+      for (const tc of testCases) {
+        const cfg = await prisma.testingConfiguration.findUnique({ where: { projectId } });
+        const prefix = (cfg?.testCasePrefix || 'TC').toUpperCase();
+        const maxExisting = await prisma.testCase.findFirst({
+          where: { projectId },
+          orderBy: { sequenceNumber: 'desc' },
+          select: { sequenceNumber: true },
+        });
+        const seq = Math.max(cfg?.testCaseNextSeq || 1, (maxExisting?.sequenceNumber || 0) + 1);
+        const caseKey = `${prefix}-${String(seq).padStart(3, '0')}`;
+        await prisma.testingConfiguration.updateMany({ where: { projectId }, data: { testCaseNextSeq: seq + 1 } });
+        await prisma.testCase.create({
+          data: {
+            projectId,
+            caseKey,
+            sequenceNumber: seq,
+            title: tc.title,
+            description: tc.description,
+            preconditions: tc.preconditions,
+            moduleId: tc.moduleId,
+            submoduleId: tc.submoduleId,
+            projectSubmoduleId: created.id,
+            testType: tc.testType,
+            priority: tc.priority,
+            status: tc.status,
+            assignedTesterId: tc.assignedTesterId,
+            labelsJson: tc.labelsJson,
+            testDataSummary: tc.testDataSummary,
+            createdById: userId,
+            steps: {
+              create: tc.steps.map((s) => ({
+                stepNumber: s.stepNumber,
+                action: s.action,
+                testData: s.testData,
+                expectedResult: s.expectedResult,
+              })),
+            },
+          },
+        });
+      }
+    }
+
+    res.json({ success: true, data: created });
+  } catch (error: any) {
+    console.error('Error duplicating submodule:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/projects/:projectId/modules/:moduleId/duplicate — Duplicate a module
+projectModulesRouter.post('/:projectId/modules/:moduleId/duplicate', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    const moduleId = parseId(req.params.moduleId);
+    if (isNaN(projectId) || isNaN(moduleId)) {
+      return res.status(400).json({ success: false, error: 'Invalid ID parameters' });
+    }
+
+    const userId = getUserIdFromToken(req);
+    const { allowed, notFound } = await checkProjectPermission(projectId, userId);
+    if (notFound) return res.status(404).json({ success: false, error: 'Project not found' });
+    if (!allowed) return res.status(403).json({ success: false, error: 'Unauthorized to manage project modules' });
+
+    const source = await prisma.projectModule.findFirst({
+      where: { id: moduleId, projectId },
+      include: { submodules: true },
+    });
+    if (!source) return res.status(404).json({ success: false, error: 'Source module not found' });
+
+    const { name, copyMode } = req.body || {};
+
+    let newName = typeof name === 'string' && name.trim() ? name.trim() : `${source.name} (Copy)`;
+    let counter = 1;
+    while (
+      await prisma.projectModule.findFirst({
+        where: { projectId, name: { equals: newName } },
+      })
+    ) {
+      counter++;
+      newName = `${source.name} (Copy ${counter})`;
+    }
+
+    const maxPos = await prisma.projectModule.aggregate({
+      where: { projectId },
+      _max: { position: true },
+    });
+    const nextPosition = (maxPos._max.position ?? -1) + 1;
+
+    const createdModule = await prisma.projectModule.create({
+      data: {
+        projectId,
+        name: newName,
+        icon: source.icon,
+        description: source.description,
+        position: nextPosition,
+        isVisible: true,
+        isPinned: false,
+        createdById: userId,
+      },
+    });
+
+    for (const sub of source.submodules) {
+      let finalConfig = sub.config;
+      if (copyMode === 'clone') {
+        finalConfig = JSON.stringify({ copyMode: 'clone', targetSubmoduleId: sub.id });
+      }
+      await prisma.projectSubmodule.create({
+        data: {
+          projectId,
+          moduleId: createdModule.id,
+          name: sub.name,
+          icon: sub.icon,
+          type: sub.type,
+          builtInKey: sub.builtInKey,
+          config: finalConfig,
+          position: sub.position,
+          isVisible: sub.isVisible,
+          isPinned: false,
+          createdById: userId,
+        },
+      });
+    }
+
+    res.json({ success: true, data: createdModule });
+  } catch (error: any) {
+    console.error('Error duplicating module:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});

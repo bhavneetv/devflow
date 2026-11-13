@@ -33,6 +33,10 @@ import {
   PanelLeft,
   GitBranch,
   FolderGit2,
+  Copy,
+  PlusCircle,
+  AlertCircle,
+  Columns,
 } from 'lucide-react';
 import { useAccentTheme } from '../../services/accentTheme.service';
 import { useToast } from '../../context/ToastContext';
@@ -86,6 +90,8 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
   const [editingSubmodule, setEditingSubmodule] = useState<ProjectSubmodule | null>(null);
   const [movingSubmodule, setMovingSubmodule] = useState<ProjectSubmodule | null>(null);
   const [deletingSubmodule, setDeletingSubmodule] = useState<ProjectSubmodule | null>(null);
+  const [duplicatingSubmodule, setDuplicatingSubmodule] = useState<ProjectSubmodule | null>(null);
+  const [duplicatingModule, setDuplicatingModule] = useState<ProjectModule | null>(null);
 
   // Action loaders
   const [isSaving, setIsSaving] = useState(false);
@@ -982,6 +988,18 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                             type="button"
                             onClick={() => {
                               setActiveModuleMenuId(null);
+                              setDuplicatingModule(module);
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer text-indigo-300"
+                          >
+                            <Copy size={13} className="text-indigo-400" />
+                            <span>Duplicate Module...</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveModuleMenuId(null);
                               setCreateSubmoduleTargetModuleId(module.id);
                             }}
                             className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer"
@@ -1242,6 +1260,18 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                                       >
                                         <MoveRight size={12} className="text-zinc-400" />
                                         <span>Move to Module...</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveSubmoduleMenuId(null);
+                                          setDuplicatingSubmodule(sub);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer text-indigo-300"
+                                      >
+                                        <Copy size={12} className="text-indigo-400" />
+                                        <span>Duplicate / Copy...</span>
                                       </button>
 
                                       <button
@@ -1559,6 +1589,17 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                                                           <MoveRight size={12} className="text-zinc-400" />
                                                           <span>Move to Module...</span>
                                                         </button>
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            setActiveSubmoduleMenuId(null);
+                                                            setDuplicatingSubmodule(sub);
+                                                          }}
+                                                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer text-indigo-300"
+                                                        >
+                                                          <Copy size={12} className="text-indigo-400" />
+                                                          <span>Duplicate / Copy...</span>
+                                                        </button>
                                                         <div className="h-px bg-zinc-800 my-1" />
                                                         <button
                                                           type="button"
@@ -1662,6 +1703,7 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
             projectId={projectId}
             moduleId={createSubmoduleTargetModuleId}
             parentModule={modules.find((m) => m.id === createSubmoduleTargetModuleId)}
+            allModules={modules}
             accentColor={accentColor}
             onClose={() => setCreateSubmoduleTargetModuleId(null)}
             onCreated={async () => {
@@ -1680,6 +1722,7 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
           <EditSubmoduleModal
             projectId={projectId}
             submodule={editingSubmodule}
+            allModules={modules}
             accentColor={accentColor}
             onClose={() => setEditingSubmodule(null)}
             onUpdated={async () => {
@@ -1711,6 +1754,39 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
           isSaving={isSaving}
           onClose={() => setDeletingSubmodule(null)}
           onConfirm={handleConfirmDeleteSubmodule}
+        />
+      )}
+
+      {/* ─── MODAL 8: Duplicate Submodule ─────────────────────────────────────── */}
+      {duplicatingSubmodule && (
+        <DuplicateSubmoduleModal
+          projectId={projectId}
+          submodule={duplicatingSubmodule}
+          allModules={modules}
+          accentColor={accentColor}
+          onClose={() => setDuplicatingSubmodule(null)}
+          onDuplicated={async () => {
+            setDuplicatingSubmodule(null);
+            await loadModules();
+            await syncSidebar();
+            toast.success('Submodule Duplicated', 'Duplicated submodule created successfully.');
+          }}
+        />
+      )}
+
+      {/* ─── MODAL 9: Duplicate Module ────────────────────────────────────────── */}
+      {duplicatingModule && (
+        <DuplicateModuleModal
+          projectId={projectId}
+          module={duplicatingModule}
+          accentColor={accentColor}
+          onClose={() => setDuplicatingModule(null)}
+          onDuplicated={async () => {
+            setDuplicatingModule(null);
+            await loadModules();
+            await syncSidebar();
+            toast.success('Module Duplicated', 'Duplicated module and submodules created successfully.');
+          }}
         />
       )}
     </div>
@@ -2259,14 +2335,37 @@ const BUILT_IN_CATEGORIES: { id: string; label: string; keys?: string[] }[] = [
   { id: 'all', label: 'All' },
   { id: 'git', label: 'Git', keys: ['git-overview', 'repositories', 'pulls', 'git-commits', 'git-code'] },
   { id: 'development', label: 'Development', keys: ['overview', 'development', 'issues', 'board', 'cycles', 'milestones'] },
-  { id: 'testing', label: 'Testing', keys: ['test-cases', 'defects'] },
+  {
+    id: 'testing',
+    label: 'Testing & QA',
+    keys: [
+      'testing-overview',
+      'test-cases',
+      'test-suites',
+      'test-plans',
+      'test-runs',
+      'defects',
+      'test-reports',
+      'testing-settings',
+    ],
+  },
   { id: 'collaboration', label: 'Collaboration', keys: ['docs', 'documents.knowledge_base', 'whiteboard', 'activity'] },
+];
+
+const COMPOSITE_FILTER_CATEGORIES = [
+  { id: 'all', label: 'All Features' },
+  { id: 'testing', label: 'Testing & QA' },
+  { id: 'development', label: 'Development' },
+  { id: 'git', label: 'Git & Code' },
+  { id: 'collaboration', label: 'Docs & Canvas' },
+  { id: 'custom', label: 'Custom Submodules' },
 ];
 
 interface CreateSubmoduleModalProps {
   projectId: number;
   moduleId: number;
   parentModule?: ProjectModule;
+  allModules?: ProjectModule[];
   accentColor: string;
   onClose: () => void;
   onCreated: () => void;
@@ -2276,6 +2375,7 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
   projectId,
   moduleId,
   parentModule,
+  allModules = [],
   accentColor,
   onClose,
   onCreated,
@@ -2292,7 +2392,9 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-
+  // Copy vs Separate logic for existing built-ins
+  const [copyMode, setCopyMode] = useState<'clone' | 'separate'>('separate');
+  const [chosenTargetSubmoduleId, setChosenTargetSubmoduleId] = useState<number | null>(null);
 
   // Close on Escape key
   useEffect(() => {
@@ -2305,18 +2407,45 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Composite builder state
-  const [compositeFeatures, setCompositeFeatures] = useState<GitFeatureKey[]>([
-    'git.overview',
-    'git.merge_requests',
+  // Universal Composite features selection state
+  const [compositeCategory, setCompositeCategory] = useState<string>('all');
+  const [compositeSearch, setCompositeSearch] = useState<string>('');
+  const [compositeSelectedKeys, setCompositeSelectedKeys] = useState<string[]>([
+    'testing-overview',
+    'defects',
   ]);
-  const [compositeLayout, setCompositeLayout] = useState<CompositeLayout>('tabs');
-  const [compositeCards, setCompositeCards] = useState<string[]>([
-    'total-repos',
-    'open-issues',
-    'open-mrs',
-    'mrs-with-conflicts',
-  ]);
+
+  // Existing instances detector for built-ins
+  const existingInstances = useMemo(() => {
+    if (subType !== 'built_in' || !selectedBuiltInKey) return [];
+    const matches: Array<{ submodule: ProjectSubmodule; moduleName: string }> = [];
+    (allModules || []).forEach((mod) => {
+      (mod.submodules || []).forEach((sub) => {
+        const subKey = sub.builtInKey;
+        if (!subKey) return;
+        const isMatch =
+          subKey === selectedBuiltInKey ||
+          (selectedBuiltInKey === 'docs' && ['documents', 'documents.knowledge_base'].includes(subKey)) ||
+          (selectedBuiltInKey === 'documents' && ['docs', 'documents.knowledge_base'].includes(subKey)) ||
+          (selectedBuiltInKey === 'documents.knowledge_base' && ['docs', 'documents'].includes(subKey)) ||
+          (selectedBuiltInKey === 'development' && subKey === 'development.management') ||
+          (selectedBuiltInKey === 'development.management' && subKey === 'development');
+        if (isMatch) {
+          matches.push({ submodule: sub, moduleName: mod.name });
+        }
+      });
+    });
+    return matches;
+  }, [allModules, subType, selectedBuiltInKey]);
+
+  useEffect(() => {
+    if (existingInstances.length > 0) {
+      setChosenTargetSubmoduleId(existingInstances[0].submodule.id);
+    } else {
+      setChosenTargetSubmoduleId(null);
+      setCopyMode('separate');
+    }
+  }, [existingInstances]);
 
   // When selecting built-in, update default name & icon
   const handleSelectBuiltIn = (def: BuiltInSubmoduleDefinition) => {
@@ -2325,17 +2454,84 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
     setIcon(def.defaultIcon);
   };
 
+  // Universal available features registry for composite hub
+  const compositeAvailableFeatures = useMemo(() => {
+    const list: Array<{
+      key: string;
+      title: string;
+      description: string;
+      category: string;
+      iconComponent?: any;
+    }> = [];
 
+    // Built-ins
+    BUILT_IN_SUBMODULE_DEFINITIONS.forEach((b) => {
+      let cat = 'collaboration';
+      if (['git-overview', 'repositories', 'pulls', 'git-commits', 'git-code'].includes(b.key)) {
+        cat = 'git';
+      } else if (['development', 'issues', 'board', 'milestones', 'cycles', 'overview'].includes(b.key)) {
+        cat = 'development';
+      } else if (
+        [
+          'testing-overview',
+          'test-cases',
+          'test-suites',
+          'test-plans',
+          'test-runs',
+          'defects',
+          'test-reports',
+          'testing-settings',
+        ].includes(b.key)
+      ) {
+        cat = 'testing';
+      }
+      list.push({
+        key: b.key,
+        title: b.defaultName,
+        description: b.description,
+        category: cat,
+        iconComponent: b.iconComponent,
+      });
+    });
 
-  const handleToggleCompositeFeature = (key: GitFeatureKey) => {
-    setCompositeFeatures((prev) =>
+    // Custom Submodules across project
+    (allModules || []).forEach((m) => {
+      (m.submodules || []).forEach((s) => {
+        if (s.type === 'custom' || !s.builtInKey) {
+          list.push({
+            key: `custom:${s.id}`,
+            title: `${s.name} (${m.name})`,
+            description: `Custom submodule in ${m.name}`,
+            category: 'custom',
+            iconComponent: Boxes,
+          });
+        }
+      });
+    });
+
+    return list;
+  }, [allModules]);
+
+  const filteredCompositeFeatures = useMemo(() => {
+    let list = compositeAvailableFeatures;
+    if (compositeCategory !== 'all') {
+      list = list.filter((f) => f.category === compositeCategory);
+    }
+    if (compositeSearch.trim()) {
+      const q = compositeSearch.toLowerCase();
+      list = list.filter(
+        (f) =>
+          f.title.toLowerCase().includes(q) ||
+          f.description.toLowerCase().includes(q) ||
+          f.key.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [compositeAvailableFeatures, compositeCategory, compositeSearch]);
+
+  const handleToggleCompositeKey = (key: string) => {
+    setCompositeSelectedKeys((prev) =>
       prev.includes(key) ? (prev.length > 1 ? prev.filter((k) => k !== key) : prev) : [...prev, key]
-    );
-  };
-
-  const handleToggleSummaryCard = (id: string) => {
-    setCompositeCards((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
     );
   };
 
@@ -2388,25 +2584,36 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-+|-+$/g, '') || 'docs';
 
+      const configObj: Record<string, any> = {};
+      if (subType === 'built_in' && existingInstances.length > 0) {
+        configObj.copyMode = copyMode;
+        if (copyMode === 'clone' && chosenTargetSubmoduleId) {
+          configObj.targetSubmoduleId = chosenTargetSubmoduleId;
+        }
+      }
+      if (isDocBuiltIn) {
+        configObj.storageMode = docStorageMode;
+        if (copyMode !== 'clone') {
+          configObj.folderPath =
+            docStorageMode === 'folder'
+              ? docFolderPath.trim() || `modules/${safeSlug}`
+              : 'documents';
+          configObj.branchName =
+            docStorageMode === 'branch'
+              ? docBranchName.trim() || `docs/${safeSlug}`
+              : undefined;
+        }
+      }
+
       const configJson =
         subType === 'composite'
           ? JSON.stringify({
-              features: compositeFeatures,
-              layout: compositeLayout,
-              summaryCards: compositeCards,
+              features: compositeSelectedKeys,
+              layout: 'tabs',
+              defaultTab: compositeSelectedKeys[0],
             })
-          : isDocBuiltIn
-          ? JSON.stringify({
-              storageMode: docStorageMode,
-              folderPath:
-                docStorageMode === 'folder'
-                  ? docFolderPath.trim() || `modules/${safeSlug}`
-                  : 'documents',
-              branchName:
-                docStorageMode === 'branch'
-                  ? docBranchName.trim() || `docs/${safeSlug}`
-                  : undefined,
-            })
+          : Object.keys(configObj).length > 0
+          ? JSON.stringify(configObj)
           : null;
 
       const res = await projectModuleService.createSubmodule(projectId, moduleId, {
@@ -2532,7 +2739,7 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
                 type="button"
                 onClick={() => {
                   setSubType('composite');
-                  setName('Git Dev Hub');
+                  setName('Workspace Hub');
                   setIcon('boxes');
                 }}
                 className={cn(
@@ -2559,7 +2766,7 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
                 </div>
                 <div className="min-w-0">
                   <span className="block font-semibold text-[11.5px] leading-tight">Composite</span>
-                  <span className="text-[9.5px] text-zinc-500 block">Multi-Git hub</span>
+                  <span className="text-[9.5px] text-zinc-500 block">Multi-feature hub</span>
                 </div>
               </button>
 
@@ -2816,43 +3023,209 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
                 </div>
               )}
 
+              {/* If Built-In: Existing instance detection & Copy vs Separate */}
+              {subType === 'built_in' && existingInstances.length > 0 && (
+                <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/[0.05] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                      <AlertCircle size={14} className="text-amber-400" />
+                      <span>Existing Instance Detected</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200 border border-amber-500/30">
+                      {existingInstances.length} found in project
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-zinc-300 leading-relaxed">
+                    This module already exists in the project structure. Would you like to create an independent instance or a shared copy button?
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Option 1: Make it Separate */}
+                    <button
+                      type="button"
+                      onClick={() => setCopyMode('separate')}
+                      className={cn(
+                        'p-2.5 rounded-lg border text-left transition-all cursor-pointer flex flex-col gap-1',
+                        copyMode === 'separate'
+                          ? 'border-emerald-500 bg-emerald-500/15 text-white shadow-xs'
+                          : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                          <PlusCircle size={13} className="text-emerald-400" />
+                          <span>Make it Separate</span>
+                        </span>
+                        {copyMode === 'separate' && (
+                          <Check size={12} className="text-emerald-400" />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-zinc-400 leading-snug">
+                        Independent instance. Data, canvas, or folder inside will not be linked.
+                      </span>
+                    </button>
+
+                    {/* Option 2: Make as Copy */}
+                    <button
+                      type="button"
+                      onClick={() => setCopyMode('clone')}
+                      className={cn(
+                        'p-2.5 rounded-lg border text-left transition-all cursor-pointer flex flex-col gap-1',
+                        copyMode === 'clone'
+                          ? 'border-indigo-500 bg-indigo-500/15 text-white shadow-xs'
+                          : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200'
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                          <Copy size={13} className="text-indigo-400" />
+                          <span>Make as Copy</span>
+                        </span>
+                        {copyMode === 'clone' && (
+                          <Check size={12} className="text-indigo-400" />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-zinc-400 leading-snug">
+                        Shortcut clone. Shares the underlying data with the existing instance.
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* If Make as Copy is chosen and there are 2 or more existing instances */}
+                  {copyMode === 'clone' && existingInstances.length >= 2 && (
+                    <div className="space-y-1.5 pt-1">
+                      <label className="text-[11px] font-medium text-zinc-300 flex items-center gap-1">
+                        <span>Select which instance to copy from:</span>
+                      </label>
+                      <div className="space-y-1">
+                        {existingInstances.map((inst) => {
+                          const isSelected = chosenTargetSubmoduleId === inst.submodule.id;
+                          return (
+                            <button
+                              key={inst.submodule.id}
+                              type="button"
+                              onClick={() => setChosenTargetSubmoduleId(inst.submodule.id)}
+                              className={cn(
+                                'w-full px-2.5 py-1.5 rounded-lg border text-xs flex items-center justify-between text-left transition-all cursor-pointer',
+                                isSelected
+                                  ? 'border-indigo-500 bg-indigo-500/20 text-white font-medium'
+                                  : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:text-zinc-200'
+                              )}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <span className="text-zinc-500 font-mono text-[10px]">#{inst.submodule.id}</span>
+                                <span className="font-semibold text-zinc-200">{inst.submodule.name}</span>
+                                <span className="text-zinc-500 text-[10px]">in {inst.moduleName}</span>
+                              </div>
+                              {isSelected && <Check size={12} className="text-indigo-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* If Composite: Builder UI */}
               {subType === 'composite' && (
                 <div className="space-y-3.5 p-3.5 rounded-xl border border-zinc-800 bg-[#0E0F14]">
-                  {/* Features Selection */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-                      <Boxes size={13} style={{ color: accentColor }} />
-                      <span>Included Git Features</span>
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                      {GIT_FEATURES_REGISTRY.map((feat) => {
-                        const isChecked = compositeFeatures.includes(feat.key);
+                  {/* Category Filter Pills & Search */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                        <Boxes size={13} style={{ color: accentColor }} />
+                        <span>Select Features to Combine</span>
+                      </label>
+                      <span className="text-[10px] font-mono text-zinc-400">
+                        {compositeSelectedKeys.length} selected
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-thin">
+                      {COMPOSITE_FILTER_CATEGORIES.map((cat) => {
+                        const isActive = compositeCategory === cat.id;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setCompositeCategory(cat.id)}
+                            className={cn(
+                              'px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-all cursor-pointer border',
+                              isActive
+                                ? 'bg-zinc-800 text-white border-zinc-600 shadow-xs'
+                                : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-zinc-800/40'
+                            )}
+                            style={
+                              isActive
+                                ? { borderColor: `${accentColor}70`, backgroundColor: `${accentColor}20` }
+                                : undefined
+                            }
+                          >
+                            {cat.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="relative">
+                      <Search
+                        size={12}
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                      />
+                      <input
+                        type="text"
+                        value={compositeSearch}
+                        onChange={(e) => setCompositeSearch(e.target.value)}
+                        placeholder="Search features..."
+                        className="w-full pl-7 pr-3 py-1.5 rounded-lg bg-[#14151B] border border-[#27272A] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                      />
+                    </div>
+
+                    {/* Features Selection Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                      {filteredCompositeFeatures.map((feat) => {
+                        const isChecked = compositeSelectedKeys.includes(feat.key);
+                        const FeatIcon = feat.iconComponent || Boxes;
                         return (
                           <button
                             key={feat.key}
                             type="button"
-                            onClick={() => handleToggleCompositeFeature(feat.key)}
+                            onClick={() => handleToggleCompositeKey(feat.key)}
                             className={cn(
                               'p-2 rounded-lg border text-left transition-all cursor-pointer flex items-start gap-2',
                               isChecked
-                                ? 'text-white border-zinc-700 bg-zinc-800/70'
-                                : 'border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                                ? 'text-white border-zinc-700 bg-zinc-800/70 shadow-xs'
+                                : 'border-[#27272A] text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                             )}
-                            style={isChecked ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` } : undefined}
+                            style={
+                              isChecked
+                                ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` }
+                                : undefined
+                            }
                           >
                             <div
                               className={cn(
                                 'w-4 h-4 rounded mt-0.5 flex items-center justify-center border shrink-0',
                                 isChecked ? 'text-white' : 'border-zinc-700 bg-zinc-800'
                               )}
-                              style={isChecked ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
+                              style={
+                                isChecked
+                                  ? { backgroundColor: accentColor, borderColor: accentColor }
+                                  : undefined
+                              }
                             >
                               {isChecked && <Check size={10} strokeWidth={3} />}
                             </div>
                             <div className="min-w-0">
-                              <span className="text-[11.5px] font-semibold block leading-tight">{feat.title}</span>
-                              <span className="text-[9.5px] text-zinc-400 line-clamp-1">{feat.description}</span>
+                              <span className="text-[11.5px] font-semibold block leading-tight flex items-center gap-1.5">
+                                <FeatIcon size={11} className="text-zinc-400 shrink-0" />
+                                <span className="truncate">{feat.title}</span>
+                              </span>
+                              <span className="text-[9.5px] text-zinc-400 line-clamp-1">
+                                {feat.description}
+                              </span>
                             </div>
                           </button>
                         );
@@ -2860,62 +3233,21 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Layout */}
+                  {/* Submodule Layout: Only Split in tabs */}
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-zinc-200">Submodule Layout</label>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {(['tabs', 'stacked', 'split'] as const).map((l) => (
-                        <button
-                          key={l}
-                          type="button"
-                          onClick={() => setCompositeLayout(l)}
-                          className={cn(
-                            'py-1 rounded-md text-xs font-medium capitalize transition-all cursor-pointer text-center border',
-                            compositeLayout === l
-                              ? 'bg-zinc-800 text-white border-zinc-700 font-semibold shadow-xs'
-                              : 'border-[#27272A] text-zinc-400 hover:text-zinc-200'
-                          )}
-                          style={
-                            compositeLayout === l
-                              ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}25` }
-                              : undefined
-                          }
-                        >
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Summary Metric Cards */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-zinc-200">Summary Metric Cards</label>
-                      <span className="text-[10px] text-zinc-500">{compositeCards.length} selected</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {GIT_SUMMARY_CARD_DEFINITIONS.map((c) => {
-                        const isSelected = compositeCards.includes(c.id);
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => handleToggleSummaryCard(c.id)}
-                            className={cn(
-                              'px-2 py-0.5 rounded-md text-[11px] font-medium border transition-all cursor-pointer flex items-center gap-1.5',
-                              isSelected
-                                ? 'bg-zinc-800 text-white border-zinc-600 shadow-xs'
-                                : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200'
-                            )}
-                          >
-                            <span
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: isSelected ? c.color : '#52525B' }}
-                            />
-                            <span>{c.title}</span>
-                          </button>
-                        );
-                      })}
+                    <div className="w-full">
+                      <div
+                        className="py-1.5 px-3 rounded-lg text-xs font-medium text-center border font-semibold shadow-xs flex items-center justify-center gap-2"
+                        style={{
+                          borderColor: `${accentColor}80`,
+                          backgroundColor: `${accentColor}25`,
+                          color: '#FFFFFF',
+                        }}
+                      >
+                        <Columns size={12} style={{ color: accentColor }} />
+                        <span>Split in tabs (Tab switcher)</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2997,6 +3329,7 @@ const CreateSubmoduleModal: React.FC<CreateSubmoduleModalProps> = ({
 interface EditSubmoduleModalProps {
   projectId: number;
   submodule: ProjectSubmodule;
+  allModules?: ProjectModule[];
   accentColor: string;
   onClose: () => void;
   onUpdated: () => void;
@@ -3005,6 +3338,7 @@ interface EditSubmoduleModalProps {
 const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
   projectId,
   submodule,
+  allModules = [],
   accentColor,
   onClose,
   onUpdated,
@@ -3034,29 +3368,92 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
     }
   })();
 
-  const [compositeFeatures, setCompositeFeatures] = useState<GitFeatureKey[]>(
+  const [compositeSelectedKeys, setCompositeSelectedKeys] = useState<string[]>(
     Array.isArray(initialConfig.features) && initialConfig.features.length > 0
       ? initialConfig.features
-      : ['git.overview', 'git.merge_requests']
+      : ['testing-overview', 'defects']
   );
-  const [compositeLayout, setCompositeLayout] = useState<CompositeLayout>(
-    initialConfig.layout || 'tabs'
-  );
-  const [compositeCards, setCompositeCards] = useState<string[]>(
-    Array.isArray(initialConfig.summaryCards)
-      ? initialConfig.summaryCards
-      : ['total-repos', 'open-issues', 'open-mrs', 'mrs-with-conflicts']
-  );
+  const [compositeCategory, setCompositeCategory] = useState<string>('all');
+  const [compositeSearch, setCompositeSearch] = useState<string>('');
 
-  const handleToggleCompositeFeature = (key: GitFeatureKey) => {
-    setCompositeFeatures((prev) =>
+  // Universal available features registry for composite hub
+  const compositeAvailableFeatures = useMemo(() => {
+    const list: Array<{
+      key: string;
+      title: string;
+      description: string;
+      category: string;
+      iconComponent?: any;
+    }> = [];
+
+    // Built-ins
+    BUILT_IN_SUBMODULE_DEFINITIONS.forEach((b) => {
+      let cat = 'collaboration';
+      if (['git-overview', 'repositories', 'pulls', 'git-commits', 'git-code'].includes(b.key)) {
+        cat = 'git';
+      } else if (['development', 'issues', 'board', 'milestones', 'cycles', 'overview'].includes(b.key)) {
+        cat = 'development';
+      } else if (
+        [
+          'testing-overview',
+          'test-cases',
+          'test-suites',
+          'test-plans',
+          'test-runs',
+          'defects',
+          'test-reports',
+          'testing-settings',
+        ].includes(b.key)
+      ) {
+        cat = 'testing';
+      }
+      list.push({
+        key: b.key,
+        title: b.defaultName,
+        description: b.description,
+        category: cat,
+        iconComponent: b.iconComponent,
+      });
+    });
+
+    // Custom Submodules across project
+    (allModules || []).forEach((m) => {
+      (m.submodules || []).forEach((s) => {
+        if (s.type === 'custom' || !s.builtInKey) {
+          list.push({
+            key: `custom:${s.id}`,
+            title: `${s.name} (${m.name})`,
+            description: `Custom submodule in ${m.name}`,
+            category: 'custom',
+            iconComponent: Boxes,
+          });
+        }
+      });
+    });
+
+    return list;
+  }, [allModules]);
+
+  const filteredCompositeFeatures = useMemo(() => {
+    let list = compositeAvailableFeatures;
+    if (compositeCategory !== 'all') {
+      list = list.filter((f) => f.category === compositeCategory);
+    }
+    if (compositeSearch.trim()) {
+      const q = compositeSearch.toLowerCase();
+      list = list.filter(
+        (f) =>
+          f.title.toLowerCase().includes(q) ||
+          f.description.toLowerCase().includes(q) ||
+          f.key.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [compositeAvailableFeatures, compositeCategory, compositeSearch]);
+
+  const handleToggleCompositeKey = (key: string) => {
+    setCompositeSelectedKeys((prev) =>
       prev.includes(key) ? (prev.length > 1 ? prev.filter((k) => k !== key) : prev) : [...prev, key]
-    );
-  };
-
-  const handleToggleSummaryCard = (id: string) => {
-    setCompositeCards((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
     );
   };
 
@@ -3074,9 +3471,9 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
       const configJson =
         submodule.type === 'composite'
           ? JSON.stringify({
-              features: compositeFeatures,
-              layout: compositeLayout,
-              summaryCards: compositeCards,
+              features: compositeSelectedKeys,
+              layout: 'tabs',
+              defaultTab: compositeSelectedKeys[0],
             })
           : undefined;
 
@@ -3169,37 +3566,102 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
 
             {/* If Composite, show configuration editors */}
             {submodule.type === 'composite' && (
-              <div className="space-y-4 p-4 rounded-xl border border-zinc-800 bg-[#0E0F14]">
-                {/* 1. Features */}
+              <div className="space-y-3.5 p-4 rounded-xl border border-zinc-800 bg-[#0E0F14]">
+                {/* Category Filter Pills & Search */}
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-zinc-200">Included Features</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {GIT_FEATURES_REGISTRY.map((feat) => {
-                      const isChecked = compositeFeatures.includes(feat.key);
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                      <Boxes size={13} style={{ color: accentColor }} />
+                      <span>Select Features to Combine</span>
+                    </label>
+                    <span className="text-[10px] font-mono text-zinc-400">
+                      {compositeSelectedKeys.length} selected
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-thin">
+                    {COMPOSITE_FILTER_CATEGORIES.map((cat) => {
+                      const isActive = compositeCategory === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setCompositeCategory(cat.id)}
+                          className={cn(
+                            'px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-all cursor-pointer border',
+                            isActive
+                              ? 'bg-zinc-800 text-white border-zinc-600 shadow-xs'
+                              : 'text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-zinc-800/40'
+                          )}
+                          style={
+                            isActive
+                              ? { borderColor: `${accentColor}70`, backgroundColor: `${accentColor}20` }
+                              : undefined
+                          }
+                        >
+                          {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="relative">
+                    <Search
+                      size={12}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                    />
+                    <input
+                      type="text"
+                      value={compositeSearch}
+                      onChange={(e) => setCompositeSearch(e.target.value)}
+                      placeholder="Search features..."
+                      className="w-full pl-7 pr-3 py-1.5 rounded-lg bg-[#14151B] border border-[#27272A] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                    />
+                  </div>
+
+                  {/* Features Selection Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                    {filteredCompositeFeatures.map((feat) => {
+                      const isChecked = compositeSelectedKeys.includes(feat.key);
+                      const FeatIcon = feat.iconComponent || Boxes;
                       return (
                         <button
                           key={feat.key}
                           type="button"
-                          onClick={() => handleToggleCompositeFeature(feat.key)}
+                          onClick={() => handleToggleCompositeKey(feat.key)}
                           className={cn(
-                            'p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2',
+                            'p-2 rounded-lg border text-left transition-all cursor-pointer flex items-start gap-2',
                             isChecked
-                              ? 'border-indigo-500/60 bg-indigo-500/10 text-white'
-                              : 'border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                              ? 'text-white border-zinc-700 bg-zinc-800/70 shadow-xs'
+                              : 'border-[#27272A] text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                           )}
-                          style={isChecked ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` } : undefined}
+                          style={
+                            isChecked
+                              ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}18` }
+                              : undefined
+                          }
                         >
                           <div
                             className={cn(
                               'w-4 h-4 rounded mt-0.5 flex items-center justify-center border shrink-0',
                               isChecked ? 'text-white' : 'border-zinc-700 bg-zinc-800'
                             )}
-                            style={isChecked ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
+                            style={
+                              isChecked
+                                ? { backgroundColor: accentColor, borderColor: accentColor }
+                                : undefined
+                            }
                           >
                             {isChecked && <Check size={10} strokeWidth={3} />}
                           </div>
                           <div className="min-w-0">
-                            <span className="text-xs font-semibold block">{feat.title}</span>
+                            <span className="text-[11.5px] font-semibold block leading-tight flex items-center gap-1.5">
+                              <FeatIcon size={11} className="text-zinc-400 shrink-0" />
+                              <span className="truncate">{feat.title}</span>
+                            </span>
+                            <span className="text-[9.5px] text-zinc-400 line-clamp-1">
+                              {feat.description}
+                            </span>
                           </div>
                         </button>
                       );
@@ -3207,59 +3669,21 @@ const EditSubmoduleModal: React.FC<EditSubmoduleModalProps> = ({
                   </div>
                 </div>
 
-                {/* 2. Layout */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-200">Layout</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['tabs', 'stacked', 'split'] as const).map((l) => (
-                      <button
-                        key={l}
-                        type="button"
-                        onClick={() => setCompositeLayout(l)}
-                        className={cn(
-                          'py-1.5 rounded-lg text-xs font-medium capitalize transition-all cursor-pointer text-center border',
-                          compositeLayout === l
-                            ? 'bg-zinc-800 text-white border-zinc-700 font-semibold shadow-xs'
-                            : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                        )}
-                        style={
-                          compositeLayout === l
-                            ? { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}25` }
-                            : undefined
-                        }
-                      >
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 3. Summary Cards */}
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-zinc-200">Summary Metric Cards</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {GIT_SUMMARY_CARD_DEFINITIONS.map((c) => {
-                      const isSelected = compositeCards.includes(c.id);
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => handleToggleSummaryCard(c.id)}
-                          className={cn(
-                            'px-2.5 py-1 rounded-md text-[11px] font-medium border transition-all cursor-pointer flex items-center gap-1.5',
-                            isSelected
-                              ? 'bg-zinc-800 text-white border-zinc-600 shadow-xs'
-                              : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200'
-                          )}
-                        >
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: isSelected ? c.color : '#52525B' }}
-                          />
-                          <span>{c.title}</span>
-                        </button>
-                      );
-                    })}
+                {/* Submodule Layout: Only Split in tabs */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-zinc-200">Submodule Layout</label>
+                  <div className="w-full">
+                    <div
+                      className="py-1.5 px-3 rounded-lg text-xs font-medium text-center border font-semibold shadow-xs flex items-center justify-center gap-2"
+                      style={{
+                        borderColor: `${accentColor}80`,
+                        backgroundColor: `${accentColor}25`,
+                        color: '#FFFFFF',
+                      }}
+                    >
+                      <Columns size={12} style={{ color: accentColor }} />
+                      <span>Split in tabs (Tab switcher)</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3421,6 +3845,385 @@ const DeleteSubmoduleModal: React.FC<DeleteSubmoduleModalProps> = ({
             {isSaving ? 'Deleting...' : 'Delete Submodule'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Duplicate Submodule Modal ────────────────────────────────────────────────
+
+interface DuplicateSubmoduleModalProps {
+  projectId: number;
+  submodule: ProjectSubmodule;
+  allModules: ProjectModule[];
+  accentColor: string;
+  onClose: () => void;
+  onDuplicated: () => void;
+}
+
+const DuplicateSubmoduleModal: React.FC<DuplicateSubmoduleModalProps> = ({
+  projectId,
+  submodule,
+  allModules,
+  accentColor,
+  onClose,
+  onDuplicated,
+}) => {
+  const [name, setName] = useState(`${submodule.name} (Copy)`);
+  const [copyMode, setCopyMode] = useState<'independent' | 'clone'>('independent');
+  const [includeData, setIncludeData] = useState(true);
+  const [targetModuleId, setTargetModuleId] = useState<number>(submodule.moduleId || (allModules[0]?.id ?? 0));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Name is required');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const res = await projectModuleService.duplicateSubmodule(projectId, submodule.id, {
+        name: trimmed,
+        targetModuleId,
+        copyMode,
+        includeData,
+      });
+      if (res.success) {
+        onDuplicated();
+      } else {
+        setError(res.error || 'Failed to duplicate submodule');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="w-full max-w-lg rounded-2xl border border-[#27272A] bg-[#121319] shadow-2xl p-5 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 text-indigo-400">
+              <Copy size={16} />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white">Duplicate Submodule</h2>
+              <p className="text-xs text-zinc-400">Create an independent copy or mirrored clone</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded text-zinc-500 hover:text-zinc-200 cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 text-xs">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">Submodule Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 bg-[#0C0D10] border border-[#27272A] rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/60 transition-colors"
+              placeholder="e.g. Defects (Copy)"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">Parent Module</label>
+            <select
+              value={targetModuleId}
+              onChange={(e) => setTargetModuleId(Number(e.target.value))}
+              className="w-full px-3 py-2 bg-[#0C0D10] border border-[#27272A] rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500/60 transition-colors"
+            >
+              {allModules.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.parentId ? `└─ ${m.name}` : m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1.5">Instance Type</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <label
+                className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                  copyMode === 'independent'
+                    ? 'bg-indigo-500/10 border-indigo-500/40 text-white'
+                    : 'bg-[#0B0D12] border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="subCopyMode"
+                    value="independent"
+                    checked={copyMode === 'independent'}
+                    onChange={() => setCopyMode('independent')}
+                    className="accent-indigo-500"
+                  />
+                  <span className="text-xs font-semibold text-white">Independent Instance</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Separate ID, independent data, routes, and settings.
+                </p>
+              </label>
+
+              <label
+                className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                  copyMode === 'clone'
+                    ? 'bg-purple-500/10 border-purple-500/40 text-white'
+                    : 'bg-[#0B0D12] border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="subCopyMode"
+                    value="clone"
+                    checked={copyMode === 'clone'}
+                    onChange={() => setCopyMode('clone')}
+                    className="accent-purple-500"
+                  />
+                  <span className="text-xs font-semibold text-white">Cloned Mirror</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Distinct sidebar item that mirrors data of original submodule.
+                </p>
+              </label>
+            </div>
+          </div>
+
+          {copyMode === 'independent' && (
+            <div className="pt-1">
+              <label className="flex items-center gap-2.5 text-xs text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeData}
+                  onChange={(e) => setIncludeData(e.target.checked)}
+                  className="rounded border-[#27272A] bg-[#0C0D10] accent-indigo-500"
+                />
+                <span>Copy existing records (e.g. defects, test cases) into new instance</span>
+              </label>
+            </div>
+          )}
+
+          <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-[#27272A]">
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-md hover:brightness-110 transition-all cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: accentColor }}
+            >
+              {isSubmitting ? 'Duplicating...' : 'Duplicate Submodule'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ─── Duplicate Module Modal ───────────────────────────────────────────────────
+
+interface DuplicateModuleModalProps {
+  projectId: number;
+  module: ProjectModule;
+  accentColor: string;
+  onClose: () => void;
+  onDuplicated: () => void;
+}
+
+const DuplicateModuleModal: React.FC<DuplicateModuleModalProps> = ({
+  projectId,
+  module,
+  accentColor,
+  onClose,
+  onDuplicated,
+}) => {
+  const [name, setName] = useState(`${module.name} (Copy)`);
+  const [copyMode, setCopyMode] = useState<'independent' | 'clone'>('independent');
+  const [includeData, setIncludeData] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Name is required');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const res = await projectModuleService.duplicateModule(projectId, module.id, {
+        name: trimmed,
+        copyMode,
+        includeData,
+      });
+      if (res.success) {
+        onDuplicated();
+      } else {
+        setError(res.error || 'Failed to duplicate module');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="w-full max-w-lg rounded-2xl border border-[#27272A] bg-[#121319] shadow-2xl p-5 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 text-indigo-400">
+              <Copy size={16} />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white">Duplicate Module</h2>
+              <p className="text-xs text-zinc-400">Clone module and all its submodules</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded text-zinc-500 hover:text-zinc-200 cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 text-xs">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">Module Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 bg-[#0C0D10] border border-[#27272A] rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/60 transition-colors"
+              placeholder="e.g. Planning (Copy)"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1.5">Instance Type</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <label
+                className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                  copyMode === 'independent'
+                    ? 'bg-indigo-500/10 border-indigo-500/40 text-white'
+                    : 'bg-[#0B0D12] border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="moduleCopyMode"
+                    value="independent"
+                    checked={copyMode === 'independent'}
+                    onChange={() => setCopyMode('independent')}
+                    className="accent-indigo-500"
+                  />
+                  <span className="text-xs font-semibold text-white">Independent Module</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Creates new submodules with isolated data and IDs.
+                </p>
+              </label>
+
+              <label
+                className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                  copyMode === 'clone'
+                    ? 'bg-purple-500/10 border-purple-500/40 text-white'
+                    : 'bg-[#0B0D12] border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="moduleCopyMode"
+                    value="clone"
+                    checked={copyMode === 'clone'}
+                    onChange={() => setCopyMode('clone')}
+                    className="accent-purple-500"
+                  />
+                  <span className="text-xs font-semibold text-white">Cloned Mirror</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Submodules link to original data for parallel navigation.
+                </p>
+              </label>
+            </div>
+          </div>
+
+          {copyMode === 'independent' && (
+            <div className="pt-1">
+              <label className="flex items-center gap-2.5 text-xs text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeData}
+                  onChange={(e) => setIncludeData(e.target.checked)}
+                  className="rounded border-[#27272A] bg-[#0C0D10] accent-indigo-500"
+                />
+                <span>Deep copy data records into all duplicated submodules</span>
+              </label>
+            </div>
+          )}
+
+          <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-[#27272A]">
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-md hover:brightness-110 transition-all cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: accentColor }}
+            >
+              {isSubmitting ? 'Duplicating...' : 'Duplicate Module'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -80,6 +80,7 @@ export const DocumentsKnowledgeBaseModule: React.FC<DocumentsKnowledgeBaseModule
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | undefined>(undefined);
+  const [selectedAuthorId, setSelectedAuthorId] = useState<number | undefined>(undefined);
   const [selectedFileType, setSelectedFileType] = useState<string | undefined>(undefined);
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -110,6 +111,7 @@ export const DocumentsKnowledgeBaseModule: React.FC<DocumentsKnowledgeBaseModule
   // Reset filters when switching between Document submodules
   useEffect(() => {
     setSelectedCategoryId(undefined);
+    setSelectedAuthorId(undefined);
     setSelectedDocIds([]);
     setPagination((prev) => ({ ...prev, page: 1 }));
     setIsLoading(true);
@@ -141,6 +143,7 @@ export const DocumentsKnowledgeBaseModule: React.FC<DocumentsKnowledgeBaseModule
         tab: 'all',
         submoduleId,
         categoryId: selectedCategoryId,
+        authorId: selectedAuthorId,
         fileType: selectedFileType,
         search: debouncedSearch || undefined,
         sortBy: sortBy as any,
@@ -165,6 +168,7 @@ export const DocumentsKnowledgeBaseModule: React.FC<DocumentsKnowledgeBaseModule
     projectId,
     submoduleId,
     selectedCategoryId,
+    selectedAuthorId,
     selectedFileType,
     debouncedSearch,
     sortBy,
@@ -375,10 +379,33 @@ export const DocumentsKnowledgeBaseModule: React.FC<DocumentsKnowledgeBaseModule
     );
   }
 
+  const authorOptions = React.useMemo(() => {
+    const map = new Map<number, { id: number; name: string; email?: string; avatarUrl?: string; avatarColor?: string }>();
+    for (const doc of documents) {
+      const u = doc.createdBy;
+      const id = u?.id || doc.createdById;
+      if (id && !map.has(id)) {
+        map.set(id, {
+          id,
+          name: u?.name || doc.createdByName || `User #${id}`,
+          email: u?.email || '',
+          avatarUrl: u?.avatarUrl || undefined,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [documents]);
+
   const sharedExplorerProps = {
     projectId,
     categories,
     documents,
+    authorOptions,
+    selectedAuthorId,
+    onSelectAuthorId: (id?: number) => {
+      setSelectedAuthorId(id);
+      setPagination((prev) => ({ ...prev, page: 1 }));
+    },
     totalRootDocuments: dashboardData?.metrics.totalDocuments,
     totalStorageBytes: dashboardData?.metrics.totalSize || 0,
     repositoryName:

@@ -49,8 +49,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<{
 }
 
 export const testingService = {
-  getOverview(projectId: number) {
-    return apiFetch<TestingOverviewData>(`/projects/${projectId}/testing/overview`);
+  getOverview(projectId: number, params?: { submoduleId?: number; projectSubmoduleId?: number }) {
+    const subId = params?.submoduleId || params?.projectSubmoduleId;
+    const qs = subId ? `?submoduleId=${subId}` : '';
+    return apiFetch<TestingOverviewData>(`/projects/${projectId}/testing/overview${qs}`);
   },
 
   getMeta(projectId: number) {
@@ -64,6 +66,8 @@ export const testingService = {
     projectId: number,
     params?: {
       search?: string;
+      moduleId?: string | number;
+      submoduleId?: string | number;
       testType?: string;
       priority?: string;
       status?: string;
@@ -101,6 +105,7 @@ export const testingService = {
       preconditions?: string | null;
       moduleId?: number | null;
       submoduleId?: number | null;
+      projectSubmoduleId?: number | null;
       testType?: string;
       priority?: string;
       status?: string;
@@ -128,6 +133,7 @@ export const testingService = {
       preconditions?: string | null;
       moduleId?: number | null;
       submoduleId?: number | null;
+      projectSubmoduleId?: number | null;
       testType?: string;
       priority?: string;
       status?: string;
@@ -137,6 +143,7 @@ export const testingService = {
       linkedRequirementId?: number | null;
       linkedDevTaskId?: number | null;
       steps?: TestCaseStepItem[];
+      attachmentDocumentIds?: number[];
     }
   ) {
     return apiFetch<TestCaseDetail>(`/projects/${projectId}/testing/test-cases/${caseId}`, {
@@ -169,7 +176,16 @@ export const testingService = {
   },
 
   // ── Test Suites ──────────────────────────────────────────────────────────────
-  listTestSuites(projectId: number, params?: { search?: string; status?: string; includeArchived?: boolean }) {
+  listTestSuites(
+    projectId: number,
+    params?: {
+      search?: string;
+      status?: string;
+      includeArchived?: boolean;
+      submoduleId?: number;
+      projectSubmoduleId?: number;
+    }
+  ) {
     const qs = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
@@ -198,6 +214,7 @@ export const testingService = {
       status?: string;
       labels?: string[];
       testCaseIds?: number[];
+      projectSubmoduleId?: number | null;
     }
   ) {
     return apiFetch<TestSuiteDetail>(`/projects/${projectId}/testing/test-suites`, {
@@ -245,7 +262,16 @@ export const testingService = {
   },
 
   // ── Test Plans ───────────────────────────────────────────────────────────────
-  listTestPlans(projectId: number, params?: { search?: string; status?: string; includeArchived?: boolean }) {
+  listTestPlans(
+    projectId: number,
+    params?: {
+      search?: string;
+      status?: string;
+      includeArchived?: boolean;
+      submoduleId?: number;
+      projectSubmoduleId?: number;
+    }
+  ) {
     const qs = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
@@ -282,6 +308,7 @@ export const testingService = {
       status?: string;
       suiteIds?: number[];
       testCaseIds?: number[];
+      projectSubmoduleId?: number | null;
     }
   ) {
     return apiFetch<TestPlanDetail>(`/projects/${projectId}/testing/test-plans`, {
@@ -327,7 +354,15 @@ export const testingService = {
   // ── Test Runs & Executions ───────────────────────────────────────────────────
   listTestRuns(
     projectId: number,
-    params?: { search?: string; status?: string; environment?: string; planId?: number; includeArchived?: boolean }
+    params?: {
+      search?: string;
+      status?: string;
+      environment?: string;
+      planId?: number;
+      includeArchived?: boolean;
+      submoduleId?: number;
+      projectSubmoduleId?: number;
+    }
   ) {
     const qs = new URLSearchParams();
     if (params) {
@@ -360,6 +395,7 @@ export const testingService = {
       buildVersion?: string | null;
       environment?: string | null;
       executedById?: number | null;
+      projectSubmoduleId?: number | null;
     }
   ) {
     return apiFetch<TestRunDetail>(`/projects/${projectId}/testing/test-runs`, {
@@ -439,6 +475,8 @@ export const testingService = {
       severity?: string;
       priority?: string;
       status?: string;
+      submoduleId?: string | number;
+      projectSubmoduleId?: string | number;
       assigneeId?: string | number;
       reporterId?: string | number;
       startDate?: string;
@@ -475,6 +513,9 @@ export const testingService = {
       severity?: string;
       priority?: string;
       status?: string;
+      moduleId?: number | null;
+      submoduleId?: number | null;
+      projectSubmoduleId?: number | null;
       assigneeId?: number | null;
       environment?: string | null;
       buildVersion?: string | null;
@@ -533,6 +574,34 @@ export const testingService = {
   },
 
   // ── Attachments (reusing existing storage) ───────────────────────────────────
+  uploadStagedAttachmentFiles(
+    projectId: number,
+    payload: {
+      moduleId?: number | null;
+      submoduleId?: number | null;
+      files: Array<{ name: string; base64: string; mimeType?: string }>;
+    }
+  ) {
+    return apiFetch<{
+      documents: Array<{
+        id: number;
+        displayName: string;
+        originalName: string;
+        mimeType?: string;
+        extension?: string;
+        sizeBytes: number;
+        branch: string;
+        repositoryPath: string;
+        folder: string;
+      }>;
+      errors?: Array<{ fileName: string; error: string }>;
+      folder: string;
+    }>(`/projects/${projectId}/testing/attachments/upload-file`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   uploadAttachments(
     projectId: number,
     payload: {

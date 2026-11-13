@@ -22,6 +22,7 @@ interface AnimatedSelectProps {
   disabled?: boolean;
   dropdownAlign?: 'left' | 'right';
   dropdownMinWidth?: string;
+  dropdownPosition?: 'top' | 'bottom' | 'auto';
   hideSublabelInTrigger?: boolean;
   emptyMessage?: string;
   footerAction?: {
@@ -43,6 +44,7 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
   disabled = false,
   dropdownAlign = 'left',
   dropdownMinWidth = 'w-full sm:min-w-[270px]',
+  dropdownPosition = 'auto',
   hideSublabelInTrigger = false,
   emptyMessage = 'No matching options found',
   footerAction,
@@ -53,6 +55,7 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [animatingValue, setAnimatingValue] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [effectivePosition, setEffectivePosition] = useState<'top' | 'bottom'>('bottom');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,14 +75,30 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [isOpen]);
 
-  // Focus search input when dropdown opens
+  // Position calculation and focus search input when dropdown opens
   useEffect(() => {
     if (isOpen) {
+      if (dropdownPosition === 'top') {
+        setEffectivePosition('top');
+      } else if (dropdownPosition === 'bottom') {
+        setEffectivePosition('bottom');
+      } else {
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          const spaceBelow = window.innerHeight - rect.bottom;
+          const spaceAbove = rect.top;
+          if (spaceBelow < 260 && spaceAbove > spaceBelow) {
+            setEffectivePosition('top');
+          } else {
+            setEffectivePosition('bottom');
+          }
+        }
+      }
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
     }
-  }, [isOpen]);
+  }, [isOpen, dropdownPosition]);
 
   const filteredOptions = options.filter((opt) => {
     if (!searchQuery.trim()) return true;
@@ -178,14 +197,16 @@ export const AnimatedSelect: React.FC<AnimatedSelectProps> = ({
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 4, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.96 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, y: effectivePosition === 'top' ? 8 : -8, scale: 0.96 }}
+            animate={{ opacity: 1, y: effectivePosition === 'top' ? -2 : 2, scale: 1 }}
+            exit={{ opacity: 0, y: effectivePosition === 'top' ? 8 : -8, scale: 0.96 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className={`absolute ${
               dropdownAlign === 'right' ? 'right-0' : 'left-0'
-            } top-full z-[9985] p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-80 flex flex-col ${
-              dropdownMinWidth || 'w-full sm:min-w-[270px]'
+            } ${
+              effectivePosition === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            } z-[9985] p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-64 flex flex-col ${
+              dropdownMinWidth === 'w-full' ? 'w-full min-w-0 max-w-full' : (dropdownMinWidth || 'w-full sm:min-w-[270px]')
             }`}
           >
             {/* Search Input Bar */}
@@ -346,6 +367,7 @@ export interface AnimatedMultiSelectProps {
   disabled?: boolean;
   dropdownAlign?: 'left' | 'right';
   dropdownMinWidth?: string;
+  dropdownPosition?: 'top' | 'bottom' | 'auto';
   allowCustom?: boolean;
   onAddCustom?: (val: string) => void;
 }
@@ -361,11 +383,13 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
   disabled = false,
   dropdownAlign = 'left',
   dropdownMinWidth = 'w-full sm:min-w-[270px]',
+  dropdownPosition = 'auto',
   allowCustom = false,
   onAddCustom,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [effectivePosition, setEffectivePosition] = useState<'top' | 'bottom'>('bottom');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -383,14 +407,30 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [isOpen]);
 
-  // Focus search input when dropdown opens
+  // Position calculation and focus search input when dropdown opens
   useEffect(() => {
     if (isOpen) {
+      if (dropdownPosition === 'top') {
+        setEffectivePosition('top');
+      } else if (dropdownPosition === 'bottom') {
+        setEffectivePosition('bottom');
+      } else {
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          const spaceBelow = window.innerHeight - rect.bottom;
+          const spaceAbove = rect.top;
+          if (spaceBelow < 260 && spaceAbove > spaceBelow) {
+            setEffectivePosition('top');
+          } else {
+            setEffectivePosition('bottom');
+          }
+        }
+      }
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
     }
-  }, [isOpen]);
+  }, [isOpen, dropdownPosition]);
 
   const filteredOptions = options.filter((opt) => {
     if (!searchQuery.trim()) return true;
@@ -491,14 +531,16 @@ export const AnimatedMultiSelect: React.FC<AnimatedMultiSelectProps> = ({
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 4, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.96 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, y: effectivePosition === 'top' ? 8 : -8, scale: 0.96 }}
+            animate={{ opacity: 1, y: effectivePosition === 'top' ? -2 : 2, scale: 1 }}
+            exit={{ opacity: 0, y: effectivePosition === 'top' ? 8 : -8, scale: 0.96 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className={`absolute ${
               dropdownAlign === 'right' ? 'right-0' : 'left-0'
-            } top-full z-[9985] p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-80 flex flex-col ${
-              dropdownMinWidth || 'w-full sm:min-w-[270px]'
+            } ${
+              effectivePosition === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            } z-[9985] p-2 bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] rounded-xl shadow-2xl overflow-hidden max-h-64 flex flex-col ${
+              dropdownMinWidth === 'w-full' ? 'w-full min-w-0 max-w-full' : (dropdownMinWidth || 'w-full sm:min-w-[270px]')
             }`}
           >
             {/* Search Input Bar */}

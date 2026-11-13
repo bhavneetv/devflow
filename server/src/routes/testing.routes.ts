@@ -68,6 +68,7 @@ function serializeTestCase(tc: any) {
     module: tc.module || null,
     submoduleId: tc.submoduleId ?? null,
     submodule: tc.submodule || null,
+    projectSubmoduleId: tc.projectSubmoduleId ?? null,
     testType: tc.testType,
     priority: tc.priority,
     status: tc.status,
@@ -156,6 +157,11 @@ function serializeDefect(d: any, gitLinksCount?: number) {
     severity: d.severity,
     priority: d.priority,
     status: d.status,
+    moduleId: d.moduleId ?? null,
+    module: d.module ? { id: d.module.id, name: d.module.name, slug: d.module.slug } : null,
+    submoduleId: d.submoduleId ?? null,
+    submodule: d.submodule ? { id: d.submodule.id, name: d.submodule.name, slug: d.submodule.slug } : null,
+    projectSubmoduleId: d.projectSubmoduleId ?? null,
     assigneeId: d.assigneeId ?? null,
     assignee: d.assignee || null,
     reporterId: d.reporterId ?? null,
@@ -295,6 +301,18 @@ testingRouter.get('/overview', async (req: Request, res: Response) => {
     const access = await checkTestingAccess(projectId, getUserIdFromToken(req));
     if (!access.allowed) return sendTestingAccessError(res, access);
 
+    const projectSubmoduleId = parsePositiveInt(req.query.submoduleId || req.query.projectSubmoduleId);
+    const tcWhere: any = { projectId, isArchived: false };
+    const defectWhere: any = { projectId, isArchived: false };
+    const runWhere: any = { projectId, isArchived: false };
+    const planWhere: any = { projectId, isArchived: false, status: { in: ['Draft', 'Planned', 'In Progress'] } };
+    if (projectSubmoduleId) {
+      tcWhere.projectSubmoduleId = projectSubmoduleId;
+      defectWhere.projectSubmoduleId = projectSubmoduleId;
+      runWhere.projectSubmoduleId = projectSubmoduleId;
+      planWhere.projectSubmoduleId = projectSubmoduleId;
+    }
+
     const [
       totalTestCases,
       latestExecutions,
@@ -304,13 +322,13 @@ testingRouter.get('/overview', async (req: Request, res: Response) => {
       requirements,
       devTasks,
     ] = await Promise.all([
-      prisma.testCase.count({ where: { projectId, isArchived: false } }),
+      prisma.testCase.count({ where: tcWhere }),
       prisma.testExecution.findMany({
-        where: { projectId, isLatest: true, testRun: { isArchived: false } },
+        where: { projectId, isLatest: true, testRun: runWhere },
         select: { id: true, status: true, testCaseId: true },
       }),
       prisma.qaDefect.findMany({
-        where: { projectId, isArchived: false },
+        where: defectWhere,
         include: {
           assignee: { select: userSelectLite },
           reporter: { select: userSelectLite },
@@ -323,7 +341,7 @@ testingRouter.get('/overview', async (req: Request, res: Response) => {
         orderBy: { createdAt: 'desc' },
       }),
       prisma.testRun.findMany({
-        where: { projectId, isArchived: false },
+        where: runWhere,
         include: {
           testPlan: { select: { id: true, planKey: true, title: true } },
           testSuite: { select: { id: true, suiteKey: true, name: true } },
@@ -335,11 +353,7 @@ testingRouter.get('/overview', async (req: Request, res: Response) => {
         take: 6,
       }),
       prisma.testPlan.findMany({
-        where: {
-          projectId,
-          isArchived: false,
-          status: { in: ['Draft', 'Planned', 'In Progress'] },
-        },
+        where: planWhere,
         include: {
           responsibleTester: { select: userSelectLite },
           responsibleTeam: { select: { id: true, name: true, color: true } },
@@ -560,6 +574,7 @@ const createTestCaseSchema = z.object({
   preconditions: z.string().optional().nullable(),
   moduleId: z.number().int().positive().optional().nullable(),
   submoduleId: z.number().int().positive().optional().nullable(),
+  projectSubmoduleId: z.number().int().positive().optional().nullable(),
   testType: z.string().trim().min(1).max(60).optional().default('Functional'),
   priority: z.string().trim().min(1).max(40).optional().default('Medium'),
   status: z.enum(VALID_TEST_CASE_STATUSES).optional().default('Draft'),
@@ -593,6 +608,8 @@ testingRouter.get('/test-cases', async (req: Request, res: Response) => {
     const sortDir = req.query.sortDir === 'asc' ? 'asc' : 'desc';
 
     const where: any = { projectId };
+    const projectSubmoduleId = parsePositiveInt(req.query.submoduleId || req.query.projectSubmoduleId);
+    if (projectSubmoduleId) where.projectSubmoduleId = projectSubmoduleId;
     if (!includeArchived) where.isArchived = false;
     if (testType && testType !== 'all') where.testType = testType;
     if (priority && priority !== 'all') where.priority = priority;
@@ -799,6 +816,7 @@ testingRouter.post('/test-cases', async (req: Request, res: Response) => {
           preconditions: data.preconditions ?? null,
           moduleId: data.moduleId ?? null,
           submoduleId: data.submoduleId ?? null,
+          projectSubmoduleId: data.projectSubmoduleId ?? null,
           testType: data.testType,
           priority: data.priority,
           status: data.status,
@@ -832,7 +850,7 @@ testingRouter.post('/test-cases', async (req: Request, res: Response) => {
       }
 
       return tc;
-    });
+    }, { maxWait: 20000, timeout: 30000 });
 
     await syncRequirementTestCaseLink(created.id, data.linkedRequirementId, userId);
     await recordTestingActivity({
@@ -1156,6 +1174,8 @@ testingRouter.get('/test-suites', async (req: Request, res: Response) => {
     const includeArchived = req.query.includeArchived === 'true';
 
     const where: any = { projectId };
+    const projectSubmoduleId = parsePositiveInt(req.query.submoduleId || req.query.projectSubmoduleId);
+    if (projectSubmoduleId) where.projectSubmoduleId = projectSubmoduleId;
     if (!includeArchived) where.isArchived = false;
     if (status && status !== 'all') where.status = status;
     if (search) {
@@ -1299,6 +1319,7 @@ testingRouter.post('/test-suites', async (req: Request, res: Response) => {
       status: z.enum(['Draft', 'Active', 'Archived']).optional().default('Active'),
       labels: z.array(z.string().trim()).optional().default([]),
       testCaseIds: z.array(z.number().int().positive()).optional().default([]),
+      projectSubmoduleId: z.number().int().positive().optional().nullable(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -1335,6 +1356,7 @@ testingRouter.post('/test-suites', async (req: Request, res: Response) => {
           purpose: data.purpose ?? null,
           ownerId: data.ownerId ?? userId,
           status: data.status,
+          projectSubmoduleId: data.projectSubmoduleId ?? null,
           labelsJson: JSON.stringify(data.labels || []),
           createdById: userId,
         },
@@ -1627,6 +1649,8 @@ testingRouter.get('/test-plans', async (req: Request, res: Response) => {
     const includeArchived = req.query.includeArchived === 'true';
 
     const where: any = { projectId };
+    const projectSubmoduleId = parsePositiveInt(req.query.submoduleId || req.query.projectSubmoduleId);
+    if (projectSubmoduleId) where.projectSubmoduleId = projectSubmoduleId;
     if (!includeArchived) where.isArchived = false;
     if (status && status !== 'all') where.status = status;
     if (search) {
@@ -1805,6 +1829,7 @@ const planSchema = z.object({
   status: z.enum(VALID_PLAN_STATUSES).optional().default('Draft'),
   suiteIds: z.array(z.number().int().positive()).optional().default([]),
   testCaseIds: z.array(z.number().int().positive()).optional().default([]),
+  projectSubmoduleId: z.number().int().positive().optional().nullable(),
 });
 
 testingRouter.post('/test-plans', async (req: Request, res: Response) => {
@@ -1867,6 +1892,7 @@ testingRouter.post('/test-plans', async (req: Request, res: Response) => {
           linkedDevTaskId: data.linkedDevTaskId ?? null,
           milestoneLabel: data.milestoneLabel ?? null,
           status: data.status,
+          projectSubmoduleId: data.projectSubmoduleId ?? null,
           createdById: userId,
         },
       });
@@ -2036,6 +2062,7 @@ async function createTestRunWithExecutions(params: {
   buildVersion?: string | null;
   environment?: string | null;
   executedById?: number | null;
+  projectSubmoduleId?: number | null;
 }) {
   const uniqueCaseIds = Array.from(new Set(params.testCaseIds));
   if (uniqueCaseIds.length === 0) {
@@ -2074,6 +2101,7 @@ async function createTestRunWithExecutions(params: {
         executedById: params.executedById ?? params.userId,
         startedAt: new Date(),
         status: 'In Progress',
+        projectSubmoduleId: params.projectSubmoduleId ?? null,
         createdById: params.userId,
       },
     });
@@ -2251,6 +2279,8 @@ testingRouter.get('/test-runs', async (req: Request, res: Response) => {
     const includeArchived = req.query.includeArchived === 'true';
 
     const where: any = { projectId };
+    const projectSubmoduleId = parsePositiveInt(req.query.submoduleId || req.query.projectSubmoduleId);
+    if (projectSubmoduleId) where.projectSubmoduleId = projectSubmoduleId;
     if (!includeArchived) where.isArchived = false;
     if (status && status !== 'all') where.status = status;
     if (environment && environment !== 'all') where.environment = environment;
@@ -2368,6 +2398,7 @@ testingRouter.post('/test-runs', async (req: Request, res: Response) => {
       buildVersion: buildVersion || null,
       environment: environment || access.config?.defaultEnvironment || 'Staging',
       executedById: parsePositiveInt(executedById) || userId,
+      projectSubmoduleId: parsePositiveInt(req.body.projectSubmoduleId || req.body.submoduleId) || null,
     });
 
     if (run.executedById) {
@@ -2684,6 +2715,9 @@ const createDefectSchema = z.object({
   severity: z.string().trim().min(1).default('Major'),
   priority: z.string().trim().min(1).default('High'),
   status: z.enum(VALID_DEFECT_STATUSES).optional().default('Open'),
+  moduleId: z.number().int().positive().optional().nullable(),
+  submoduleId: z.number().int().positive().optional().nullable(),
+  projectSubmoduleId: z.number().int().positive().optional().nullable(),
   assigneeId: z.number().int().positive().optional().nullable(),
   environment: z.string().optional().nullable(),
   buildVersion: z.string().optional().nullable(),
@@ -2702,6 +2736,8 @@ async function getDefectDetailPayload(projectId: number, defectId: number) {
       assignee: { select: userSelectLite },
       reporter: { select: userSelectLite },
       verifiedBy: { select: userSelectLite },
+      module: { select: { id: true, name: true, slug: true } },
+      submodule: { select: { id: true, name: true, slug: true } },
       linkedTestCase: { select: { id: true, caseKey: true, title: true } },
       linkedTestRun: { select: { id: true, runKey: true, name: true } },
       linkedDevTask: { select: { id: true, taskKey: true, title: true, status: true, priority: true } },
@@ -2779,6 +2815,8 @@ testingRouter.get('/defects', async (req: Request, res: Response) => {
     const includeArchived = req.query.includeArchived === 'true';
 
     const where: any = { projectId };
+    const projectSubmoduleId = parsePositiveInt(req.query.submoduleId || req.query.projectSubmoduleId);
+    if (projectSubmoduleId) where.projectSubmoduleId = projectSubmoduleId;
     if (!includeArchived) where.isArchived = false;
     if (severity && severity !== 'all') where.severity = severity;
     if (priority && priority !== 'all') where.priority = priority;
@@ -2813,6 +2851,8 @@ testingRouter.get('/defects', async (req: Request, res: Response) => {
         assignee: { select: userSelectLite },
         reporter: { select: userSelectLite },
         verifiedBy: { select: userSelectLite },
+        module: { select: { id: true, name: true, slug: true } },
+        submodule: { select: { id: true, name: true, slug: true } },
         linkedTestCase: { select: { id: true, caseKey: true, title: true } },
         linkedTestRun: { select: { id: true, runKey: true, name: true } },
         linkedDevTask: { select: { id: true, taskKey: true, title: true, status: true, priority: true } },
@@ -2909,6 +2949,9 @@ testingRouter.post('/defects', async (req: Request, res: Response) => {
           severity: data.severity,
           priority: data.priority,
           status: data.status,
+          moduleId: data.moduleId ?? null,
+          submoduleId: data.submoduleId ?? null,
+          projectSubmoduleId: data.projectSubmoduleId ?? null,
           assigneeId: data.assigneeId ?? null,
           reporterId: userId,
           environment: data.environment ?? access.config?.defaultEnvironment ?? 'Staging',
@@ -2942,7 +2985,7 @@ testingRouter.post('/defects', async (req: Request, res: Response) => {
       }
 
       return defect;
-    });
+    }, { maxWait: 20000, timeout: 30000 });
 
     await recordTestingActivity({
       projectId,
@@ -3033,6 +3076,8 @@ testingRouter.patch('/defects/:defectId', async (req: Request, res: Response) =>
         ...(typeof body.severity === 'string' ? { severity: body.severity } : {}),
         ...(typeof body.priority === 'string' ? { priority: body.priority } : {}),
         status: nextStatus,
+        ...(body.moduleId !== undefined ? { moduleId: parsePositiveInt(body.moduleId) } : {}),
+        ...(body.submoduleId !== undefined ? { submoduleId: parsePositiveInt(body.submoduleId) } : {}),
         ...(body.assigneeId !== undefined ? { assigneeId: parsePositiveInt(body.assigneeId) } : {}),
         ...(body.environment !== undefined ? { environment: body.environment } : {}),
         ...(body.buildVersion !== undefined ? { buildVersion: body.buildVersion } : {}),
@@ -3189,6 +3234,140 @@ testingRouter.delete('/defects/:defectId/link-git/:linkId', async (req: Request,
 });
 
 // ─── ATTACHMENTS (Reusing existing ProjectDocument & GitHub storage) ───────────
+
+testingRouter.post('/attachments/upload-file', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    const userId = getUserIdFromToken(req);
+    const access = await checkTestingAccess(projectId, userId);
+    if (!access.allowed || !access.config) return sendTestingAccessError(res, access);
+    if (!access.permissions.canEditTestCases && !access.permissions.canExecuteTests && !access.permissions.canManageDefects) {
+      return res.status(403).json({ success: false, error: 'No permission to upload testing attachments' });
+    }
+
+    const { moduleId, submoduleId, files } = req.body || {};
+    if (!Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ success: false, error: 'No files provided for upload' });
+    }
+
+    const storageConn = await prisma.projectStorageConnection.findUnique({ where: { projectId } });
+    if (storageConn && storageConn.connectionStatus === 'unlinked') {
+      return res.status(423).json({
+        success: false,
+        error: 'Project document storage repository is currently unlinked. Relink it in Project Settings > Storage.',
+      });
+    }
+
+    const existingDocs = await prisma.projectDocument.findMany({
+      where: { projectId, deletedAt: null },
+      select: { sizeBytes: true },
+    });
+    let usedBytes = existingDocs.reduce((a, b) => a + (b.sizeBytes || 0), 0);
+
+    const maxBytes = access.config.maxAttachmentSizeBytes;
+    const allowedTypes = access.config.allowedAttachmentTypes;
+    const uploadedDocuments: any[] = [];
+    const errors: Array<{ fileName: string; error: string }> = [];
+
+    // Folder target: if submoduleId is given, folder is submodule-${submoduleId}, else module-${moduleId}, else 'test-cases'
+    const targetFolder = submoduleId
+      ? `submodule-${submoduleId}`
+      : moduleId
+      ? `module-${moduleId}`
+      : 'test-cases';
+
+    for (const file of files) {
+      const name = String(file?.name || 'attachment').trim();
+      const rawBase64 = file?.base64 || file?.data;
+      const mimeType = String(file?.mimeType || 'application/octet-stream');
+      if (!rawBase64) {
+        errors.push({ fileName: name, error: 'Missing file content' });
+        continue;
+      }
+
+      if (allowedTypes.length > 0 && !allowedTypes.some((t) => mimeType === t || mimeType.startsWith(t.replace('*', '')))) {
+        errors.push({ fileName: name, error: `File type ${mimeType} is restricted by Testing Settings.` });
+        continue;
+      }
+
+      const cleanedBase64 = String(rawBase64).replace(/^data:[^;]+;base64,/, '');
+      const buffer = Buffer.from(cleanedBase64, 'base64');
+      if (buffer.length > maxBytes) {
+        errors.push({
+          fileName: name,
+          error: `File size exceeds limit of ${(maxBytes / (1024 * 1024)).toFixed(1)} MB.`,
+        });
+        continue;
+      }
+      if (usedBytes + buffer.length > REPO_SIZE_LIMIT_BYTES) {
+        errors.push({ fileName: name, error: 'Project repository size limit exceeded.' });
+        continue;
+      }
+
+      try {
+        const storageKey = crypto.randomUUID();
+        const extension = name.split('.').pop()?.toLowerCase() || '';
+        const gitResult = await GitHubDocumentStorageService.uploadDocumentFile({
+          projectId,
+          projectTitle: access.project?.title || 'project',
+          fileName: name,
+          storageKey,
+          categorySlug: 'qa-evidence',
+          branchName: 'main',
+          pathPrefix: targetFolder,
+          contentBuffer: buffer,
+          uploaderName: access.user?.name || 'QA User',
+        });
+
+        const doc = await prisma.projectDocument.create({
+          data: {
+            organizationId: access.project?.organizationId || null,
+            projectId,
+            branch: gitResult.branch || 'main',
+            uploadedById: userId!,
+            originalName: name,
+            displayName: name,
+            storageKey,
+            repositoryPath: gitResult.path,
+            providerFileSha: gitResult.sha,
+            mimeType,
+            extension,
+            sizeBytes: buffer.length,
+            description: `Testing attachment uploaded to ${targetFolder}`,
+            uploadStatus: 'uploaded',
+            providerSyncStatus: 'synced',
+          },
+        });
+
+        usedBytes += buffer.length;
+        uploadedDocuments.push({
+          id: doc.id,
+          displayName: doc.displayName,
+          originalName: doc.originalName,
+          mimeType: doc.mimeType,
+          extension: doc.extension,
+          sizeBytes: doc.sizeBytes,
+          branch: doc.branch,
+          repositoryPath: doc.repositoryPath,
+          folder: targetFolder,
+        });
+      } catch (err: any) {
+        errors.push({ fileName: name, error: err.message || 'GitHub upload failed' });
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        documents: uploadedDocuments,
+        errors,
+        folder: targetFolder,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to upload testing attachment file' });
+  }
+});
 
 testingRouter.post('/attachments/upload', async (req: Request, res: Response) => {
   try {

@@ -200,5 +200,39 @@ export const projectModuleService = {
       return { success: false, error: err.message || 'Failed to provision Testing & QA modules' };
     }
   },
+
+  async duplicateSubmodule(
+    projectId: number,
+    submoduleId: number,
+    payload?: { name?: string; targetModuleId?: number; copyMode?: 'independent' | 'clone'; includeData?: boolean }
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/submodules/${submoduleId}/duplicate`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload || {}),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to duplicate submodule' };
+    }
+  },
+
+  async duplicateModule(
+    projectId: number,
+    moduleId: number,
+    payload?: { name?: string; copyMode?: 'independent' | 'clone'; includeData?: boolean }
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const res = await fetch(apiUrl(`/projects/${projectId}/modules/${moduleId}/duplicate`), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload || {}),
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to duplicate module' };
+    }
+  },
 };
 

@@ -49,8 +49,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<{
 }
 
 export const testingService = {
-  getOverview(projectId: number) {
-    return apiFetch<TestingOverviewData>(`/projects/${projectId}/testing/overview`);
+  getOverview(projectId: number, params?: { submoduleId?: number; projectSubmoduleId?: number }) {
+    const subId = params?.submoduleId || params?.projectSubmoduleId;
+    const qs = subId ? `?submoduleId=${subId}` : '';
+    return apiFetch<TestingOverviewData>(`/projects/${projectId}/testing/overview${qs}`);
   },
 
   getMeta(projectId: number) {
@@ -103,6 +105,7 @@ export const testingService = {
       preconditions?: string | null;
       moduleId?: number | null;
       submoduleId?: number | null;
+      projectSubmoduleId?: number | null;
       testType?: string;
       priority?: string;
       status?: string;
@@ -130,6 +133,7 @@ export const testingService = {
       preconditions?: string | null;
       moduleId?: number | null;
       submoduleId?: number | null;
+      projectSubmoduleId?: number | null;
       testType?: string;
       priority?: string;
       status?: string;
@@ -172,7 +176,16 @@ export const testingService = {
   },
 
   // ── Test Suites ──────────────────────────────────────────────────────────────
-  listTestSuites(projectId: number, params?: { search?: string; status?: string; includeArchived?: boolean }) {
+  listTestSuites(
+    projectId: number,
+    params?: {
+      search?: string;
+      status?: string;
+      includeArchived?: boolean;
+      submoduleId?: number;
+      projectSubmoduleId?: number;
+    }
+  ) {
     const qs = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
@@ -201,6 +214,7 @@ export const testingService = {
       status?: string;
       labels?: string[];
       testCaseIds?: number[];
+      projectSubmoduleId?: number | null;
     }
   ) {
     return apiFetch<TestSuiteDetail>(`/projects/${projectId}/testing/test-suites`, {
@@ -248,7 +262,16 @@ export const testingService = {
   },
 
   // ── Test Plans ───────────────────────────────────────────────────────────────
-  listTestPlans(projectId: number, params?: { search?: string; status?: string; includeArchived?: boolean }) {
+  listTestPlans(
+    projectId: number,
+    params?: {
+      search?: string;
+      status?: string;
+      includeArchived?: boolean;
+      submoduleId?: number;
+      projectSubmoduleId?: number;
+    }
+  ) {
     const qs = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
@@ -285,6 +308,7 @@ export const testingService = {
       status?: string;
       suiteIds?: number[];
       testCaseIds?: number[];
+      projectSubmoduleId?: number | null;
     }
   ) {
     return apiFetch<TestPlanDetail>(`/projects/${projectId}/testing/test-plans`, {
@@ -330,7 +354,15 @@ export const testingService = {
   // ── Test Runs & Executions ───────────────────────────────────────────────────
   listTestRuns(
     projectId: number,
-    params?: { search?: string; status?: string; environment?: string; planId?: number; includeArchived?: boolean }
+    params?: {
+      search?: string;
+      status?: string;
+      environment?: string;
+      planId?: number;
+      includeArchived?: boolean;
+      submoduleId?: number;
+      projectSubmoduleId?: number;
+    }
   ) {
     const qs = new URLSearchParams();
     if (params) {
@@ -363,6 +395,7 @@ export const testingService = {
       buildVersion?: string | null;
       environment?: string | null;
       executedById?: number | null;
+      projectSubmoduleId?: number | null;
     }
   ) {
     return apiFetch<TestRunDetail>(`/projects/${projectId}/testing/test-runs`, {
@@ -442,6 +475,8 @@ export const testingService = {
       severity?: string;
       priority?: string;
       status?: string;
+      submoduleId?: string | number;
+      projectSubmoduleId?: string | number;
       assigneeId?: string | number;
       reporterId?: string | number;
       startDate?: string;
@@ -480,6 +515,7 @@ export const testingService = {
       status?: string;
       moduleId?: number | null;
       submoduleId?: number | null;
+      projectSubmoduleId?: number | null;
       assigneeId?: number | null;
       environment?: string | null;
       buildVersion?: string | null;

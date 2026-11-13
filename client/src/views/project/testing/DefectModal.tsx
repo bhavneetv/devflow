@@ -43,6 +43,7 @@ interface DefectModalProps {
   meta: TestingMetaData;
   config: TestingConfigurationItem;
   permissions: TestingPermissions;
+  projectSubmoduleId?: number;
   onConfigUpdated: (cfg: TestingConfigurationItem) => void;
   onClose: () => void;
   onSaved: (saved: QaDefectDetail | QaDefectItem) => void;
@@ -92,6 +93,7 @@ export const DefectModal: React.FC<DefectModalProps> = ({
   meta,
   config,
   permissions,
+  projectSubmoduleId,
   onConfigUpdated,
   onClose,
   onSaved,
@@ -535,6 +537,7 @@ export const DefectModal: React.FC<DefectModalProps> = ({
           description: description.trim() || null,
           moduleId: moduleId ? Number(moduleId) : null,
           submoduleId: submoduleId ? Number(submoduleId) : null,
+          projectSubmoduleId: projectSubmoduleId ? Number(projectSubmoduleId) : null,
           severity,
           priority,
           status,

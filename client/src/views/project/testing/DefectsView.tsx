@@ -66,6 +66,8 @@ import type {
 
 interface DefectsViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
 export type DefectGroupBy =
@@ -160,9 +162,14 @@ const PRIORITY_WEIGHTS: Record<string, number> = {
   low: 1,
 };
 
-export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProjectId }) => {
-  const { id } = useParams<{ id: string }>();
+export const DefectsView: React.FC<DefectsViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
+  const { id, submoduleId: routeSubId } = useParams<{ id: string; submoduleId?: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId || (routeSubId ? Number(routeSubId) : undefined);
   const [searchParams, setSearchParams] = useSearchParams();
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
@@ -170,6 +177,13 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
 
   // Dynamic module / submodule name saved by user in settings
   const dynamicSubmoduleName = useMemo(() => {
+    if (propTitle) return propTitle;
+    if (submoduleId) {
+      for (const mod of projectModules || []) {
+        const sub = mod.submodules?.find((s) => s.id === submoduleId);
+        if (sub?.name) return sub.name;
+      }
+    }
     for (const mod of projectModules || []) {
       const sub = mod.submodules?.find((s) => s.builtInKey === 'defects');
       if (sub?.name) return sub.name;
@@ -178,7 +192,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
       }
     }
     return 'Defects';
-  }, [projectModules]);
+  }, [propTitle, submoduleId, projectModules]);
 
   const [defects, setDefects] = useState<QaDefectItem[]>([]);
   const [meta, setMeta] = useState<TestingMetaData>(DEFAULT_META);
@@ -265,6 +279,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
           priority: filterPriority !== 'ALL' ? filterPriority : undefined,
           assigneeId: filterAssigneeId !== 'ALL' ? Number(filterAssigneeId) : undefined,
           includeArchived,
+          submoduleId,
         }),
       ]);
 
@@ -290,6 +305,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
     filterPriority,
     filterAssigneeId,
     includeArchived,
+    submoduleId,
     toast,
   ]);
 
@@ -1978,6 +1994,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
           meta={meta}
           config={config}
           permissions={permissions}
+          projectSubmoduleId={submoduleId}
           onConfigUpdated={(cfg) => setConfig(cfg)}
           onClose={() => {
             setModalOpen(false);

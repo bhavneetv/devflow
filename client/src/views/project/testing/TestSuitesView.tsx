@@ -44,6 +44,8 @@ import type {
 
 interface TestSuitesViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
 interface SuiteFormState {
@@ -62,9 +64,14 @@ const SUITE_STATUS_OPTIONS = [
   { value: 'Archived', label: 'Archived' },
 ];
 
-export const TestSuitesView: React.FC<TestSuitesViewProps> = ({ projectId: propProjectId }) => {
-  const { id } = useParams<{ id: string }>();
+export const TestSuitesView: React.FC<TestSuitesViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
+  const { id, submoduleId: routeSubId } = useParams<{ id: string; submoduleId?: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId || (routeSubId ? Number(routeSubId) : undefined);
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
   const { goToSubmodule } = useTestingNavigation(projectId);
@@ -116,11 +123,12 @@ export const TestSuitesView: React.FC<TestSuitesViewProps> = ({ projectId: propP
       const [metaRes, suitesRes, casesRes] = await Promise.all([
         testingService.getMeta(projectId),
         testingService.listTestSuites(projectId, {
+          submoduleId,
           search: searchQuery || undefined,
           status: statusFilter !== 'ALL' ? statusFilter : undefined,
           includeArchived,
         }),
-        testingService.listTestCases(projectId, {}),
+        testingService.listTestCases(projectId, { submoduleId }),
       ]);
       if (metaRes.success && metaRes.data) {
         setMeta(metaRes.data.meta);
@@ -134,7 +142,7 @@ export const TestSuitesView: React.FC<TestSuitesViewProps> = ({ projectId: propP
     } finally {
       setLoading(false);
     }
-  }, [projectId, searchQuery, statusFilter, includeArchived, toast]);
+  }, [projectId, submoduleId, searchQuery, statusFilter, includeArchived, toast]);
 
   useEffect(() => {
     void loadData();
@@ -242,7 +250,10 @@ export const TestSuitesView: React.FC<TestSuitesViewProps> = ({ projectId: propP
           toast.error(res.error || 'Failed to update suite');
         }
       } else {
-        const res = await testingService.createTestSuite(projectId, payload);
+        const res = await testingService.createTestSuite(projectId, {
+          ...payload,
+          projectSubmoduleId: submoduleId,
+        });
         if (res.success && res.data) {
           toast.success(`Suite ${res.data.suiteKey} created`);
           setModalOpen(false);
@@ -417,7 +428,7 @@ export const TestSuitesView: React.FC<TestSuitesViewProps> = ({ projectId: propP
         projectId={projectId}
         activeKey="test-suites"
         icon={Layers}
-        title="Test Suites"
+        title={propTitle || 'Test Suites'}
         description="Group reusable test cases into regression, smoke, or feature suites without duplicating test case definitions."
         badge={suites.length}
         actions={

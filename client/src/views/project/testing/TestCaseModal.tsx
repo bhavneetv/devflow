@@ -51,6 +51,7 @@ interface UploadedDocItem {
 
 interface TestCaseModalProps {
   projectId: number;
+  projectSubmoduleId?: number;
   isOpen: boolean;
   editingCase?: TestCaseDetail | TestCaseItem | null;
   meta: TestingMetaData;
@@ -79,6 +80,7 @@ function readFileAsBase64(file: File): Promise<string> {
 
 export const TestCaseModal: React.FC<TestCaseModalProps> = ({
   projectId,
+  projectSubmoduleId,
   isOpen,
   editingCase,
   meta,
@@ -413,6 +415,7 @@ export const TestCaseModal: React.FC<TestCaseModalProps> = ({
         preconditions: preconditions.trim() || null,
         moduleId: moduleId ? Number(moduleId) : null,
         submoduleId: submoduleId ? Number(submoduleId) : null,
+        projectSubmoduleId: projectSubmoduleId ?? null,
         testType,
         priority,
         status,

@@ -52,6 +52,8 @@ import type {
 
 interface TestRunsViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
 const EXECUTION_STATUS_CHOICES = [
@@ -69,9 +71,14 @@ const RUN_STATUS_CHOICES = [
   { value: 'Aborted', label: 'Aborted' },
 ];
 
-export const TestRunsView: React.FC<TestRunsViewProps> = ({ projectId: propProjectId }) => {
-  const { id, runId: routeRunId } = useParams<{ id: string; runId?: string }>();
+export const TestRunsView: React.FC<TestRunsViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
+  const { id, runId: routeRunId, submoduleId: routeSubId } = useParams<{ id: string; runId?: string; submoduleId?: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId || (routeSubId ? Number(routeSubId) : undefined);
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
   const { goToSubmodule } = useTestingNavigation(projectId);
@@ -164,14 +171,15 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({ projectId: propProje
       const [metaRes, runsRes, plansRes, suitesRes, casesRes, defectsRes] = await Promise.all([
         testingService.getMeta(projectId),
         testingService.listTestRuns(projectId, {
+          submoduleId,
           search: searchQuery || undefined,
           status: statusFilter !== 'ALL' ? statusFilter : undefined,
           includeArchived,
         }),
-        testingService.listTestPlans(projectId, {}),
-        testingService.listTestSuites(projectId, {}),
-        testingService.listTestCases(projectId, {}),
-        testingService.listDefects(projectId, {}),
+        testingService.listTestPlans(projectId, { submoduleId }),
+        testingService.listTestSuites(projectId, { submoduleId }),
+        testingService.listTestCases(projectId, { submoduleId }),
+        testingService.listDefects(projectId, { submoduleId }),
       ]);
       if (metaRes.success && metaRes.data) {
         setMeta(metaRes.data.meta);
@@ -193,7 +201,7 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({ projectId: propProje
     } finally {
       setLoading(false);
     }
-  }, [projectId, searchQuery, statusFilter, includeArchived, selectedRunId, toast]);
+  }, [projectId, submoduleId, searchQuery, statusFilter, includeArchived, selectedRunId, toast]);
 
   useEffect(() => {
     void loadData();
@@ -392,6 +400,7 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({ projectId: propProje
         environment: runDetail.environment || undefined,
         buildVersion: runDetail.buildVersion || undefined,
         assigneeId: defectForm.assigneeId ? Number(defectForm.assigneeId) : null,
+        projectSubmoduleId: submoduleId,
         linkedTestCaseId: activeExec.testCaseId,
         linkedTestRunId: runDetail.id,
         linkedExecutionId: activeExec.id,
@@ -453,6 +462,7 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({ projectId: propProje
         buildVersion: newRunForm.buildVersion.trim() || undefined,
         environment: newRunForm.environment || undefined,
         executedById: newRunForm.executedById ? Number(newRunForm.executedById) : null,
+        projectSubmoduleId: submoduleId,
       });
       if (res.success && res.data) {
         toast.success(`Test Run ${res.data.runKey} created`);
@@ -503,7 +513,7 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({ projectId: propProje
         projectId={projectId}
         activeKey="test-runs"
         icon={PlayCircle}
-        title="Test Runs & Execution"
+        title={propTitle || 'Test Runs & Execution'}
         description="Execute manual test cases step-by-step, capture actual evidence, retest fixes cleanly, and log defects directly from failures."
         badge={runs.length}
         actions={

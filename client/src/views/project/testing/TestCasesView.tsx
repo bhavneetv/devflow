@@ -43,6 +43,7 @@ import { AnimatedSelect, type SelectOption } from '../../../components/settings/
 import { UserAvatar } from '../../../components/common/UserAvatar';
 import { CustomCheckbox } from '../../../components/common/CustomCheckbox';
 import { TestingPageHeader } from '../../../components/testing/TestingPageHeader';
+import { useNavigation } from '../../../context/NavigationContext';
 import {
   ExecutionStatusBadge,
   TestCaseStatusBadge,
@@ -62,6 +63,8 @@ import type {
 
 interface TestCasesViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
 export type TestCaseGroupBy =
@@ -126,12 +129,37 @@ const DEFAULT_PERMS: TestingPermissions = {
   canArchiveRecords: false,
 };
 
-export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propProjectId }) => {
-  const { id } = useParams<{ id: string }>();
+export const TestCasesView: React.FC<TestCasesViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
+  const { id, submoduleId: routeSubId } = useParams<{ id: string; submoduleId?: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId || (routeSubId ? Number(routeSubId) : undefined);
   const [searchParams, setSearchParams] = useSearchParams();
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
+  const { projectModules } = useNavigation();
+
+  // Dynamic module / submodule name saved by user in settings
+  const dynamicSubmoduleName = useMemo(() => {
+    if (propTitle) return propTitle;
+    if (submoduleId) {
+      for (const mod of projectModules || []) {
+        const sub = mod.submodules?.find((s) => s.id === submoduleId);
+        if (sub?.name) return sub.name;
+      }
+    }
+    for (const mod of projectModules || []) {
+      const sub = mod.submodules?.find((s) => s.builtInKey === 'test-cases' || s.builtInKey === 'testing');
+      if (sub?.name) return sub.name;
+      if (mod.name && (mod.name.toLowerCase().includes('test') || mod.name.toLowerCase().includes('case'))) {
+        return mod.name;
+      }
+    }
+    return 'Test Cases';
+  }, [propTitle, submoduleId, projectModules]);
 
   const [cases, setCases] = useState<TestCaseItem[]>([]);
   const [meta, setMeta] = useState<TestingMetaData>(DEFAULT_META);
@@ -194,6 +222,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
     const [metaRes, listRes] = await Promise.all([
       testingService.getMeta(projectId),
       testingService.listTestCases(projectId, {
+        submoduleId,
         search: search || undefined,
         moduleId: filterModuleId ? Number(filterModuleId) : undefined,
         testType: filterType || undefined,
@@ -222,6 +251,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
     setLoading(false);
   }, [
     projectId,
+    submoduleId,
     search,
     filterModuleId,
     filterType,
@@ -820,7 +850,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
       <TestingPageHeader
         projectId={projectId}
         activeKey="test-cases"
-        title="Test Cases"
+        title={dynamicSubmoduleName}
         description="Design reusable manual test cases, verify edge conditions, and manage traceability across development modules."
         icon={CheckSquare}
         badge={`${totalCount} cases`}
@@ -1756,6 +1786,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
       {config && (
         <TestCaseModal
           projectId={projectId}
+          projectSubmoduleId={submoduleId}
           isOpen={modalOpen}
           editingCase={editingCase}
           meta={meta}

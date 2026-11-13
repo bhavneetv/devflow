@@ -37,6 +37,8 @@ import { UserAvatar } from '../../../components/common/UserAvatar';
 
 interface TestingOverviewViewProps {
   projectId?: number;
+  submoduleId?: number;
+  title?: string;
 }
 
 const STATUS_BAR_COLORS: Record<string, string> = {
@@ -54,9 +56,14 @@ const SEVERITY_BAR_COLORS: Record<string, string> = {
   Minor: '#60A5FA',
 };
 
-export const TestingOverviewView: React.FC<TestingOverviewViewProps> = ({ projectId: propProjectId }) => {
-  const { id } = useParams<{ id: string }>();
+export const TestingOverviewView: React.FC<TestingOverviewViewProps> = ({
+  projectId: propProjectId,
+  submoduleId: propSubmoduleId,
+  title: propTitle,
+}) => {
+  const { id, submoduleId: routeSubId } = useParams<{ id: string; submoduleId?: string }>();
   const projectId = propProjectId || Number(id);
+  const submoduleId = propSubmoduleId || (routeSubId ? Number(routeSubId) : undefined);
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
   const { goToSubmodule } = useTestingNavigation(projectId);
@@ -69,7 +76,7 @@ export const TestingOverviewView: React.FC<TestingOverviewViewProps> = ({ projec
     if (!projectId) return;
     setLoading(true);
     setError(null);
-    const res = await testingService.getOverview(projectId);
+    const res = await testingService.getOverview(projectId, { submoduleId });
     if (res.success && res.data) {
       setData(res.data);
     } else {
@@ -78,7 +85,7 @@ export const TestingOverviewView: React.FC<TestingOverviewViewProps> = ({ projec
       toast.error(msg);
     }
     setLoading(false);
-  }, [projectId, toast]);
+  }, [projectId, submoduleId, toast]);
 
   useEffect(() => {
     void loadOverview();
@@ -106,7 +113,7 @@ export const TestingOverviewView: React.FC<TestingOverviewViewProps> = ({ projec
       <TestingPageHeader
         projectId={projectId}
         activeKey="testing-overview"
-        title="Testing Overview"
+        title={propTitle || 'Testing Overview'}
         description="Real-time test coverage, latest execution results, defect pressure, and upcoming QA plans."
         icon={BarChart2}
         badge={data ? `Role: ${data.permissions.role}` : undefined}

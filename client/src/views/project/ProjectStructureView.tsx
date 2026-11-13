@@ -90,6 +90,8 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
   const [editingSubmodule, setEditingSubmodule] = useState<ProjectSubmodule | null>(null);
   const [movingSubmodule, setMovingSubmodule] = useState<ProjectSubmodule | null>(null);
   const [deletingSubmodule, setDeletingSubmodule] = useState<ProjectSubmodule | null>(null);
+  const [duplicatingSubmodule, setDuplicatingSubmodule] = useState<ProjectSubmodule | null>(null);
+  const [duplicatingModule, setDuplicatingModule] = useState<ProjectModule | null>(null);
 
   // Action loaders
   const [isSaving, setIsSaving] = useState(false);
@@ -986,6 +988,18 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                             type="button"
                             onClick={() => {
                               setActiveModuleMenuId(null);
+                              setDuplicatingModule(module);
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer text-indigo-300"
+                          >
+                            <Copy size={13} className="text-indigo-400" />
+                            <span>Duplicate Module...</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveModuleMenuId(null);
                               setCreateSubmoduleTargetModuleId(module.id);
                             }}
                             className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer"
@@ -1246,6 +1260,18 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                                       >
                                         <MoveRight size={12} className="text-zinc-400" />
                                         <span>Move to Module...</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveSubmoduleMenuId(null);
+                                          setDuplicatingSubmodule(sub);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer text-indigo-300"
+                                      >
+                                        <Copy size={12} className="text-indigo-400" />
+                                        <span>Duplicate / Copy...</span>
                                       </button>
 
                                       <button
@@ -1563,6 +1589,17 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
                                                           <MoveRight size={12} className="text-zinc-400" />
                                                           <span>Move to Module...</span>
                                                         </button>
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            setActiveSubmoduleMenuId(null);
+                                                            setDuplicatingSubmodule(sub);
+                                                          }}
+                                                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 text-left cursor-pointer text-indigo-300"
+                                                        >
+                                                          <Copy size={12} className="text-indigo-400" />
+                                                          <span>Duplicate / Copy...</span>
+                                                        </button>
                                                         <div className="h-px bg-zinc-800 my-1" />
                                                         <button
                                                           type="button"
@@ -1717,6 +1754,39 @@ export const ProjectStructureView: React.FC<ProjectStructureViewProps> = ({ proj
           isSaving={isSaving}
           onClose={() => setDeletingSubmodule(null)}
           onConfirm={handleConfirmDeleteSubmodule}
+        />
+      )}
+
+      {/* ─── MODAL 8: Duplicate Submodule ─────────────────────────────────────── */}
+      {duplicatingSubmodule && (
+        <DuplicateSubmoduleModal
+          projectId={projectId}
+          submodule={duplicatingSubmodule}
+          allModules={modules}
+          accentColor={accentColor}
+          onClose={() => setDuplicatingSubmodule(null)}
+          onDuplicated={async () => {
+            setDuplicatingSubmodule(null);
+            await loadModules();
+            await syncSidebar();
+            toast.success('Submodule Duplicated', 'Duplicated submodule created successfully.');
+          }}
+        />
+      )}
+
+      {/* ─── MODAL 9: Duplicate Module ────────────────────────────────────────── */}
+      {duplicatingModule && (
+        <DuplicateModuleModal
+          projectId={projectId}
+          module={duplicatingModule}
+          accentColor={accentColor}
+          onClose={() => setDuplicatingModule(null)}
+          onDuplicated={async () => {
+            setDuplicatingModule(null);
+            await loadModules();
+            await syncSidebar();
+            toast.success('Module Duplicated', 'Duplicated module and submodules created successfully.');
+          }}
         />
       )}
     </div>
@@ -3775,6 +3845,385 @@ const DeleteSubmoduleModal: React.FC<DeleteSubmoduleModalProps> = ({
             {isSaving ? 'Deleting...' : 'Delete Submodule'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Duplicate Submodule Modal ────────────────────────────────────────────────
+
+interface DuplicateSubmoduleModalProps {
+  projectId: number;
+  submodule: ProjectSubmodule;
+  allModules: ProjectModule[];
+  accentColor: string;
+  onClose: () => void;
+  onDuplicated: () => void;
+}
+
+const DuplicateSubmoduleModal: React.FC<DuplicateSubmoduleModalProps> = ({
+  projectId,
+  submodule,
+  allModules,
+  accentColor,
+  onClose,
+  onDuplicated,
+}) => {
+  const [name, setName] = useState(`${submodule.name} (Copy)`);
+  const [copyMode, setCopyMode] = useState<'independent' | 'clone'>('independent');
+  const [includeData, setIncludeData] = useState(true);
+  const [targetModuleId, setTargetModuleId] = useState<number>(submodule.moduleId || (allModules[0]?.id ?? 0));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Name is required');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const res = await projectModuleService.duplicateSubmodule(projectId, submodule.id, {
+        name: trimmed,
+        targetModuleId,
+        copyMode,
+        includeData,
+      });
+      if (res.success) {
+        onDuplicated();
+      } else {
+        setError(res.error || 'Failed to duplicate submodule');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="w-full max-w-lg rounded-2xl border border-[#27272A] bg-[#121319] shadow-2xl p-5 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 text-indigo-400">
+              <Copy size={16} />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white">Duplicate Submodule</h2>
+              <p className="text-xs text-zinc-400">Create an independent copy or mirrored clone</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded text-zinc-500 hover:text-zinc-200 cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 text-xs">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">Submodule Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 bg-[#0C0D10] border border-[#27272A] rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/60 transition-colors"
+              placeholder="e.g. Defects (Copy)"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">Parent Module</label>
+            <select
+              value={targetModuleId}
+              onChange={(e) => setTargetModuleId(Number(e.target.value))}
+              className="w-full px-3 py-2 bg-[#0C0D10] border border-[#27272A] rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500/60 transition-colors"
+            >
+              {allModules.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.parentId ? `└─ ${m.name}` : m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1.5">Instance Type</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <label
+                className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                  copyMode === 'independent'
+                    ? 'bg-indigo-500/10 border-indigo-500/40 text-white'
+                    : 'bg-[#0B0D12] border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="subCopyMode"
+                    value="independent"
+                    checked={copyMode === 'independent'}
+                    onChange={() => setCopyMode('independent')}
+                    className="accent-indigo-500"
+                  />
+                  <span className="text-xs font-semibold text-white">Independent Instance</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Separate ID, independent data, routes, and settings.
+                </p>
+              </label>
+
+              <label
+                className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                  copyMode === 'clone'
+                    ? 'bg-purple-500/10 border-purple-500/40 text-white'
+                    : 'bg-[#0B0D12] border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="subCopyMode"
+                    value="clone"
+                    checked={copyMode === 'clone'}
+                    onChange={() => setCopyMode('clone')}
+                    className="accent-purple-500"
+                  />
+                  <span className="text-xs font-semibold text-white">Cloned Mirror</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Distinct sidebar item that mirrors data of original submodule.
+                </p>
+              </label>
+            </div>
+          </div>
+
+          {copyMode === 'independent' && (
+            <div className="pt-1">
+              <label className="flex items-center gap-2.5 text-xs text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeData}
+                  onChange={(e) => setIncludeData(e.target.checked)}
+                  className="rounded border-[#27272A] bg-[#0C0D10] accent-indigo-500"
+                />
+                <span>Copy existing records (e.g. defects, test cases) into new instance</span>
+              </label>
+            </div>
+          )}
+
+          <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-[#27272A]">
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-md hover:brightness-110 transition-all cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: accentColor }}
+            >
+              {isSubmitting ? 'Duplicating...' : 'Duplicate Submodule'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ─── Duplicate Module Modal ───────────────────────────────────────────────────
+
+interface DuplicateModuleModalProps {
+  projectId: number;
+  module: ProjectModule;
+  accentColor: string;
+  onClose: () => void;
+  onDuplicated: () => void;
+}
+
+const DuplicateModuleModal: React.FC<DuplicateModuleModalProps> = ({
+  projectId,
+  module,
+  accentColor,
+  onClose,
+  onDuplicated,
+}) => {
+  const [name, setName] = useState(`${module.name} (Copy)`);
+  const [copyMode, setCopyMode] = useState<'independent' | 'clone'>('independent');
+  const [includeData, setIncludeData] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Name is required');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const res = await projectModuleService.duplicateModule(projectId, module.id, {
+        name: trimmed,
+        copyMode,
+        includeData,
+      });
+      if (res.success) {
+        onDuplicated();
+      } else {
+        setError(res.error || 'Failed to duplicate module');
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="w-full max-w-lg rounded-2xl border border-[#27272A] bg-[#121319] shadow-2xl p-5 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="flex items-center justify-between pb-3 border-b border-[#27272A]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 text-indigo-400">
+              <Copy size={16} />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white">Duplicate Module</h2>
+              <p className="text-xs text-zinc-400">Clone module and all its submodules</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded text-zinc-500 hover:text-zinc-200 cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 text-xs">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">Module Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 bg-[#0C0D10] border border-[#27272A] rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/60 transition-colors"
+              placeholder="e.g. Planning (Copy)"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1.5">Instance Type</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <label
+                className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                  copyMode === 'independent'
+                    ? 'bg-indigo-500/10 border-indigo-500/40 text-white'
+                    : 'bg-[#0B0D12] border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="moduleCopyMode"
+                    value="independent"
+                    checked={copyMode === 'independent'}
+                    onChange={() => setCopyMode('independent')}
+                    className="accent-indigo-500"
+                  />
+                  <span className="text-xs font-semibold text-white">Independent Module</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Creates new submodules with isolated data and IDs.
+                </p>
+              </label>
+
+              <label
+                className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                  copyMode === 'clone'
+                    ? 'bg-purple-500/10 border-purple-500/40 text-white'
+                    : 'bg-[#0B0D12] border-[#27272A] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="moduleCopyMode"
+                    value="clone"
+                    checked={copyMode === 'clone'}
+                    onChange={() => setCopyMode('clone')}
+                    className="accent-purple-500"
+                  />
+                  <span className="text-xs font-semibold text-white">Cloned Mirror</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Submodules link to original data for parallel navigation.
+                </p>
+              </label>
+            </div>
+          </div>
+
+          {copyMode === 'independent' && (
+            <div className="pt-1">
+              <label className="flex items-center gap-2.5 text-xs text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeData}
+                  onChange={(e) => setIncludeData(e.target.checked)}
+                  className="rounded border-[#27272A] bg-[#0C0D10] accent-indigo-500"
+                />
+                <span>Deep copy data records into all duplicated submodules</span>
+              </label>
+            </div>
+          )}
+
+          <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-[#27272A]">
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-md hover:brightness-110 transition-all cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: accentColor }}
+            >
+              {isSubmitting ? 'Duplicating...' : 'Duplicate Module'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

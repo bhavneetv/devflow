@@ -38,10 +38,13 @@ import {
 } from 'lucide-react';
 import { testingService } from '../../../services/testing.service';
 import { useAccentTheme } from '../../../services/accentTheme.service';
+import { useAuth } from '../../../context/AuthContext';
+import { useNavigation } from '../../../context/NavigationContext';
 import { useToast } from '../../../context/ToastContext';
 import { confirmDeleteSwal } from '../../../lib/confirmAlert';
 import { AnimatedSelect, type SelectOption } from '../../../components/settings/AnimatedSelect';
 import { UserAvatar } from '../../../components/common/UserAvatar';
+import { CustomCheckbox } from '../../../components/common/CustomCheckbox';
 import { TestingPageHeader } from '../../../components/testing/TestingPageHeader';
 import {
   DefectStatusBadge,
@@ -67,6 +70,7 @@ interface DefectsViewProps {
 
 export type DefectGroupBy =
   | 'none'
+  | 'module'
   | 'severity'
   | 'priority'
   | 'status'
@@ -81,6 +85,7 @@ const GROUP_OPTIONS: Array<{
   icon: React.ReactNode;
 }> = [
   { key: 'none', label: 'No Grouping', sublabel: 'Flat list or card view', shortLabel: 'None', icon: <List size={13} className="text-zinc-400" /> },
+  { key: 'module', label: 'Application Module', sublabel: 'Group by project module', shortLabel: 'Module', icon: <Layers size={13} className="text-emerald-400" /> },
   { key: 'severity', label: 'Defect Severity', sublabel: 'Critical, Major, Moderate, Minor', shortLabel: 'Severity', icon: <Flame size={13} className="text-rose-400" /> },
   { key: 'priority', label: 'Priority', sublabel: 'Critical, High, Medium, Low', shortLabel: 'Priority', icon: <AlertTriangle size={13} className="text-amber-400" /> },
   { key: 'status', label: 'Lifecycle Status', sublabel: 'Open, In Progress, Fixed, Verified, Closed', shortLabel: 'Status', icon: <Clock size={13} className="text-purple-400" /> },
@@ -161,6 +166,19 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
   const [searchParams, setSearchParams] = useSearchParams();
   const { accentColor } = useAccentTheme();
   const { toast } = useToast();
+  const { projectModules } = useNavigation();
+
+  // Dynamic module / submodule name saved by user in settings
+  const dynamicSubmoduleName = useMemo(() => {
+    for (const mod of projectModules || []) {
+      const sub = mod.submodules?.find((s) => s.builtInKey === 'defects');
+      if (sub?.name) return sub.name;
+      if (mod.name && (mod.name.toLowerCase().includes('defect') || mod.name.toLowerCase().includes('bug'))) {
+        return mod.name;
+      }
+    }
+    return 'Defects';
+  }, [projectModules]);
 
   const [defects, setDefects] = useState<QaDefectItem[]>([]);
   const [meta, setMeta] = useState<TestingMetaData>(DEFAULT_META);
@@ -578,6 +596,17 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
       let gColor: string | undefined;
 
       switch (groupBy) {
+        case 'module':
+          if (d.module) {
+            gId = `mod-${d.module.id}`;
+            gTitle = d.module.name;
+            gColor = '#10B981';
+          } else {
+            gId = 'unassigned';
+            gTitle = 'General / No Module';
+            gColor = '#71717A';
+          }
+          break;
         case 'severity':
           gId = d.severity.toLowerCase();
           gTitle = d.severity;
@@ -712,54 +741,62 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
   );
 
   // Helper to render table rows for any defect array
-  const renderTableRows = (items: QaDefectItem[]) => (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-xs">
-        <thead className="bg-[#0B0D12]/80 text-zinc-400 border-b border-[#27272A]">
-          <tr>
-            <th className="px-4 py-3 w-10">
-              <input
-                type="checkbox"
-                checked={items.length > 0 && items.every((d) => selectedIds.includes(d.id))}
-                onChange={() => {
-                  const allInGrpSelected = items.every((d) => selectedIds.includes(d.id));
-                  if (allInGrpSelected) {
-                    setSelectedIds((prev) => prev.filter((id) => !items.some((d) => d.id === id)));
-                  } else {
-                    const toAdd = items.map((d) => d.id).filter((id) => !selectedIds.includes(id));
-                    setSelectedIds((prev) => [...prev, ...toAdd]);
-                  }
-                }}
-                className="rounded border-[#27272A] bg-[#0B0D12] text-rose-500 focus:ring-0 w-3.5 h-3.5"
-              />
-            </th>
-            <th className="px-4 py-3">Key &amp; Defect Title</th>
-            <th className="px-4 py-3">Severity</th>
-            <th className="px-4 py-3">Priority</th>
-            <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Assignee</th>
-            <th className="px-4 py-3">Traceability</th>
-            <th className="px-4 py-3 text-right">Updated</th>
-            <th className="px-4 py-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[#27272A]/70">
-          {items.map((d) => (
-            <tr
-              key={d.id}
-              className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${
-                d.isArchived ? 'opacity-55' : ''
-              } ${drawerDefectId === d.id ? 'bg-rose-500/[0.07]' : ''}`}
-              onClick={() => setDrawerDefectId(d.id)}
-            >
-              <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(d.id)}
-                  onChange={() => toggleOne(d.id)}
-                  className="rounded border-[#27272A] bg-[#0B0D12] text-rose-500 focus:ring-0 w-3.5 h-3.5"
+  const renderTableRows = (items: QaDefectItem[]) => {
+    const allInGrpSelected = items.length > 0 && items.every((d) => selectedIds.includes(d.id));
+    const someInGrpSelected = items.some((d) => selectedIds.includes(d.id));
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-[#0B0D12]/80 text-zinc-400 border-b border-[#27272A]">
+            <tr>
+              <th className="px-4 py-3 w-10">
+                <CustomCheckbox
+                  checked={allInGrpSelected}
+                  indeterminate={!allInGrpSelected && someInGrpSelected}
+                  accentColor={accentColor}
+                  size="sm"
+                  onChange={(checked) => {
+                    if (checked) {
+                      const toAdd = items.map((d) => d.id).filter((id) => !selectedIds.includes(id));
+                      setSelectedIds((prev) => [...prev, ...toAdd]);
+                    } else {
+                      setSelectedIds((prev) => prev.filter((id) => !items.some((d) => d.id === id)));
+                    }
+                  }}
+                  aria-label="Select all defects in view"
                 />
-              </td>
+              </th>
+              <th className="px-4 py-3">Key &amp; Defect Title</th>
+              <th className="px-4 py-3">Severity</th>
+              <th className="px-4 py-3">Priority</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Reported By</th>
+              <th className="px-4 py-3">Assignee</th>
+              <th className="px-4 py-3">Traceability</th>
+              <th className="px-4 py-3 text-right">Updated</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#27272A]/70">
+            {items.map((d) => (
+              <tr
+                key={d.id}
+                className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${
+                  d.isArchived ? 'opacity-55' : ''
+                }`}
+                onClick={() => setDrawerDefectId(d.id)}
+              >
+                <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                  <CustomCheckbox
+                    checked={selectedIds.includes(d.id)}
+                    onChange={() => toggleOne(d.id)}
+                    accentColor={accentColor}
+                    size="sm"
+                    stopPropagation
+                    aria-label={`Select defect ${d.defectKey}`}
+                  />
+                </td>
               <td className="px-4 py-3 max-w-md">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[11px] font-bold text-rose-400 shrink-0">
@@ -768,6 +805,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                   <span className="font-medium text-white truncate">{d.title}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5 flex-wrap">
+                  {d.module && <span className="text-emerald-400">• {d.module.name}</span>}
                   {d.environment && <span>Env: {d.environment}</span>}
                   {d.buildVersion && <span>• {d.buildVersion}</span>}
                   {d.reopenCount > 0 && (
@@ -785,6 +823,16 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
               </td>
               <td className="px-4 py-3">
                 <DefectStatusBadge status={d.status} />
+              </td>
+              <td className="px-4 py-3">
+                {d.reporter ? (
+                  <div className="flex items-center gap-1.5">
+                    <UserAvatar user={d.reporter} size="xs" />
+                    <span className="text-zinc-300 truncate max-w-[110px]">{d.reporter.name}</span>
+                  </div>
+                ) : (
+                  <span className="text-zinc-500 italic">Unknown</span>
+                )}
               </td>
               <td className="px-4 py-3">
                 {d.assignee ? (
@@ -864,6 +912,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
       </table>
     </div>
   );
+};
 
   // Helper to render card grid for any defect array
   const renderCardGrid = (items: QaDefectItem[]) => (
@@ -893,6 +942,12 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
 
           <div className="flex items-center gap-2 flex-wrap text-[11px] text-zinc-400">
             <TestingPriorityBadge priority={d.priority} />
+            {d.module && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">
+                <Layers className="w-2.5 h-2.5" />
+                {d.module.name}
+              </span>
+            )}
             {d.environment && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-white/[0.05] text-zinc-300 border border-white/10">
                 <Server className="w-2.5 h-2.5 text-cyan-400" />
@@ -909,18 +964,27 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
             )}
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-[#27272A]/70 text-[11px] text-zinc-400">
-            <div className="flex items-center gap-1.5">
-              {d.assignee ? (
-                <>
-                  <UserAvatar user={d.assignee} size="xs" />
-                  <span className="text-zinc-300 truncate max-w-[120px]">{d.assignee.name}</span>
-                </>
-              ) : (
-                <span className="text-zinc-500 italic">Unassigned</span>
+          <div className="flex items-center justify-between pt-2 border-t border-[#27272A]/70 text-[11px] text-zinc-400 flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5" title={`Assignee: ${d.assignee?.name || 'Unassigned'}`}>
+                {d.assignee ? (
+                  <>
+                    <UserAvatar user={d.assignee} size="xs" />
+                    <span className="text-zinc-300 truncate max-w-[90px]">{d.assignee.name}</span>
+                  </>
+                ) : (
+                  <span className="text-zinc-500 italic">Unassigned</span>
+                )}
+              </div>
+              {d.reporter && (
+                <div className="flex items-center gap-1 text-[10.5px] text-zinc-400" title={`Reported by ${d.reporter.name}`}>
+                  <span className="text-zinc-500">by</span>
+                  <UserAvatar user={d.reporter} size="xs" />
+                  <span className="truncate max-w-[80px]">{d.reporter.name}</span>
+                </div>
               )}
             </div>
-            <span className="font-mono text-[10.5px] text-zinc-500">
+            <span className="font-mono text-[10.5px] text-zinc-500 shrink-0">
               {formatTestingDate(d.updatedAt)}
             </span>
           </div>
@@ -935,10 +999,11 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
       <TestingPageHeader
         projectId={projectId}
         activeKey="defects"
-        title="Defects"
+        title={dynamicSubmoduleName}
         description="Track software bugs with strict QA verification: developer fixes await retest before closure, and reopens increment traceability counters."
-        icon={Bug}
-        badge={`${totalCount} defects`}
+        hideIcon
+        hideCategory
+        hideBadge
         actions={
           permissions.canManageDefects ? (
             <button
@@ -1094,10 +1159,10 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 6, scale: 0.97 }}
                         transition={{ duration: 0.16 }}
-                        className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-[340px] sm:w-[380px] rounded-2xl bg-[#12141C] border border-[#27272A] shadow-2xl z-50 overflow-hidden text-xs"
+                        className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-[340px] sm:w-[380px] rounded-2xl bg-[#12141C] border border-[#27272A] shadow-2xl z-50 overflow-visible text-xs"
                       >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-[#27272A] bg-[#161824]">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-[#27272A] bg-[#161824] rounded-t-2xl">
                           <div className="flex items-center gap-2">
                             <ListFilter className="w-4 h-4" style={{ color: accentColor }} />
                             <span className="font-semibold text-white">Filter Defects</span>
@@ -1121,8 +1186,8 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                           )}
                         </div>
 
-                        {/* Body with AnimatedSelect (dropdownMinWidth="w-full" prevents horizontal overflow scrollbars) */}
-                        <div className="p-4 space-y-3 max-h-[62vh] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-700">
+                        {/* Body with AnimatedSelect (overflow-visible + dropdownPosition="top" for bottom selects prevents any scrollbar/cutting) */}
+                        <div className="p-4 space-y-3 relative overflow-visible">
                           <div>
                             <label className="block text-[11px] font-medium text-zinc-400 mb-1">Status</label>
                             <AnimatedSelect
@@ -1136,7 +1201,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                           </div>
 
                           <div className="grid grid-cols-2 gap-2.5">
-                            <div>
+                            <div className="min-w-0">
                               <label className="block text-[11px] font-medium text-zinc-400 mb-1">Severity</label>
                               <AnimatedSelect
                                 options={severityFilterOptions}
@@ -1148,7 +1213,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                               />
                             </div>
 
-                            <div>
+                            <div className="min-w-0">
                               <label className="block text-[11px] font-medium text-zinc-400 mb-1">Priority</label>
                               <AnimatedSelect
                                 options={priorityFilterOptions}
@@ -1163,7 +1228,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                           </div>
 
                           <div className="grid grid-cols-2 gap-2.5">
-                            <div>
+                            <div className="min-w-0">
                               <label className="block text-[11px] font-medium text-zinc-400 mb-1">Assigned Developer</label>
                               <AnimatedSelect
                                 options={assigneeFilterOptions}
@@ -1175,7 +1240,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                               />
                             </div>
 
-                            <div>
+                            <div className="min-w-0">
                               <label className="block text-[11px] font-medium text-zinc-400 mb-1">Environment</label>
                               <AnimatedSelect
                                 options={environmentFilterOptions}
@@ -1197,6 +1262,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                               onChange={setFilterDevTaskId}
                               placeholder="All Development Tasks"
                               dropdownMinWidth="w-full"
+                              dropdownPosition="top"
                               accentColor={accentColor}
                             />
                           </div>
@@ -1209,22 +1275,21 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                               onChange={setFilterReqId}
                               placeholder="All Requirements"
                               dropdownMinWidth="w-full"
+                              dropdownPosition="top"
                               accentColor={accentColor}
                             />
                           </div>
                         </div>
 
                         {/* Footer Strip */}
-                        <div className="px-4 py-2.5 border-t border-[#27272A] bg-[#161824] flex items-center justify-between">
-                          <label className="inline-flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={includeArchived}
-                              onChange={(e) => setIncludeArchived(e.target.checked)}
-                              className="rounded border-[#27272A] bg-[#0B0D12] text-rose-500 focus:ring-0 w-3.5 h-3.5"
-                            />
-                            <span>Include Archived</span>
-                          </label>
+                        <div className="px-4 py-2.5 border-t border-[#27272A] bg-[#161824] rounded-b-2xl flex items-center justify-between">
+                          <CustomCheckbox
+                            checked={includeArchived}
+                            onChange={setIncludeArchived}
+                            label="Include Archived"
+                            accentColor={accentColor}
+                            size="sm"
+                          />
                           <button
                             type="button"
                             onClick={() => setIsFilterOpen(false)}
@@ -1267,7 +1332,7 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                     )}
                   </button>
 
-                  {/* Popover with Submenu Flyout for Group By */}
+                  {/* Combined Sort & Group Popover Panel */}
                   <AnimatePresence>
                     {isSortGroupOpen && (
                       <motion.div
@@ -1275,158 +1340,178 @@ export const DefectsView: React.FC<DefectsViewProps> = ({ projectId: propProject
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 6, scale: 0.97 }}
                         transition={{ duration: 0.16 }}
-                        className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-64 rounded-2xl bg-[#12141C] border border-[#27272A] shadow-2xl z-50 text-xs text-zinc-300"
+                        className="absolute right-0 top-full mt-2 w-64 max-h-[calc(100vh-120px)] overflow-visible rounded-2xl bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] p-2 shadow-2xl z-50 space-y-1.5 text-left"
                       >
-                        {/* Header */}
-                        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[#27272A] bg-[#161824] rounded-t-2xl">
-                          <span className="font-semibold text-white">Sort &amp; Group</span>
-                          <span className="text-[10px] font-mono text-zinc-400">
-                            {activeGroupMeta.shortLabel}
-                          </span>
+                        {/* Section 1: Sort by */}
+                        <div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500 flex items-center justify-between">
+                          <span>Sort by</span>
+                          <Calendar size={11} className="text-zinc-500" />
                         </div>
-
-                        <div className="p-2 space-y-1">
-                          {/* Sort Section */}
-                          <div className="px-2 pt-1 pb-1 text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-semibold">
-                            Sort Order
-                          </div>
+                        <div className="space-y-0.5">
                           {SORT_OPTIONS.map((opt) => {
                             const isSelected = sortValue === opt.key;
                             return (
-                              <button
+                              <motion.button
                                 key={opt.key}
                                 type="button"
+                                whileTap={{ scale: 0.98 }}
                                 onClick={() => {
                                   setSortValue(opt.key);
-                                  setIsSortGroupOpen(false);
                                 }}
-                                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer ${
+                                className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer border ${
                                   isSelected
-                                    ? 'bg-white/10 text-white font-medium'
-                                    : 'hover:bg-white/5 text-zinc-300'
+                                    ? 'font-medium shadow-sm'
+                                    : 'text-[#D4D4D8] border-transparent hover:bg-white/[0.06] hover:text-white'
                                 }`}
+                                style={
+                                  isSelected
+                                    ? {
+                                        backgroundColor: `${accentColor}20`,
+                                        borderColor: `${accentColor}40`,
+                                        color: '#FFFFFF',
+                                      }
+                                    : undefined
+                                }
                               >
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className="shrink-0">{opt.icon}</span>
-                                  <div className="min-w-0">
-                                    <div className="truncate text-xs">{opt.label}</div>
-                                    <div className="text-[10px] text-zinc-400 truncate">
-                                      {opt.sublabel}
-                                    </div>
+                                  {opt.icon}
+                                  <div className="text-left truncate">
+                                    <div className="truncate font-medium text-white">{opt.label}</div>
+                                    <div className="text-[10px] text-zinc-500">{opt.sublabel}</div>
                                   </div>
                                 </div>
-                                {isSelected && (
-                                  <Check
-                                    size={13}
-                                    className="shrink-0"
-                                    style={{ color: accentColor }}
-                                  />
-                                )}
-                              </button>
+                                {isSelected && <Check size={12} style={{ color: accentColor }} />}
+                              </motion.button>
                             );
                           })}
+                        </div>
 
-                          {/* Group By Trigger Row with Submenu Flyout */}
-                          <div className="pt-2 border-t border-[#27272A] relative">
-                            <div className="px-2 pb-1 text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-semibold">
-                              Group By
+                        {/* Divider */}
+                        <div className="my-1 border-t border-[#27272A]/80" />
+
+                        {/* Section 2: Group by with Submenu Flyout */}
+                        <div
+                          className="relative"
+                          onMouseEnter={() => setIsGroupByHovered(true)}
+                          onMouseLeave={() => setIsGroupByHovered(false)}
+                        >
+                          <motion.button
+                            type="button"
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setIsGroupByHovered((p) => !p)}
+                            className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer group border ${
+                              groupBy !== 'none'
+                                ? 'font-medium shadow-sm'
+                                : 'text-[#D4D4D8] border-transparent hover:bg-white/[0.06] hover:text-white'
+                            }`}
+                            style={
+                              groupBy !== 'none'
+                                ? {
+                                    backgroundColor: `${accentColor}18`,
+                                    borderColor: `${accentColor}35`,
+                                    color: '#FFFFFF',
+                                  }
+                                : undefined
+                            }
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="shrink-0 flex items-center justify-center">
+                                <Layers size={14} className="text-purple-400" />
+                              </span>
+                              <span className="font-semibold text-white">Group by</span>
                             </div>
-
-                            <div
-                              onMouseEnter={() => setIsGroupByHovered(true)}
-                              onMouseLeave={() => setIsGroupByHovered(false)}
-                              className="relative"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => setIsGroupByHovered((prev) => !prev)}
-                                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-colors cursor-pointer ${
-                                  groupBy !== 'none' || isGroupByHovered
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium border ${
+                                  groupBy !== 'none'
                                     ? 'bg-white/10 text-white'
-                                    : 'hover:bg-white/5 text-zinc-300'
+                                    : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60'
                                 }`}
+                                style={
+                                  groupBy !== 'none'
+                                    ? { borderColor: `${accentColor}50`, color: accentColor }
+                                    : undefined
+                                }
                               >
-                                <div className="flex items-center gap-2">
-                                  <span className="shrink-0">{activeGroupMeta.icon}</span>
-                                  <span className="font-medium text-xs">
-                                    {activeGroupMeta.label}
-                                  </span>
-                                </div>
-                                <ChevronRight
-                                  size={14}
-                                  className={`text-zinc-400 transition-transform ${
-                                    isGroupByHovered ? 'translate-x-0.5 text-white' : ''
-                                  }`}
-                                />
-                              </button>
-
-                              {/* Expandable Submenu Flyout */}
-                              <AnimatePresence>
-                                {isGroupByHovered && (
-                                  <motion.div
-                                    initial={{ opacity: 0, x: -6 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -6 }}
-                                    transition={{ duration: 0.14 }}
-                                    className="absolute left-full top-0 ml-1.5 w-56 rounded-2xl bg-[#141620] border border-[#27272A] shadow-2xl p-1.5 space-y-0.5 z-[60]"
-                                  >
-                                    <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-semibold">
-                                      Group Defect View
-                                    </div>
-                                    {GROUP_OPTIONS.map((g) => {
-                                      const isPicked = groupBy === g.key;
-                                      return (
-                                        <button
-                                          key={g.key}
-                                          type="button"
-                                          onClick={() => {
-                                            setGroupBy(g.key);
-                                            setIsGroupByHovered(false);
-                                            setIsSortGroupOpen(false);
-                                          }}
-                                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer ${
-                                            isPicked
-                                              ? 'bg-white/10 text-white font-medium'
-                                              : 'hover:bg-white/5 text-zinc-300'
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            <span className="shrink-0">{g.icon}</span>
-                                            <div className="min-w-0">
-                                              <div className="truncate text-xs">{g.label}</div>
-                                              <div className="text-[10px] text-zinc-400 truncate">
-                                                {g.sublabel}
-                                              </div>
-                                            </div>
-                                          </div>
-                                          {isPicked && (
-                                            <Check
-                                              size={13}
-                                              className="shrink-0"
-                                              style={{ color: accentColor }}
-                                            />
-                                          )}
-                                        </button>
-                                      );
-                                    })}
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
+                                {activeGroupMeta.shortLabel}
+                              </span>
+                              <ChevronRight
+                                size={13}
+                                className="text-zinc-500 group-hover:translate-x-0.5 transition-transform"
+                              />
                             </div>
-                          </div>
+                          </motion.button>
+
+                          {/* Submenu Flyout */}
+                          <AnimatePresence>
+                            {isGroupByHovered && (
+                              <motion.div
+                                initial={{ opacity: 0, x: -8, scale: 0.96 }}
+                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                exit={{ opacity: 0, x: -8, scale: 0.96 }}
+                                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                                className="absolute right-full bottom-0 pr-2 z-[9990]"
+                              >
+                                <div className="w-60 max-h-[75vh] overflow-y-auto rounded-2xl bg-[#14161C]/98 backdrop-blur-xl border border-[#27272A] p-2 shadow-2xl space-y-1 text-left">
+                                  <div className="px-2.5 py-1 text-[9.5px] font-mono uppercase tracking-wider text-zinc-500 flex items-center justify-between">
+                                    <span>Group By</span>
+                                    <Layers size={11} className="text-zinc-500" />
+                                  </div>
+                                  {GROUP_OPTIONS.map((grp) => {
+                                    const isSelected = groupBy === grp.key;
+                                    return (
+                                      <motion.button
+                                        key={grp.key}
+                                        type="button"
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => {
+                                          setGroupBy(grp.key);
+                                          setIsGroupByHovered(false);
+                                          setIsSortGroupOpen(false);
+                                        }}
+                                        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer border ${
+                                          isSelected
+                                            ? 'font-medium shadow-sm'
+                                            : 'text-[#D4D4D8] border-transparent hover:bg-white/[0.06] hover:text-white'
+                                        }`}
+                                        style={
+                                          isSelected
+                                            ? {
+                                                backgroundColor: `${accentColor}20`,
+                                                borderColor: `${accentColor}40`,
+                                                color: '#FFFFFF',
+                                              }
+                                            : undefined
+                                        }
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          {grp.icon}
+                                          <div className="text-left truncate">
+                                            <div className="truncate font-medium text-white">{grp.label}</div>
+                                            <div className="text-[10px] text-zinc-500">{grp.sublabel}</div>
+                                          </div>
+                                        </div>
+                                        {isSelected && <Check size={12} style={{ color: accentColor }} />}
+                                      </motion.button>
+                                    );
+                                  })}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
 
                         {/* Reset to Default Button */}
-                        <div className="p-2 border-t border-[#27272A] bg-[#161824] rounded-b-2xl">
+                        <div className="pt-2 border-t border-[#27272A]/70">
                           <button
                             type="button"
                             onClick={() => {
-                              setSortValue('severity:desc');
                               setGroupBy('none');
+                              setSortValue('severity:desc');
                               setIsSortGroupOpen(false);
                               setIsGroupByHovered(false);
                             }}
-                            className="w-full py-1.5 px-3 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-colors text-center cursor-pointer flex items-center justify-center gap-1.5"
+                            className="w-full py-1.5 px-2 rounded-lg text-center text-[11px] font-mono text-zinc-400 hover:text-white hover:bg-white/[0.04] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                           >
                             <RotateCcw size={12} />
                             <span>Reset to Default</span>

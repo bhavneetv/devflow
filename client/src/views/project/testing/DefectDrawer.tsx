@@ -1,20 +1,26 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
   Archive,
+  ArrowRight,
   Bug,
   Check,
+  CheckCheck,
   CheckCircle2,
   Clock,
   Edit3,
   ExternalLink,
   GitBranch,
+  GripHorizontal,
   History,
+  Layers,
   Link2,
   RotateCcw,
+  RotateCw,
   Sparkles,
   Unlink,
   Wrench,
@@ -66,6 +72,313 @@ const DEFECT_STATUS_OPTIONS: SelectOption[] = [
   { value: 'Closed', label: 'Closed' },
   { value: 'Reopened', label: 'Reopened' },
 ];
+
+interface DefectPhaseItem {
+  name: string;
+  color: string;
+  icon: any;
+}
+
+const BASE_DEFECT_PHASES: DefectPhaseItem[] = [
+  { name: 'Open', color: '#3B82F6', icon: AlertCircle },
+  { name: 'In Progress', color: '#8B5CF6', icon: Clock },
+  { name: 'Fixed', color: '#F59E0B', icon: Wrench },
+  { name: 'Ready for Retest', color: '#06B6D4', icon: RotateCw },
+  { name: 'Verified', color: '#10B981', icon: CheckCircle2 },
+  { name: 'Closed', color: '#71717A', icon: CheckCheck },
+];
+
+const DefectPhaseSliderControl: React.FC<{
+  currentStatus: string;
+  disabled: boolean;
+  accentColor: string;
+  onSelectStatus: (status: string) => void;
+}> = ({ currentStatus, disabled, accentColor, onSelectStatus }) => {
+  const phases = useMemo<DefectPhaseItem[]>(() => {
+    if (currentStatus === 'Reopened') {
+      return [
+        { name: 'Reopened', color: '#F43F5E', icon: AlertTriangle },
+        ...BASE_DEFECT_PHASES.filter((p: DefectPhaseItem) => p.name !== 'Open'),
+      ];
+    }
+    return BASE_DEFECT_PHASES;
+  }, [currentStatus]);
+
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const fillRef = useRef<HTMLDivElement | null>(null);
+  const handleRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingRef = useRef(false);
+  const hoverIdxRef = useRef<number | null>(null);
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  const currentIdx = useMemo(() => {
+    const idx = phases.findIndex((p: DefectPhaseItem) => p.name.toLowerCase() === currentStatus.toLowerCase());
+    return idx >= 0 ? idx : 0;
+  }, [phases, currentStatus]);
+
+  const activeIdx = hoverIdx !== null ? hoverIdx : currentIdx;
+  const activePhase = phases[activeIdx] || phases[0];
+  const nextPhase = currentIdx < phases.length - 1 ? phases[currentIdx + 1] : null;
+  const phaseColor = activePhase?.color || accentColor;
+
+  const restPercent =
+    phases.length > 1 ? (currentIdx / (phases.length - 1)) * 100 : 100;
+
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      if (fillRef.current) fillRef.current.style.width = `${restPercent}%`;
+      if (handleRef.current) handleRef.current.style.left = `${restPercent}%`;
+    }
+  }, [restPercent]);
+
+  const computeFromClientX = (clientX: number) => {
+    if (!railRef.current || phases.length === 0) return null;
+    const rect = railRef.current.getBoundingClientRect();
+    const width = Math.max(rect.width, 1);
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / width));
+    const idx =
+      phases.length > 1
+        ? Math.min(phases.length - 1, Math.max(0, Math.round(ratio * (phases.length - 1))))
+        : 0;
+    return { percent: ratio * 100, idx };
+  };
+
+  const applyDomPosition = (percent: number, color: string) => {
+    if (fillRef.current) {
+      fillRef.current.style.width = `${percent}%`;
+      fillRef.current.style.backgroundColor = color;
+    }
+    if (handleRef.current) {
+      handleRef.current.style.left = `${percent}%`;
+      handleRef.current.style.backgroundColor = color;
+      handleRef.current.style.boxShadow = `0 0 14px ${color}99`;
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (disabled || phases.length === 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isDraggingRef.current = true;
+    setIsDragging(true);
+    const res = computeFromClientX(e.clientX);
+    if (res) {
+      const targetColor = phases[res.idx]?.color || accentColor;
+      applyDomPosition(res.percent, targetColor);
+      hoverIdxRef.current = res.idx;
+      setHoverIdx(res.idx);
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    const res = computeFromClientX(e.clientX);
+    if (!res) return;
+    const targetColor = phases[res.idx]?.color || accentColor;
+    applyDomPosition(res.percent, targetColor);
+    if (res.idx !== hoverIdxRef.current) {
+      hoverIdxRef.current = res.idx;
+      setHoverIdx(res.idx);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    const res = computeFromClientX(e.clientX);
+    const targetIdx = res ? res.idx : hoverIdxRef.current;
+
+    isDraggingRef.current = false;
+    hoverIdxRef.current = null;
+    setIsDragging(false);
+    setHoverIdx(null);
+
+    if (targetIdx !== null && targetIdx !== undefined && phases[targetIdx]) {
+      const targetPhase = phases[targetIdx];
+      const snappedPercent =
+        phases.length > 1 ? (targetIdx / (phases.length - 1)) * 100 : 100;
+      applyDomPosition(snappedPercent, targetPhase.color || accentColor);
+      if (targetPhase.name !== currentStatus) {
+        onSelectStatus(targetPhase.name);
+      }
+    } else {
+      applyDomPosition(restPercent, phaseColor);
+    }
+  };
+
+  const NextIcon = nextPhase ? nextPhase.icon : CheckCircle2;
+
+  return (
+    <div className="space-y-3">
+      {/* Advance Phase Button */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          disabled={disabled || !nextPhase}
+          onClick={() => nextPhase && onSelectStatus(nextPhase.name)}
+          className="flex-1 min-w-[200px] group relative overflow-hidden rounded-xl px-4 py-3 flex items-center justify-between gap-3 border transition-all cursor-pointer disabled:opacity-65 disabled:cursor-default"
+          style={{
+            backgroundColor: nextPhase ? `${nextPhase.color}18` : 'rgba(16, 185, 129, 0.12)',
+            borderColor: nextPhase ? `${nextPhase.color}55` : 'rgba(16, 185, 129, 0.45)',
+          }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: nextPhase ? `${nextPhase.color}28` : 'rgba(16, 185, 129, 0.25)',
+                color: nextPhase ? nextPhase.color : '#34D399',
+              }}
+            >
+              <NextIcon size={16} />
+            </span>
+            <div className="text-left min-w-0">
+              <span className="block text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                {nextPhase ? 'Click to Advance Phase' : 'Defect Lifecycle'}
+              </span>
+              <span className="block text-xs sm:text-sm font-semibold text-white truncate">
+                {nextPhase ? `Move to ${nextPhase.name}` : `Resolved (${currentStatus})`}
+              </span>
+            </div>
+          </div>
+          {nextPhase && (
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-[#0A0B10] shrink-0 transition-transform group-hover:translate-x-0.5"
+              style={{ backgroundColor: nextPhase.color }}
+            >
+              <span>Next Phase</span>
+              <ArrowRight size={13} />
+            </span>
+          )}
+        </button>
+
+        {/* Reopen button for verified/closed/fixed defects */}
+        {['Fixed', 'Ready for Retest', 'Verified', 'Closed'].includes(currentStatus) && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onSelectStatus('Reopened')}
+            className="px-3.5 py-3 rounded-xl border border-rose-500/35 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <RotateCcw size={13} />
+            <span>Reopen</span>
+          </button>
+        )}
+      </div>
+
+      {/* Slider Rail */}
+      <div className="rounded-xl bg-[#0D0E14] border border-[#232531] px-3.5 py-3 space-y-2">
+        <div className="flex items-center justify-between text-[10px] font-mono">
+          <span className="text-zinc-400 flex items-center gap-1.5">
+            <GripHorizontal size={12} style={{ color: phaseColor }} />
+            <span>
+              {isDragging && activePhase
+                ? `Drop onto "${activePhase.name}"`
+                : 'Drag slider to change defect phase'}
+            </span>
+          </span>
+          <span className="font-semibold" style={{ color: phaseColor }}>
+            {activePhase?.name || currentStatus}
+          </span>
+        </div>
+
+        <div className="px-2.5 pt-2 pb-1 select-none">
+          <div
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            className={`relative py-2 touch-none ${
+              disabled ? 'opacity-50 pointer-events-none' : 'cursor-grab active:cursor-grabbing'
+            }`}
+          >
+            <div ref={railRef} className="relative h-2.5 rounded-full bg-[#1C1E28]">
+              <div
+                ref={fillRef}
+                className={`absolute inset-y-0 left-0 rounded-full ${
+                  isDragging ? '' : 'transition-[width] duration-150 ease-out'
+                }`}
+                style={{
+                  width: `${restPercent}%`,
+                  backgroundColor: phaseColor,
+                }}
+              />
+
+              {/* Stop dots */}
+              <div className="absolute inset-0 flex items-center justify-between pointer-events-none">
+                {phases.map((phase: DefectPhaseItem, idx: number) => {
+                  const isReached = idx <= activeIdx;
+                  const isTarget = isDragging && hoverIdx === idx;
+                  const isCurrent = phase.name === currentStatus && !isDragging;
+                  return (
+                    <div
+                      key={phase.name}
+                      className={`relative w-4 h-4 -mx-2 rounded-full border-2 flex items-center justify-center transition-transform ${
+                        isTarget || isCurrent ? 'scale-125' : ''
+                      }`}
+                      style={{
+                        backgroundColor: isReached ? phase.color : '#12141B',
+                        borderColor: isReached ? '#0A0B10' : '#3F3F46',
+                        boxShadow: isTarget ? `0 0 0 4px ${phase.color}40` : undefined,
+                      }}
+                    >
+                      {idx < currentIdx && !isDragging && (
+                        <Check size={8} className="text-[#0A0B10] stroke-[3]" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Thumb Handle */}
+              <div
+                ref={handleRef}
+                className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 rounded-full border-2 border-white shadow-lg flex items-center justify-center pointer-events-none ${
+                  isDragging ? 'scale-125' : 'transition-[left] duration-150 ease-out'
+                }`}
+                style={{
+                  left: `${restPercent}%`,
+                  backgroundColor: phaseColor,
+                  boxShadow: `0 0 12px ${phaseColor}88`,
+                }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0A0B10]" />
+              </div>
+            </div>
+          </div>
+
+          {/* Clickable Phase Labels */}
+          <div className="mt-1.5 flex items-center justify-between gap-1 overflow-x-auto">
+            {phases.map((phase: DefectPhaseItem, idx: number) => {
+              const isSelected = idx === activeIdx;
+              const PhaseIcon = phase.icon;
+              return (
+                <button
+                  key={phase.name}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => phase.name !== currentStatus && onSelectStatus(phase.name)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors truncate cursor-pointer ${
+                    isSelected ? 'text-white bg-[#1B1D27] border border-[#2F3242]' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <PhaseIcon
+                    size={10}
+                    style={{ color: isSelected ? phase.color : '#71717A' }}
+                  />
+                  <span className="truncate">{phase.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const DefectDrawer: React.FC<DefectDrawerProps> = ({
   projectId,
@@ -335,27 +648,25 @@ export const DefectDrawer: React.FC<DefectDrawerProps> = ({
                 </div>
               ) : (
                 <>
-                  {/* Lifecycle Status & QA Sign-off Banner */}
-                  <div className="bg-[#14161F] border border-[#27272A] rounded-2xl p-4 space-y-3 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                  {/* Interactive Status Slider & Advancement (Matches Development Task Slider) */}
+                  <div className="bg-[#14161F] border border-[#27272A] rounded-2xl p-4 space-y-3.5 shadow-sm">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         <TestingSeverityBadge severity={detail.severity} size="sm" />
                         <TestingPriorityBadge priority={detail.priority} size="sm" />
                         <DefectStatusBadge status={detail.status} size="sm" />
                       </div>
-                      {canManage && (
-                        <div className="w-56">
-                          <AnimatedSelect
-                            options={DEFECT_STATUS_OPTIONS}
-                            value={detail.status}
-                            onChange={(val) => void handleStatusTransition(val)}
-                            dropdownMinWidth="w-full"
-                            dropdownAlign="right"
-                            accentColor={accentColor}
-                          />
-                        </div>
-                      )}
+                      <span className="text-[11px] font-mono text-zinc-400">
+                        Status: <strong className="text-white">{detail.status}</strong>
+                      </span>
                     </div>
+
+                    <DefectPhaseSliderControl
+                      currentStatus={detail.status}
+                      disabled={!canManage}
+                      accentColor={accentColor}
+                      onSelectStatus={(next) => void handleStatusTransition(next)}
+                    />
 
                     {/* Pending Retest QA Verification Box */}
                     {detail.status === 'Fixed' && (
@@ -404,6 +715,26 @@ export const DefectDrawer: React.FC<DefectDrawerProps> = ({
                     )}
 
                     <div className="flex items-center gap-4 text-[11px] text-zinc-400 pt-2 border-t border-[#27272A]/70 flex-wrap">
+                      {(detail.module || detail.submodule) && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-zinc-500">Module:</span>
+                          <span className="text-emerald-400 font-medium">
+                            {detail.module?.name}
+                            {detail.submodule ? ` › ${detail.submodule.name}` : ''}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-zinc-500">Reported By:</span>
+                        {detail.reporter ? (
+                          <div className="flex items-center gap-1.5 text-zinc-200">
+                            <UserAvatar user={detail.reporter} size="xs" />
+                            <span>{detail.reporter.name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-zinc-500 italic">Unknown</span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-zinc-500">Assignee:</span>
                         {detail.assignee ? (

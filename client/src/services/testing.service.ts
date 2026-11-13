@@ -478,6 +478,8 @@ export const testingService = {
       severity?: string;
       priority?: string;
       status?: string;
+      moduleId?: number | null;
+      submoduleId?: number | null;
       assigneeId?: number | null;
       environment?: string | null;
       buildVersion?: string | null;

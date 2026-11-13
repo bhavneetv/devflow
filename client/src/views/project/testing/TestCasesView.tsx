@@ -41,6 +41,7 @@ import { useToast } from '../../../context/ToastContext';
 import { confirmDeleteSwal } from '../../../lib/confirmAlert';
 import { AnimatedSelect, type SelectOption } from '../../../components/settings/AnimatedSelect';
 import { UserAvatar } from '../../../components/common/UserAvatar';
+import { CustomCheckbox } from '../../../components/common/CustomCheckbox';
 import { TestingPageHeader } from '../../../components/testing/TestingPageHeader';
 import {
   ExecutionStatusBadge,
@@ -614,54 +615,61 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
   );
 
   // Helper to render table rows for any case array
-  const renderTableRows = (items: TestCaseItem[]) => (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-xs">
-        <thead className="bg-[#0B0D12]/80 text-zinc-400 border-b border-[#27272A]">
-          <tr>
-            <th className="px-4 py-3 w-10">
-              <input
-                type="checkbox"
-                checked={items.length > 0 && items.every((tc) => selectedIds.includes(tc.id))}
-                onChange={() => {
-                  const allInGrpSelected = items.every((tc) => selectedIds.includes(tc.id));
-                  if (allInGrpSelected) {
-                    setSelectedIds((prev) => prev.filter((id) => !items.some((tc) => tc.id === id)));
-                  } else {
-                    const toAdd = items.map((tc) => tc.id).filter((id) => !selectedIds.includes(id));
-                    setSelectedIds((prev) => [...prev, ...toAdd]);
-                  }
-                }}
-                className="rounded border-[#27272A] bg-[#0B0D12] text-emerald-500 focus:ring-0 w-3.5 h-3.5"
-              />
-            </th>
-            <th className="px-4 py-3">Key &amp; Title</th>
-            <th className="px-4 py-3">Type</th>
-            <th className="px-4 py-3">Priority</th>
-            <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Latest Run</th>
-            <th className="px-4 py-3">Tester</th>
-            <th className="px-4 py-3 text-right">Updated</th>
-            <th className="px-4 py-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[#27272A]/70">
-          {items.map((tc) => (
-            <tr
-              key={tc.id}
-              className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${
-                tc.isArchived ? 'opacity-55' : ''
-              }`}
-              onClick={() => setDrawerCaseId(tc.id)}
-            >
-              <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(tc.id)}
-                  onChange={() => toggleOne(tc.id)}
-                  className="rounded border-[#27272A] bg-[#0B0D12] text-emerald-500 focus:ring-0 w-3.5 h-3.5"
+  const renderTableRows = (items: TestCaseItem[]) => {
+    const allInGrpSelected = items.length > 0 && items.every((tc) => selectedIds.includes(tc.id));
+    const someInGrpSelected = items.some((tc) => selectedIds.includes(tc.id));
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-[#0B0D12]/80 text-zinc-400 border-b border-[#27272A]">
+            <tr>
+              <th className="px-4 py-3 w-10">
+                <CustomCheckbox
+                  checked={allInGrpSelected}
+                  indeterminate={!allInGrpSelected && someInGrpSelected}
+                  accentColor={accentColor}
+                  size="sm"
+                  onChange={(checked) => {
+                    if (checked) {
+                      const toAdd = items.map((tc) => tc.id).filter((id) => !selectedIds.includes(id));
+                      setSelectedIds((prev) => [...prev, ...toAdd]);
+                    } else {
+                      setSelectedIds((prev) => prev.filter((id) => !items.some((tc) => tc.id === id)));
+                    }
+                  }}
+                  aria-label="Select all test cases in view"
                 />
-              </td>
+              </th>
+              <th className="px-4 py-3">Key &amp; Title</th>
+              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Priority</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Latest Run</th>
+              <th className="px-4 py-3">Tester</th>
+              <th className="px-4 py-3 text-right">Updated</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#27272A]/70">
+            {items.map((tc) => (
+              <tr
+                key={tc.id}
+                className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${
+                  tc.isArchived ? 'opacity-55' : ''
+                }`}
+                onClick={() => setDrawerCaseId(tc.id)}
+              >
+                <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                  <CustomCheckbox
+                    checked={selectedIds.includes(tc.id)}
+                    onChange={() => toggleOne(tc.id)}
+                    accentColor={accentColor}
+                    size="sm"
+                    stopPropagation
+                    aria-label={`Select test case ${tc.caseKey}`}
+                  />
+                </td>
               <td className="px-4 py-3 max-w-md">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[11px] font-semibold text-emerald-400 shrink-0">
@@ -755,6 +763,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
       </table>
     </div>
   );
+};
 
   // Helper to render card grid for any case array
   const renderCardGrid = (items: TestCaseItem[]) => (
@@ -967,10 +976,10 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 6, scale: 0.97 }}
                         transition={{ duration: 0.16 }}
-                        className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-[340px] sm:w-[380px] rounded-2xl bg-[#12141C] border border-[#27272A] shadow-2xl z-50 overflow-hidden text-xs"
+                        className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-[340px] sm:w-[380px] rounded-2xl bg-[#12141C] border border-[#27272A] shadow-2xl z-50 overflow-visible text-xs"
                       >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-[#27272A] bg-[#161824]">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-[#27272A] bg-[#161824] rounded-t-2xl">
                           <div className="flex items-center gap-2">
                             <ListFilter className="w-4 h-4" style={{ color: accentColor }} />
                             <span className="font-semibold text-white">Filter Test Cases</span>
@@ -994,8 +1003,8 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
                           )}
                         </div>
 
-                        {/* Body with AnimatedSelect (dropdownMinWidth="w-full" prevents horizontal overflow scrollbars) */}
-                        <div className="p-4 space-y-3 max-h-[62vh] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-700">
+                        {/* Body with AnimatedSelect (overflow-visible + dropdownPosition="top" for bottom selects prevents any scrollbar/cutting) */}
+                        <div className="p-4 space-y-3 relative overflow-visible">
                           <div>
                             <label className="block text-[11px] font-medium text-zinc-400 mb-1">Application Module</label>
                             <AnimatedSelect
@@ -1009,7 +1018,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
                           </div>
 
                           <div className="grid grid-cols-2 gap-2.5">
-                            <div>
+                            <div className="min-w-0">
                               <label className="block text-[11px] font-medium text-zinc-400 mb-1">Test Type</label>
                               <AnimatedSelect
                                 options={typeOptions}
@@ -1021,7 +1030,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
                               />
                             </div>
 
-                            <div>
+                            <div className="min-w-0">
                               <label className="block text-[11px] font-medium text-zinc-400 mb-1">Priority</label>
                               <AnimatedSelect
                                 options={priorityOptions}
@@ -1036,7 +1045,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
                           </div>
 
                           <div className="grid grid-cols-2 gap-2.5">
-                            <div>
+                            <div className="min-w-0">
                               <label className="block text-[11px] font-medium text-zinc-400 mb-1">Status</label>
                               <AnimatedSelect
                                 options={statusOptions}
@@ -1048,7 +1057,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
                               />
                             </div>
 
-                            <div>
+                            <div className="min-w-0">
                               <label className="block text-[11px] font-medium text-zinc-400 mb-1">Assigned Tester</label>
                               <AnimatedSelect
                                 options={testerOptions}
@@ -1070,6 +1079,7 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
                               onChange={setFilterReqId}
                               placeholder="All Requirements"
                               dropdownMinWidth="w-full"
+                              dropdownPosition="top"
                               accentColor={accentColor}
                             />
                           </div>
@@ -1082,22 +1092,21 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({ projectId: propPro
                               onChange={setFilterDevTaskId}
                               placeholder="All Development Tasks"
                               dropdownMinWidth="w-full"
+                              dropdownPosition="top"
                               accentColor={accentColor}
                             />
                           </div>
                         </div>
 
                         {/* Footer Strip */}
-                        <div className="px-4 py-2.5 border-t border-[#27272A] bg-[#161824] flex items-center justify-between">
-                          <label className="inline-flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={includeArchived}
-                              onChange={(e) => setIncludeArchived(e.target.checked)}
-                              className="rounded border-[#27272A] bg-[#0B0D12] text-emerald-500 focus:ring-0 w-3.5 h-3.5"
-                            />
-                            <span>Include Archived</span>
-                          </label>
+                        <div className="px-4 py-2.5 border-t border-[#27272A] bg-[#161824] rounded-b-2xl flex items-center justify-between">
+                          <CustomCheckbox
+                            checked={includeArchived}
+                            onChange={setIncludeArchived}
+                            label="Include Archived"
+                            accentColor={accentColor}
+                            size="sm"
+                          />
                           <button
                             type="button"
                             onClick={() => setIsFilterOpen(false)}

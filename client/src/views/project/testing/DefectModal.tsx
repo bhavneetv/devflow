@@ -6,6 +6,7 @@ import {
   Bug,
   Check,
   CheckSquare,
+  Eye,
   FileText,
   FolderGit2,
   Loader2,
@@ -17,6 +18,8 @@ import {
   X,
 } from 'lucide-react';
 import { testingService } from '../../../services/testing.service';
+import { developmentService } from '../../../services/development.service';
+import { documentService } from '../../../services/document.service';
 import { useAccentTheme } from '../../../services/accentTheme.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
@@ -101,6 +104,8 @@ export const DefectModal: React.FC<DefectModalProps> = ({
   // Form Fields
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [moduleId, setModuleId] = useState('');
+  const [submoduleId, setSubmoduleId] = useState('');
   const [severity, setSeverity] = useState('Major');
   const [priority, setPriority] = useState('High');
   const [status, setStatus] = useState('Open');
@@ -121,6 +126,7 @@ export const DefectModal: React.FC<DefectModalProps> = ({
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDocItem[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [attachments, setAttachments] = useState<TestingAttachmentDocument[]>([]);
+  const [previewModalDoc, setPreviewModalDoc] = useState<{ url: string; name: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Keyboard shortcut: Escape to close
@@ -158,6 +164,8 @@ export const DefectModal: React.FC<DefectModalProps> = ({
     if (editingDefect) {
       setTitle(editingDefect.title || '');
       setDescription(editingDefect.description || '');
+      setModuleId(editingDefect.moduleId ? String(editingDefect.moduleId) : '');
+      setSubmoduleId(editingDefect.submoduleId ? String(editingDefect.submoduleId) : '');
       setSeverity(editingDefect.severity || 'Major');
       setPriority(editingDefect.priority || 'High');
       setStatus(editingDefect.status || 'Open');
@@ -183,14 +191,15 @@ export const DefectModal: React.FC<DefectModalProps> = ({
         }
       })();
     } else {
-      // Create mode - auto-select currently logged-in employee
-      const defaultAssignee = user?.id && meta.members.some((m) => m.id === user.id) ? String(user.id) : '';
+      // Create mode - Unassigned by default (do NOT auto-select assignee)
       setTitle('');
       setDescription('');
+      setModuleId(meta.modules[0] ? String(meta.modules[0].id) : '');
+      setSubmoduleId('');
       setSeverity(config?.defectSeverities?.[0]?.name || 'Major');
       setPriority(config?.priorities?.[0]?.name || 'High');
       setStatus('Open');
-      setAssigneeId(defaultAssignee);
+      setAssigneeId('');
       setEnvironment(config?.defaultEnvironment || 'Staging');
       setBuildVersion('');
       setStepsToReproduce('');
@@ -202,7 +211,78 @@ export const DefectModal: React.FC<DefectModalProps> = ({
       setUploadedDocs([]);
       setAttachments([]);
     }
-  }, [isOpen, editingDefect, projectId, meta.members, user?.id, config]);
+  }, [isOpen, editingDefect, projectId, meta.modules, user?.id, config]);
+
+  const selectedModule = useMemo(
+    () => meta.modules.find((m) => String(m.id) === moduleId),
+    [meta.modules, moduleId]
+  );
+
+  const moduleOptions: SelectOption[] = useMemo(
+    () => [
+      { value: '', label: 'None / General' },
+      ...meta.modules.map((m) => ({ value: String(m.id), label: m.name })),
+    ],
+    [meta.modules]
+  );
+
+  const submoduleOptions: SelectOption[] = useMemo(
+    () => [
+      { value: '', label: 'None' },
+      ...(selectedModule?.submodules || []).map((s) => ({ value: String(s.id), label: s.name })),
+    ],
+    [selectedModule]
+  );
+
+  // Inbuilt Application Module creation via select option search
+  const handleCreateModuleFromSelect = async (name: string) => {
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    const res = await developmentService.createModule(projectId, {
+      name: cleanName,
+      color: '#F43F5E',
+      icon: 'Layers',
+    });
+    if (res.success && res.data) {
+      meta.modules.push({
+        id: res.data.id,
+        name: res.data.name,
+        color: res.data.color,
+        submodules: [],
+      });
+      setModuleId(String(res.data.id));
+      setSubmoduleId('');
+      toast.success(`Created module "${cleanName}"`);
+    } else {
+      toast.error(res.error || 'Failed to create module');
+    }
+  };
+
+  // Inbuilt Application Submodule creation via select option search
+  const handleCreateSubmoduleFromSelect = async (name: string) => {
+    if (!moduleId) {
+      toast.error('Select an application module first');
+      return;
+    }
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    const res = await developmentService.createSubmodule(projectId, {
+      moduleId: Number(moduleId),
+      name: cleanName,
+      icon: 'Box',
+    });
+    if (res.success && res.data) {
+      const mod = meta.modules.find((m) => String(m.id) === moduleId);
+      if (mod) {
+        mod.submodules = mod.submodules || [];
+        mod.submodules.push({ id: res.data.id, name: res.data.name });
+      }
+      setSubmoduleId(String(res.data.id));
+      toast.success(`Created submodule "${cleanName}"`);
+    } else {
+      toast.error(res.error || 'Failed to create submodule');
+    }
+  };
 
   // Dynamic Options
   const severityOptions: SelectOption[] = useMemo(
@@ -349,14 +429,27 @@ export const DefectModal: React.FC<DefectModalProps> = ({
       );
 
       const res = await testingService.uploadStagedAttachmentFiles(projectId, {
-        moduleId: null,
-        submoduleId: null,
+        moduleId: moduleId ? Number(moduleId) : null,
+        submoduleId: submoduleId ? Number(submoduleId) : null,
         files: payloadFiles,
       });
 
       if (res.success && res.data) {
         if (res.data.documents && res.data.documents.length > 0) {
           setUploadedDocs((prev) => [...prev, ...res.data!.documents]);
+          const newAtts: TestingAttachmentDocument[] = res.data.documents.map((doc: any) => ({
+            id: doc.id,
+            linkId: doc.id,
+            documentId: doc.id,
+            displayName: doc.displayName || doc.originalName || doc.name,
+            originalName: doc.originalName || doc.name,
+            mimeType: doc.mimeType,
+            sizeBytes: doc.sizeBytes || doc.size || 0,
+            repositoryPath: doc.repositoryPath || `${doc.branch || 'main'}:${doc.folder || 'defects'}`,
+            branch: doc.branch || 'main',
+            createdAt: new Date().toISOString(),
+          }));
+          setAttachments((prev) => [...prev, ...newAtts]);
           toast.success(`Uploaded ${res.data.documents.length} document(s) to folder "${res.data.folder}" on main`);
         }
         if (res.data.errors && res.data.errors.length > 0) {
@@ -411,6 +504,8 @@ export const DefectModal: React.FC<DefectModalProps> = ({
         const updatePayload: Record<string, any> = {
           title: title.trim(),
           description: description.trim() || null,
+          moduleId: moduleId ? Number(moduleId) : null,
+          submoduleId: submoduleId ? Number(submoduleId) : null,
           severity,
           priority,
           status,
@@ -423,6 +518,7 @@ export const DefectModal: React.FC<DefectModalProps> = ({
           linkedTestCaseId: linkedTestCaseId ? Number(linkedTestCaseId) : null,
           linkedDevTaskId: linkedDevTaskId ? Number(linkedDevTaskId) : null,
           linkedRequirementId: linkedRequirementId ? Number(linkedRequirementId) : null,
+          attachmentDocumentIds,
         };
 
         const res = await testingService.updateDefect(projectId, editingDefect.id, updatePayload);
@@ -437,6 +533,8 @@ export const DefectModal: React.FC<DefectModalProps> = ({
         const createPayload = {
           title: title.trim(),
           description: description.trim() || null,
+          moduleId: moduleId ? Number(moduleId) : null,
+          submoduleId: submoduleId ? Number(submoduleId) : null,
           severity,
           priority,
           status,
@@ -546,6 +644,54 @@ export const DefectModal: React.FC<DefectModalProps> = ({
                 />
               </div>
 
+              {/* Application Module & Submodule */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-zinc-300">Application Module</label>
+                  <AnimatedSelect
+                    options={moduleOptions}
+                    value={moduleId}
+                    onChange={(val) => {
+                      setModuleId(val);
+                      setSubmoduleId('');
+                    }}
+                    searchPlaceholder={
+                      permissions.canManageSettings ? 'Search or type name to add...' : 'Search modules...'
+                    }
+                    placeholder="Select module..."
+                    accentColor={accentColor}
+                    onCreateOption={
+                      permissions.canManageSettings ? handleCreateModuleFromSelect : undefined
+                    }
+                    createOptionLabel={(query) => `Add "${query}" module`}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-zinc-300">Application Submodule</label>
+                  <AnimatedSelect
+                    options={submoduleOptions}
+                    value={submoduleId}
+                    onChange={setSubmoduleId}
+                    disabled={!moduleId}
+                    dropdownAlign="right"
+                    searchPlaceholder={
+                      permissions.canManageSettings && moduleId
+                        ? 'Search or type name to add...'
+                        : 'Search submodules...'
+                    }
+                    placeholder={!moduleId ? 'Select module first...' : 'Select submodule...'}
+                    accentColor={accentColor}
+                    onCreateOption={
+                      permissions.canManageSettings && moduleId
+                        ? handleCreateSubmoduleFromSelect
+                        : undefined
+                    }
+                    createOptionLabel={(query) => `Add "${query}" submodule`}
+                  />
+                </div>
+              </div>
+
               {/* Classification: Severity, Priority, Status */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
@@ -649,6 +795,7 @@ export const DefectModal: React.FC<DefectModalProps> = ({
                     value={linkedTestCaseId}
                     onChange={setLinkedTestCaseId}
                     placeholder="None"
+                    dropdownMinWidth="w-full"
                     accentColor={accentColor}
                   />
                 </div>
@@ -660,6 +807,7 @@ export const DefectModal: React.FC<DefectModalProps> = ({
                     value={linkedDevTaskId}
                     onChange={setLinkedDevTaskId}
                     placeholder="None"
+                    dropdownMinWidth="w-full"
                     accentColor={accentColor}
                   />
                 </div>
@@ -670,8 +818,8 @@ export const DefectModal: React.FC<DefectModalProps> = ({
                     options={reqOptions}
                     value={linkedRequirementId}
                     onChange={setLinkedRequirementId}
-                    dropdownAlign="right"
                     placeholder="None"
+                    dropdownMinWidth="w-full"
                     accentColor={accentColor}
                   />
                 </div>
@@ -784,13 +932,28 @@ export const DefectModal: React.FC<DefectModalProps> = ({
                             </div>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setUploadedDocs((prev) => prev.filter((d) => d.id !== doc.id))}
-                          className="p-1 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewModalDoc({
+                                url: documentService.getContentUrl(projectId, doc.id, false),
+                                name: doc.displayName || doc.originalName,
+                              })
+                            }
+                            className="p-1 rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                            title="Preview document"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setUploadedDocs((prev) => prev.filter((d) => d.id !== doc.id))}
+                            className="p-1 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -838,6 +1001,60 @@ export const DefectModal: React.FC<DefectModalProps> = ({
               </div>
             </div>
           </motion.div>
+
+          {/* Lightbox Modal for Direct Attachment / Document Preview */}
+          <AnimatePresence>
+            {previewModalDoc && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setPreviewModalDoc(null)}
+                className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full max-w-4xl max-h-[90vh] bg-[#12141C] border border-[#27272A] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                >
+                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#27272A] bg-[#161824]">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Eye className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="font-semibold text-white text-sm truncate">
+                        {previewModalDoc.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewModalDoc(null)}
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-[#090A0F] min-h-[300px]">
+                    {previewModalDoc.url.match(/\.(jpg|jpeg|png|gif|webp|svg)($|\?)/i) || previewModalDoc.name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? (
+                      <img
+                        src={previewModalDoc.url}
+                        alt={previewModalDoc.name}
+                        className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
+                      />
+                    ) : (
+                      <iframe
+                        src={previewModalDoc.url}
+                        title={previewModalDoc.name}
+                        className="w-full h-[70vh] rounded-lg border border-[#27272A]"
+                      />
+                    )}
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </AnimatePresence>,

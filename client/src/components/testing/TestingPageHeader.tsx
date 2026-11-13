@@ -62,6 +62,9 @@ interface TestingPageHeaderProps {
   icon?: React.ComponentType<any>;
   actions?: React.ReactNode;
   showTabs?: boolean;
+  hideIcon?: boolean;
+  hideCategory?: boolean;
+  hideBadge?: boolean;
 }
 
 export const TestingPageHeader: React.FC<TestingPageHeaderProps> = ({
@@ -73,6 +76,9 @@ export const TestingPageHeader: React.FC<TestingPageHeaderProps> = ({
   icon: Icon = CheckSquare,
   actions,
   showTabs,
+  hideIcon = false,
+  hideCategory = false,
+  hideBadge = false,
 }) => {
   const { accentColor } = useAccentTheme();
   const { goToSubmodule } = useTestingNavigation(projectId);
@@ -85,27 +91,33 @@ export const TestingPageHeader: React.FC<TestingPageHeaderProps> = ({
     <div className="space-y-4">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="flex items-start gap-3.5">
-          <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border"
-            style={{
-              backgroundColor: `${accentColor}18`,
-              borderColor: `${accentColor}40`,
-              color: accentColor,
-            }}
-          >
-            <Icon className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">
-                Testing &amp; QA
-              </span>
-              {badge !== undefined && badge !== null && (
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/[0.06] text-gray-300 border border-white/10">
-                  {badge}
-                </span>
-              )}
+          {!hideIcon && (
+            <div
+              className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border"
+              style={{
+                backgroundColor: `${accentColor}18`,
+                borderColor: `${accentColor}40`,
+                color: accentColor,
+              }}
+            >
+              <Icon className="w-5 h-5" />
             </div>
+          )}
+          <div>
+            {(!hideCategory || (!hideBadge && badge !== undefined && badge !== null)) && (
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {!hideCategory && (
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">
+                    Testing &amp; QA
+                  </span>
+                )}
+                {!hideBadge && badge !== undefined && badge !== null && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/[0.06] text-gray-300 border border-white/10">
+                    {badge}
+                  </span>
+                )}
+              </div>
+            )}
             <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight mt-0.5">
               {title}
             </h1>

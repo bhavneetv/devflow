@@ -61,6 +61,7 @@ interface TestingPageHeaderProps {
   badge?: string | number;
   icon?: React.ComponentType<any>;
   actions?: React.ReactNode;
+  showTabs?: boolean;
 }
 
 export const TestingPageHeader: React.FC<TestingPageHeaderProps> = ({
@@ -71,9 +72,14 @@ export const TestingPageHeader: React.FC<TestingPageHeaderProps> = ({
   badge,
   icon: Icon = CheckSquare,
   actions,
+  showTabs,
 }) => {
   const { accentColor } = useAccentTheme();
   const { goToSubmodule } = useTestingNavigation(projectId);
+
+  // If user selects an individual feature (e.g. defects, test-cases), show only that page without tabs.
+  // Tabs are only displayed on the main Testing Overview hub or when explicitly enabled.
+  const shouldShowTabs = showTabs ?? (activeKey === 'testing-overview');
 
   return (
     <div className="space-y-4">
@@ -111,34 +117,36 @@ export const TestingPageHeader: React.FC<TestingPageHeaderProps> = ({
         {actions && <div className="flex items-center gap-2.5 flex-wrap">{actions}</div>}
       </div>
 
-      {/* Compact submodule breadcrumb strip */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-        {TESTING_SUBMODULE_NAV.map((item) => {
-          const NavIcon = item.icon;
-          const isActive = item.key === activeKey;
-          return (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => goToSubmodule(item.key)}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border',
-                isActive
-                  ? 'text-white border-white/20 bg-white/[0.09] shadow-sm'
-                  : 'text-gray-400 border-transparent hover:text-gray-200 hover:bg-white/[0.04]'
-              )}
-              style={
-                isActive
-                  ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}18` }
-                  : undefined
-              }
-            >
-              <NavIcon className="w-3.5 h-3.5" style={isActive ? { color: accentColor } : undefined} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Submodule breadcrumb strip: shown only on Testing Overview hub or when showTabs is explicitly true */}
+      {shouldShowTabs && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+          {TESTING_SUBMODULE_NAV.map((item) => {
+            const NavIcon = item.icon;
+            const isActive = item.key === activeKey;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => goToSubmodule(item.key)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border',
+                  isActive
+                    ? 'text-white border-white/20 bg-white/[0.09] shadow-sm'
+                    : 'text-gray-400 border-transparent hover:text-gray-200 hover:bg-white/[0.04]'
+                )}
+                style={
+                  isActive
+                    ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}18` }
+                    : undefined
+                }
+              >
+                <NavIcon className="w-3.5 h-3.5" style={isActive ? { color: accentColor } : undefined} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

@@ -832,7 +832,7 @@ testingRouter.post('/test-cases', async (req: Request, res: Response) => {
       }
 
       return tc;
-    });
+    }, { maxWait: 20000, timeout: 30000 });
 
     await syncRequirementTestCaseLink(created.id, data.linkedRequirementId, userId);
     await recordTestingActivity({
@@ -2942,7 +2942,7 @@ testingRouter.post('/defects', async (req: Request, res: Response) => {
       }
 
       return defect;
-    });
+    }, { maxWait: 20000, timeout: 30000 });
 
     await recordTestingActivity({
       projectId,
@@ -3189,6 +3189,140 @@ testingRouter.delete('/defects/:defectId/link-git/:linkId', async (req: Request,
 });
 
 // ─── ATTACHMENTS (Reusing existing ProjectDocument & GitHub storage) ───────────
+
+testingRouter.post('/attachments/upload-file', async (req: Request, res: Response) => {
+  try {
+    const projectId = parseId(req.params.projectId);
+    const userId = getUserIdFromToken(req);
+    const access = await checkTestingAccess(projectId, userId);
+    if (!access.allowed || !access.config) return sendTestingAccessError(res, access);
+    if (!access.permissions.canEditTestCases && !access.permissions.canExecuteTests && !access.permissions.canManageDefects) {
+      return res.status(403).json({ success: false, error: 'No permission to upload testing attachments' });
+    }
+
+    const { moduleId, submoduleId, files } = req.body || {};
+    if (!Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ success: false, error: 'No files provided for upload' });
+    }
+
+    const storageConn = await prisma.projectStorageConnection.findUnique({ where: { projectId } });
+    if (storageConn && storageConn.connectionStatus === 'unlinked') {
+      return res.status(423).json({
+        success: false,
+        error: 'Project document storage repository is currently unlinked. Relink it in Project Settings > Storage.',
+      });
+    }
+
+    const existingDocs = await prisma.projectDocument.findMany({
+      where: { projectId, deletedAt: null },
+      select: { sizeBytes: true },
+    });
+    let usedBytes = existingDocs.reduce((a, b) => a + (b.sizeBytes || 0), 0);
+
+    const maxBytes = access.config.maxAttachmentSizeBytes;
+    const allowedTypes = access.config.allowedAttachmentTypes;
+    const uploadedDocuments: any[] = [];
+    const errors: Array<{ fileName: string; error: string }> = [];
+
+    // Folder target: if submoduleId is given, folder is submodule-${submoduleId}, else module-${moduleId}, else 'test-cases'
+    const targetFolder = submoduleId
+      ? `submodule-${submoduleId}`
+      : moduleId
+      ? `module-${moduleId}`
+      : 'test-cases';
+
+    for (const file of files) {
+      const name = String(file?.name || 'attachment').trim();
+      const rawBase64 = file?.base64 || file?.data;
+      const mimeType = String(file?.mimeType || 'application/octet-stream');
+      if (!rawBase64) {
+        errors.push({ fileName: name, error: 'Missing file content' });
+        continue;
+      }
+
+      if (allowedTypes.length > 0 && !allowedTypes.some((t) => mimeType === t || mimeType.startsWith(t.replace('*', '')))) {
+        errors.push({ fileName: name, error: `File type ${mimeType} is restricted by Testing Settings.` });
+        continue;
+      }
+
+      const cleanedBase64 = String(rawBase64).replace(/^data:[^;]+;base64,/, '');
+      const buffer = Buffer.from(cleanedBase64, 'base64');
+      if (buffer.length > maxBytes) {
+        errors.push({
+          fileName: name,
+          error: `File size exceeds limit of ${(maxBytes / (1024 * 1024)).toFixed(1)} MB.`,
+        });
+        continue;
+      }
+      if (usedBytes + buffer.length > REPO_SIZE_LIMIT_BYTES) {
+        errors.push({ fileName: name, error: 'Project repository size limit exceeded.' });
+        continue;
+      }
+
+      try {
+        const storageKey = crypto.randomUUID();
+        const extension = name.split('.').pop()?.toLowerCase() || '';
+        const gitResult = await GitHubDocumentStorageService.uploadDocumentFile({
+          projectId,
+          projectTitle: access.project?.title || 'project',
+          fileName: name,
+          storageKey,
+          categorySlug: 'qa-evidence',
+          branchName: 'main',
+          pathPrefix: targetFolder,
+          contentBuffer: buffer,
+          uploaderName: access.user?.name || 'QA User',
+        });
+
+        const doc = await prisma.projectDocument.create({
+          data: {
+            organizationId: access.project?.organizationId || null,
+            projectId,
+            branch: gitResult.branch || 'main',
+            uploadedById: userId!,
+            originalName: name,
+            displayName: name,
+            storageKey,
+            repositoryPath: gitResult.path,
+            providerFileSha: gitResult.sha,
+            mimeType,
+            extension,
+            sizeBytes: buffer.length,
+            description: `Testing attachment uploaded to ${targetFolder}`,
+            uploadStatus: 'uploaded',
+            providerSyncStatus: 'synced',
+          },
+        });
+
+        usedBytes += buffer.length;
+        uploadedDocuments.push({
+          id: doc.id,
+          displayName: doc.displayName,
+          originalName: doc.originalName,
+          mimeType: doc.mimeType,
+          extension: doc.extension,
+          sizeBytes: doc.sizeBytes,
+          branch: doc.branch,
+          repositoryPath: doc.repositoryPath,
+          folder: targetFolder,
+        });
+      } catch (err: any) {
+        errors.push({ fileName: name, error: err.message || 'GitHub upload failed' });
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        documents: uploadedDocuments,
+        errors,
+        folder: targetFolder,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to upload testing attachment file' });
+  }
+});
 
 testingRouter.post('/attachments/upload', async (req: Request, res: Response) => {
   try {

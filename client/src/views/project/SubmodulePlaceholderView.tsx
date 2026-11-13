@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Boxes,
@@ -86,6 +86,17 @@ export const SubmodulePlaceholderView: React.FC = () => {
   const SubIcon = resolveModuleIcon(submodule?.icon || module?.icon, isIndependent ? FolderKanban : CircleDot);
   const ModIcon = resolveModuleIcon(module?.icon, FolderKanban);
 
+  const effectiveSubmoduleId = useMemo(() => {
+    if (!submodule?.config) return submodule?.id ?? 0;
+    try {
+      const cfg = JSON.parse(submodule.config);
+      if (cfg.copyMode === 'clone' && cfg.targetSubmoduleId) {
+        return cfg.targetSubmoduleId;
+      }
+    } catch {}
+    return submodule?.id ?? 0;
+  }, [submodule]);
+
   if (loading) {
     return (
       <div className="p-12 text-center text-zinc-500 text-xs flex flex-col items-center justify-center gap-2">
@@ -117,7 +128,7 @@ export const SubmodulePlaceholderView: React.FC = () => {
     } else if (key === 'whiteboard') {
       return (
         <WhiteboardView
-          submoduleId={submodule.id}
+          submoduleId={effectiveSubmoduleId}
           submoduleName={submodule.name}
         />
       );
@@ -133,7 +144,7 @@ export const SubmodulePlaceholderView: React.FC = () => {
           </div>
           <DocumentsKnowledgeBaseModule
             projectId={projectId}
-            submoduleId={submodule.id}
+            submoduleId={effectiveSubmoduleId}
             submoduleName={submodule.name}
           />
         </div>

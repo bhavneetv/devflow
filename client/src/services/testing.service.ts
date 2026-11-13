@@ -64,6 +64,8 @@ export const testingService = {
     projectId: number,
     params?: {
       search?: string;
+      moduleId?: string | number;
+      submoduleId?: string | number;
       testType?: string;
       priority?: string;
       status?: string;
@@ -137,6 +139,7 @@ export const testingService = {
       linkedRequirementId?: number | null;
       linkedDevTaskId?: number | null;
       steps?: TestCaseStepItem[];
+      attachmentDocumentIds?: number[];
     }
   ) {
     return apiFetch<TestCaseDetail>(`/projects/${projectId}/testing/test-cases/${caseId}`, {
@@ -533,6 +536,34 @@ export const testingService = {
   },
 
   // ── Attachments (reusing existing storage) ───────────────────────────────────
+  uploadStagedAttachmentFiles(
+    projectId: number,
+    payload: {
+      moduleId?: number | null;
+      submoduleId?: number | null;
+      files: Array<{ name: string; base64: string; mimeType?: string }>;
+    }
+  ) {
+    return apiFetch<{
+      documents: Array<{
+        id: number;
+        displayName: string;
+        originalName: string;
+        mimeType?: string;
+        extension?: string;
+        sizeBytes: number;
+        branch: string;
+        repositoryPath: string;
+        folder: string;
+      }>;
+      errors?: Array<{ fileName: string; error: string }>;
+      folder: string;
+    }>(`/projects/${projectId}/testing/attachments/upload-file`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   uploadAttachments(
     projectId: number,
     payload: {
